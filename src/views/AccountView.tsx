@@ -45,6 +45,9 @@ interface ConnectionMeta {
 export const AccountView: React.FC = () => {
   const { state, dispatch, selectedAccount } = useGlobalState();
   const apiFetch = useApiFetch();
+  
+  const userRole = state.user?.role || 'USER';
+  const isAdminOrOwner = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'RISK_MANAGER';
 
   const [meta, setMeta] = useState<ConnectionMeta | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -340,7 +343,7 @@ export const AccountView: React.FC = () => {
             <div className="space-y-3.5 text-xs">
               <div>
                 <span className="text-text-secondary block text-[9px] uppercase font-mono font-bold">Display Name</span>
-                <span className="font-bold text-text-primary text-sm">{state.user?.displayName}</span>
+                <span className="font-bold text-text-primary text-sm whitespace-normal break-words block">{state.user?.displayName}</span>
               </div>
               <div>
                 <span className="text-text-secondary block text-[9px] uppercase font-mono font-bold">Email Address</span>
@@ -574,34 +577,36 @@ export const AccountView: React.FC = () => {
           </Card>
 
           {/* Feature Flags Control Panel */}
-          <Card variant="surface" className="p-4 space-y-3">
-            <h3 className="text-xs font-bold text-text-primary pb-2.5 border-b border-border-color dark:border-[#2B3139] flex items-center gap-2 font-mono uppercase tracking-wider">
-              <Cpu className="w-3.5 h-3.5 text-color-warning dark:text-accent-primary" />
-              Feature Flag Settings
-            </h3>
+          {isAdminOrOwner && (
+            <Card variant="surface" className="p-4 space-y-3">
+              <h3 className="text-xs font-bold text-text-primary pb-2.5 border-b border-border-color dark:border-[#2B3139] flex items-center gap-2 font-mono uppercase tracking-wider">
+                <Cpu className="w-3.5 h-3.5 text-color-warning dark:text-accent-primary" />
+                Feature Flag Settings
+              </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-              {Object.entries(state.featureFlags).map(([flag, isEnabled]) => (
-                <div key={flag} className="p-2.5 bg-bg-main border border-border-color dark:bg-[#0B0E11] dark:border-[#2B3139] rounded-[2px] flex items-center justify-between">
-                  <div>
-                    <div className="font-mono font-bold text-text-primary dark:text-text-primary">{flag}</div>
-                    <div className="text-[10px] text-text-secondary font-semibold">{isEnabled ? 'Activated' : 'Inactive'}</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                {Object.entries(state.featureFlags).map(([flag, isEnabled]) => (
+                  <div key={flag} className="p-2.5 bg-bg-main border border-border-color dark:bg-[#0B0E11] dark:border-[#2B3139] rounded-[2px] flex items-center justify-between">
+                    <div>
+                      <div className="font-mono font-bold text-text-primary dark:text-text-primary">{flag}</div>
+                      <div className="text-[10px] text-text-secondary font-semibold">{isEnabled ? 'Activated' : 'Inactive'}</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={isEnabled}
+                      onChange={(e) =>
+                        dispatch({
+                          type: 'SET_FEATURE_FLAG',
+                          payload: { flag: flag as any, value: e.target.checked },
+                        })
+                      }
+                      className="w-4 h-4 accent-[#FCD535] rounded cursor-pointer"
+                    />
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={isEnabled}
-                    onChange={(e) =>
-                      dispatch({
-                        type: 'SET_FEATURE_FLAG',
-                        payload: { flag: flag as any, value: e.target.checked },
-                      })
-                    }
-                    className="w-4 h-4 accent-[#FCD535] rounded cursor-pointer"
-                  />
-                </div>
-              ))}
-            </div>
-          </Card>
+                ))}
+              </div>
+            </Card>
+          )}
         </div>
       </div>
     </div>

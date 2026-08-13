@@ -104,11 +104,14 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
         {/* PROFILE BUTTON */}
         <button
           onClick={() => handleNavigate('account')}
-          className="p-2 text-text-secondary bg-bg-surface border border-border-color hover:bg-bg-hover hover:text-text-primary rounded-lg transition-colors cursor-pointer shrink-0"
+          className="flex items-center gap-1.5 p-1.5 sm:p-2 text-text-secondary bg-bg-surface border border-border-color hover:bg-bg-hover hover:text-text-primary rounded-lg transition-colors cursor-pointer shrink-0"
           title="User Account & Profile"
           aria-label="User Account"
         >
-          <User className="w-4 h-4" />
+          <User className="w-4 h-4 shrink-0" />
+          <span className="text-[10px] sm:text-xs font-bold text-text-primary whitespace-normal break-words max-w-[120px] sm:max-w-none text-left leading-tight">
+            {state.user?.displayName || 'Alex Nyangaresi Obwogi'}
+          </span>
         </button>
       </div>
 

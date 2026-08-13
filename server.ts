@@ -5,6 +5,7 @@
 
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
+import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import { loadAppConfig } from './src/config/appConfig';
 import { createSuccessResponse, createErrorResponse } from './src/types/api';
@@ -60,6 +61,7 @@ import {
   connectUserWithApiToken,
 } from './src/services/deriv/oauthServerService';
 import { initializeDatabaseSystem } from './src/db/initDb';
+import { getDatabasePool, testDatabaseConnection } from './src/db/connection';
 
 export async function createApp() {
   const app = express();
@@ -294,6 +296,15 @@ export async function createApp() {
     } catch (err: any) {
       res.status(500).json(createErrorResponse(err.message || 'AI Strategy building failed', 'AI_BUILDER_ERROR'));
     }
+  });
+
+  // 7. Leaderboard Endpoint
+  app.get('/api/leaderboard/top', async (req: Request, res: Response) => {
+    // Mocking real-time performance metrics
+    res.json(createSuccessResponse({
+      name: 'Alex Nyangaresi Obwogi',
+      roi: `+${(Math.random() * 200 + 50).toFixed(1)}%`
+    }));
   });
 
   // --- AUTOMATION ORCHESTRATOR API ENDPOINTS ---
@@ -726,31 +737,79 @@ export async function createApp() {
   ];
 
   // 1. Secure Authentication Login Endpoint
-  app.post('/api/auth/login', (req: Request, res: Response) => {
+  app.post('/api/auth/login', async (req: Request, res: Response) => {
     try {
       const { email, password, role } = req.body;
       
-      // Enforce hardcoded Super Admin profile if email matches Alex's email
       let targetUser;
-      if (email === 'obwogialex728@gmail.com') {
-        targetUser = mockUsers.find(u => u.id === 'usr-super-obwogi') || {
-          id: 'usr-super-obwogi',
-          displayName: 'Alex Nyangaresi Obwogi',
-          email: 'obwogialex728@gmail.com',
-          role: 'SUPER_ADMIN' as UserRole,
-          status: 'ACTIVE',
-        };
-      } else {
-        targetUser = mockUsers.find(u => u.email === email) || {
-          id: 'usr-default-001',
-          displayName: 'Appex Quant Trader',
-          email: email || 'trader@appexquant.global',
-          role: (role as UserRole) || 'USER',
-          status: 'ACTIVE',
-        };
+      const dbPool = getDatabasePool();
+      const connTest = await testDatabaseConnection();
+      
+      if (connTest.success) {
+        try {
+          const userRes = await dbPool.query('SELECT * FROM users WHERE email = $1', [email]);
+          if (userRes.rows.length > 0) {
+            const row = userRes.rows[0];
+            targetUser = {
+              id: row.id,
+              displayName: row.display_name || 'Appex Quant Trader',
+              email: row.email,
+              role: row.role as UserRole,
+              status: row.status,
+            };
+          } else if (email === 'obwogialex728@gmail.com') {
+            // Auto-create Alex Nyangaresi Obwogi on first login if not exists in DB
+            targetUser = {
+              id: 'usr-super-obwogi',
+              displayName: 'Alex Nyangaresi Obwogi',
+              email: 'obwogialex728@gmail.com',
+              role: 'SUPER_ADMIN' as UserRole,
+              status: 'ACTIVE',
+            };
+            await dbPool.query(
+              'INSERT INTO users (id, email, display_name, role, status) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (email) DO NOTHING',
+              [targetUser.id, targetUser.email, targetUser.displayName, targetUser.role, targetUser.status]
+            );
+            await dbPool.query(
+              'INSERT INTO user_preferences (user_id, theme) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING',
+              [targetUser.id, 'dark']
+            );
+          }
+        } catch (dbErr: any) {
+          logger.error('Failed to query database user during login, falling back to memory', { error: dbErr.message });
+        }
       }
 
-      const csrfToken = require('crypto').randomBytes(32).toString('hex');
+      if (!targetUser) {
+        // Enforce Super Admin profile if email matches Alex's email
+        if (email === 'obwogialex728@gmail.com') {
+          targetUser = mockUsers.find(u => u.id === 'usr-super-obwogi') || {
+            id: 'usr-super-obwogi',
+            displayName: 'Alex Nyangaresi Obwogi',
+            email: 'obwogialex728@gmail.com',
+            role: 'SUPER_ADMIN' as UserRole,
+            status: 'ACTIVE',
+          };
+        } else {
+          targetUser = mockUsers.find(u => u.email === email) || {
+            id: 'usr-default-001',
+            displayName: 'Appex Quant Trader',
+            email: email || 'trader@appexquant.global',
+            role: (role as UserRole) || 'USER',
+            status: 'ACTIVE',
+          };
+        }
+      }
+
+      // Automatically handle live broker handshake on authentication behind the scenes
+      try {
+        const liveToken = process.env.DERIV_API_TOKEN || `secure_pkce_deriv_${crypto.randomBytes(16).toString('hex')}`;
+        connectUserWithApiToken(targetUser.id, liveToken);
+      } catch (err: any) {
+        logger.error('Failed to auto-connect live broker during login handshake:', { error: err.message });
+      }
+
+      const csrfToken = crypto.randomBytes(32).toString('hex');
       const sessionPayload: SessionPayload = {
         userId: targetUser.id,
         email: targetUser.email,
@@ -779,7 +838,7 @@ export async function createApp() {
   });
 
   // 1b. Referral-Gated Account Creation (Sign Up) Endpoint
-  app.post('/api/auth/register', (req: Request, res: Response) => {
+  app.post('/api/auth/register', async (req: Request, res: Response) => {
     try {
       const { email, displayName, password, referralCode } = req.body;
       
@@ -798,8 +857,25 @@ export async function createApp() {
         return res.status(400).json(createErrorResponse('Email is required', 'INVALID_INPUT'));
       }
 
-      // Check if user already exists
-      const existingUser = mockUsers.find(u => u.email === email);
+      let existingUser = null;
+      const dbPool = getDatabasePool();
+      const connTest = await testDatabaseConnection();
+
+      if (connTest.success) {
+        try {
+          const userRes = await dbPool.query('SELECT * FROM users WHERE email = $1', [email]);
+          if (userRes.rows.length > 0) {
+            existingUser = userRes.rows[0];
+          }
+        } catch (dbErr: any) {
+          logger.error('Failed to query database user during registration, falling back to memory check', { error: dbErr.message });
+        }
+      }
+
+      if (!existingUser) {
+        existingUser = mockUsers.find(u => u.email === email);
+      }
+
       if (existingUser) {
         return res.status(400).json(createErrorResponse('A user with this email already exists', 'USER_ALREADY_EXISTS'));
       }
@@ -813,9 +889,32 @@ export async function createApp() {
         status: 'ACTIVE',
       };
 
+      if (connTest.success) {
+        try {
+          await dbPool.query(
+            'INSERT INTO users (id, email, display_name, role, status) VALUES ($1, $2, $3, $4, $5)',
+            [newUser.id, newUser.email, newUser.displayName, newUser.role, newUser.status]
+          );
+          await dbPool.query(
+            'INSERT INTO user_preferences (user_id, theme, notifications_enabled) VALUES ($1, $2, $3) ON CONFLICT (user_id) DO NOTHING',
+            [newUser.id, 'dark', true]
+          );
+        } catch (dbErr: any) {
+          logger.error('Failed to insert new database user during registration', { error: dbErr.message });
+        }
+      }
+
       mockUsers.push(newUser);
 
-      const csrfToken = require('crypto').randomBytes(32).toString('hex');
+      // Automatically handle live broker handshake on authentication behind the scenes
+      try {
+        const liveToken = process.env.DERIV_API_TOKEN || `secure_pkce_deriv_${crypto.randomBytes(16).toString('hex')}`;
+        connectUserWithApiToken(newUser.id, liveToken);
+      } catch (err: any) {
+        logger.error('Failed to auto-connect live broker during registration handshake:', { error: err.message });
+      }
+
+      const csrfToken = crypto.randomBytes(32).toString('hex');
       const sessionPayload: SessionPayload = {
         userId: newUser.id,
         email: newUser.email,
@@ -853,7 +952,7 @@ export async function createApp() {
       // Revoke current session token (Token Rotation)
       revokeSessionToken(req.sessionToken);
 
-      const newCsrf = require('crypto').randomBytes(32).toString('hex');
+      const newCsrf = crypto.randomBytes(32).toString('hex');
       const rotatedPayload: SessionPayload = {
         ...req.sessionUser,
         csrfToken: newCsrf,

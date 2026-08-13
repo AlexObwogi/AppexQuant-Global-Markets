@@ -16,7 +16,7 @@ interface MoreDrawerProps {
 export const MoreDrawer: React.FC<MoreDrawerProps> = ({ isOpen, onClose }) => {
   const { state, dispatch } = useGlobalState();
   const userRole = state.user?.role || 'USER';
-  const isAdminOrOwner = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+  const isAdminOrOwner = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'RISK_MANAGER';
 
   const filteredNavItems = navItems.filter(item => {
     if (item.adminOnly && !isAdminOrOwner) return false;
@@ -65,7 +65,7 @@ export const MoreDrawer: React.FC<MoreDrawerProps> = ({ isOpen, onClose }) => {
   return (
     <Drawer isOpen={isOpen} onClose={onClose} title="AppexQuant Navigation" side="bottom">
       <div className="pt-2 pb-6 max-h-[70vh] overflow-y-auto pr-1">
-        {renderSection('Trading & Core Terminals', coreItems)}
+        {renderSection('Trading & Core Hubs', coreItems)}
         {renderSection('Intelligence & Strategy Hub', resourceItems)}
         {renderSection('Community & Account Settings', systemItems)}
         {isAdminOrOwner && adminItems.length > 0 && renderSection('Administration Controls', adminItems)}

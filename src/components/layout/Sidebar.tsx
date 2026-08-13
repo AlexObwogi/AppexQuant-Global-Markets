@@ -39,10 +39,10 @@ export interface NavItem {
 }
 
 export const navItems: NavItem[] = [
-  // Group 1: Trading & Core Terminals
+  // Group 1: Trading & Core Hubs
   { id: 'dashboard', label: 'Home Dashboard', icon: <LayoutDashboard className="w-4 h-4" />, group: 'core' },
   { id: 'markets', label: 'Markets & Watchlist', icon: <BarChart2 className="w-4 h-4" />, group: 'core' },
-  { id: 'trade', label: 'Trade Terminal', icon: <ArrowRightLeft className="w-4 h-4" />, group: 'core' },
+  { id: 'trade', label: 'Trade Workspace', icon: <ArrowRightLeft className="w-4 h-4" />, group: 'core' },
   { id: 'analytics', label: 'Portfolio & Analytics', icon: <PieChart className="w-4 h-4" />, group: 'core' },
 
   // Group 2: Intelligence & Strategy Hub
@@ -66,7 +66,7 @@ export const navItems: NavItem[] = [
 export const Sidebar: React.FC = () => {
   const { state, dispatch } = useGlobalState();
   const userRole = state.user?.role || 'USER';
-  const isAdminOrOwner = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+  const isAdminOrOwner = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'RISK_MANAGER';
 
   const filteredNavItems = navItems.filter(item => {
     if (item.adminOnly && !isAdminOrOwner) return false;
@@ -120,7 +120,7 @@ export const Sidebar: React.FC = () => {
   return (
     <aside className="hidden lg:flex flex-col w-64 border-r border-border-color bg-bg-nav p-6 shrink-0 justify-between h-[calc(100vh-4rem)] sticky top-16 overflow-y-auto">
       <div>
-        {renderNavGroup('Trading & Core Terminals', coreItems)}
+        {renderNavGroup('Trading & Core Hubs', coreItems)}
         {renderNavGroup('Intelligence & Strategy Hub', resourceItems)}
         {renderNavGroup('Community & Account Settings', systemItems)}
         {isAdminOrOwner && adminItems.length > 0 && renderNavGroup('Administration Controls', adminItems)}

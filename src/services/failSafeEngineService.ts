@@ -27,7 +27,7 @@ import {
   SubsystemHealth,
   FailSafeResetRequest,
 } from '../types/failSafe';
-import { automationControlService } from './automationControlService';
+
 
 type FailSafeListener = (state: FailSafeState) => void;
 
@@ -386,13 +386,13 @@ export class FailSafeEngineService {
 
     // Synchronize with Automation Control Center Engine
     try {
-      if (typeof automationControlService !== 'undefined' && automationControlService) {
+      import('./automationControlService').then(({ automationControlService }) => {
         if (meta.action === 'EMERGENCY_HALT') {
           automationControlService.emergencyHaltAutomation(incident.reason);
         } else {
           automationControlService.pauseAutomation(incident.reason);
         }
-      }
+      }).catch(() => {});
     } catch {
       // Fallback if automationControlService is in TDZ during module initialization
     }
@@ -439,9 +439,9 @@ export class FailSafeEngineService {
 
     // Synchronize with Automation Control Center Engine
     try {
-      if (typeof automationControlService !== 'undefined' && automationControlService) {
+      import('./automationControlService').then(({ automationControlService }) => {
         automationControlService.resumeAutomation();
-      }
+      }).catch(() => {});
     } catch {
       // Fallback if automationControlService is in TDZ during module initialization
     }

@@ -1,18 +1,18 @@
-/**
+const fs = require('fs');
+
+const code = `/**
  * AppexQuant Markets Global - Master Immersive Landing Experience
  * Safe Motion Engine Refinement - Cinematic, Institutional, Fully Responsive.
  */
 import React, { useState, useEffect } from 'react';
 import { useGlobalState } from '../../state/GlobalStateContext';
 import { useApiFetch } from '../../utils/apiFetch';
-import { generateCodeVerifier, generateCodeChallenge } from '../../utils/pkce';
 import { 
   ArrowRight, LogIn, UserPlus, Orbit,
   TrendingUp, Cpu, GraduationCap, AlertCircle, CheckCircle, Globe, Database, Network
 } from 'lucide-react';
-import { AppexQuantLogo } from '../common/AppexQuantLogo';
 
-const CSS_ANIMATIONS = `
+const CSS_ANIMATIONS = \`
   @keyframes drawRing {
     0% { stroke-dashoffset: 301.59; }
     100% { stroke-dashoffset: 0; }
@@ -37,81 +37,59 @@ const CSS_ANIMATIONS = `
     50% { background-position: 100% 100%; }
     100% { background-position: 0% 0%; }
   }
-  @keyframes successBurst {
-    0% { transform: scale(0.5); opacity: 0; }
-    50% { transform: scale(1.2); opacity: 1; }
-    70% { transform: scale(0.9); }
-    100% { transform: scale(1); opacity: 1; }
-  }
-`;
+\`;
 
 const MARKETING_CONTENT = [
-  { id: 'scene-1', capability: "INSTITUTIONAL LIQUIDITY", headline: "SEE THE MARKET, MASTER THE LIQUIDITY.", sub: "INSTITUTIONAL • STRUCTURE • LIQUIDITY • VOLATILITY • EDGE", Icon: Globe },
-  { id: 'scene-2', capability: "AI QUANT ANALYTICS", headline: "PRECISION DATA, DEFINITIVE EXECUTION.", sub: "QUANTITATIVE • ANALYSIS • SENTIMENT • RISK • EXECUTION", Icon: Network },
-  { id: 'scene-3', capability: "SMC MASTERCLASS", headline: "ENGINEERING INSTITUTIONAL EDGE.", sub: "LIQUIDITY SWEEP • BOS • MSS • FVG • ORDER BLOCK • CONFLUENCE", Icon: GraduationCap },
-  { id: 'scene-4', capability: "STRATEGY SYSTEMATIZATION", headline: "SYSTEMATIZE YOUR INSTITUTIONAL EDGE.", sub: "LIQUIDITY + STRUCTURE + FVG + RISK → PROBABILITY • SCALE", Icon: Database },
-  { id: 'scene-5', capability: "AUTOMATED EXECUTION", headline: "DISCIPLINED AUTOMATION, SUPERIOR YIELD.", sub: "MARKET • ANALYSIS • RISK • EXECUTION • AUTOMATED • PERFORMANCE", Icon: Cpu },
-  { id: 'scene-6', capability: "QUANT ACADEMY", headline: "MASTERING THE DISCIPLINED EDGE.", sub: "LEARN • ANALYZE • BUILD • TEST • OPTIMIZE • AUTOMATE", Icon: TrendingUp },
-  { id: 'scene-7', capability: "INSTITUTIONAL ECOSYSTEM", headline: "THE ULTIMATE TRADING INFRASTRUCTURE.", sub: "LIQUIDITY • CHARTS • AI • ACADEMY • STRATEGY • AUTOMATION", Icon: Orbit }
+  {
+    id: 'scene-1',
+    capability: "MARKET INTELLIGENCE",
+    headline: "SEE THE MARKET DIFFERENTLY.",
+    sub: "MARKET • STRUCTURE • LIQUIDITY • VOLATILITY",
+    icon: <Globe className="w-10 h-10 md:w-14 md:h-14 text-blue-500 drop-shadow-[0_0_12px_rgba(59,130,246,0.6)]" />
+  },
+  {
+    id: 'scene-2',
+    capability: "AI ANALYSIS",
+    headline: "INTELLIGENCE BEFORE EXECUTION.",
+    sub: "STRUCTURE • LIQUIDITY • SENTIMENT • VOLATILITY • RISK",
+    icon: <Network className="w-10 h-10 md:w-14 md:h-14 text-indigo-500 drop-shadow-[0_0_12px_rgba(99,102,241,0.6)]" />
+  },
+  {
+    id: 'scene-3',
+    capability: "SMC / ICT",
+    headline: "LEARN THE EDGE. PRACTICE THE PATTERN.",
+    sub: "LIQUIDITY SWEEP • BOS • MSS • FVG • ORDER BLOCK",
+    icon: <GraduationCap className="w-10 h-10 md:w-14 md:h-14 text-purple-500 drop-shadow-[0_0_12px_rgba(168,85,247,0.6)]" />
+  },
+  {
+    id: 'scene-4',
+    capability: "STRATEGY BUILDER",
+    headline: "TURN YOUR RULES INTO A SYSTEM.",
+    sub: "LIQUIDITY + STRUCTURE + FVG + SESSION + RISK → STRATEGY",
+    icon: <Database className="w-10 h-10 md:w-14 md:h-14 text-teal-500 drop-shadow-[0_0_12px_rgba(20,184,166,0.6)]" />
+  },
+  {
+    id: 'scene-5',
+    capability: "AUTOMATION & BOTS",
+    headline: "ENGINEERED FOR DISCIPLINED AUTOMATION.",
+    sub: "MARKET → ANALYSIS → RULES → RISK → EXECUTION",
+    icon: <Cpu className="w-10 h-10 md:w-14 md:h-14 text-cyan-500 drop-shadow-[0_0_12px_rgba(6,182,212,0.6)]" />
+  },
+  {
+    id: 'scene-6',
+    capability: "ACADEMY",
+    headline: "BUILD DISCIPLINE. MASTER YOUR EDGE.",
+    sub: "LEARN → PRACTICE → ANALYZE → BUILD → TEST → AUTOMATE",
+    icon: <TrendingUp className="w-10 h-10 md:w-14 md:h-14 text-emerald-500 drop-shadow-[0_0_12px_rgba(16,185,129,0.6)]" />
+  },
+  {
+    id: 'scene-7',
+    capability: "COMPLETE ECOSYSTEM",
+    headline: "EVERYTHING YOU NEED. ONE ECOSYSTEM.",
+    sub: "MARKETS • CHARTS • AI • ACADEMY • STRATEGIES • BOTS",
+    icon: <Orbit className="w-10 h-10 md:w-14 md:h-14 text-amber-500 drop-shadow-[0_0_12px_rgba(245,158,11,0.6)]" />
+  }
 ];
-
-const getAwardType = () => {
-  const now = new Date();
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  return now.getDate() >= lastDay - 2 ? 'MONTH' : 'WEEK';
-};
-
-const TelemetryTicker = () => (
-  <div className="w-full bg-[#0B0F19] border-b border-[#181A20] py-2 overflow-hidden flex items-center">
-    <div className="flex animate-marquee whitespace-nowrap text-[10px] font-mono text-slate-400 tracking-wider uppercase">
-      {Array(10).fill('BTC/USD 98,432.10 ▲0.42% | ETH/USD 2,641.50 ▲0.12% | EUR/USD 1.0842 ▼0.05% | XAU/USD 2,342.10 ▲0.88%').join(' • ')}
-    </div>
-  </div>
-);
-
-const getTheme = (progress: number) => {
-  // Use professional institutional gradients
-  if (progress < 30) return {
-    bg: 'bg-[#0B0F19]',
-    grid: 'bg-[#00E5FF10]',
-    progress: 'from-cyan-400 to-blue-600',
-    buttonLogin: 'bg-transparent border-[#00E5FF] text-[#00E5FF] hover:bg-[#00E5FF]/10',
-    buttonRegister: 'bg-gradient-to-r from-[#00E5FF] to-cyan-600 text-black',
-    text: 'text-white',
-    icon: 'text-[#00E5FF]',
-    iconGlow: 'drop-shadow-[0_0_15px_rgba(0,229,255,0.5)]'
-  };
-  if (progress < 60) return {
-    bg: 'bg-[#181A20]',
-    grid: 'bg-[#A855F710]',
-    progress: 'from-purple-500 to-violet-600',
-    buttonLogin: 'bg-transparent border-purple-500 text-purple-400 hover:bg-purple-500/10',
-    buttonRegister: 'bg-gradient-to-r from-purple-500 to-violet-600 text-white',
-    text: 'text-white',
-    icon: 'text-purple-400',
-    iconGlow: 'drop-shadow-[0_0_15px_rgba(168,85,247,0.5)]'
-  };
-  if (progress < 90) return {
-    bg: 'bg-[#0B0F19]',
-    grid: 'bg-[#D4AF3710]',
-    progress: 'from-amber-500 to-yellow-600',
-    buttonLogin: 'bg-transparent border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/10',
-    buttonRegister: 'bg-gradient-to-r from-[#D4AF37] to-amber-600 text-black',
-    text: 'text-white',
-    icon: 'text-[#D4AF37]',
-    iconGlow: 'drop-shadow-[0_0_15px_rgba(212,175,55,0.5)]'
-  };
-  return {
-    bg: 'bg-[#064E3B]',
-    grid: 'bg-[#10B98110]',
-    progress: 'from-emerald-400 to-teal-600',
-    buttonLogin: 'bg-transparent border-emerald-500 text-emerald-400 hover:bg-emerald-500/10',
-    buttonRegister: 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white',
-    text: 'text-white',
-    icon: 'text-emerald-400',
-    iconGlow: 'drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]'
-  };
-};
 
 type LandingPhase = 'init' | 'welcome' | 'carousel';
 
@@ -123,32 +101,6 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const [phase, setPhase] = useState<LandingPhase>('init');
   const [activeSceneIndex, setActiveSceneIndex] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
-  const [topTrader, setTopTrader] = useState<{name: string, roi: string} | null>(null);
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    apiFetch('/api/leaderboard/top').then(res => res.json()).then(data => {
-      if (data.success && data.data) setTopTrader(data.data);
-    }).catch(console.error);
-  }, []);
-
-  useEffect(() => {
-    if (phase === 'init') {
-      const interval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            setPhase('welcome');
-            return 100;
-          }
-          return prev + 1;
-        });
-      }, 200); // 20 seconds total (100 * 200ms = 20000ms = 20s)
-      return () => clearInterval(interval);
-    }
-  }, [phase]);
-  
-  const theme = getTheme(progress);
 
   // Form States
   const [email, setEmail] = useState('');
@@ -192,7 +144,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
     initTimer = setTimeout(() => {
       if (!isCancelled) setPhase('welcome');
-    }, 5000);
+    }, 4500);
 
     carouselTimer = setTimeout(() => {
       if (!isCancelled) {
@@ -330,109 +282,145 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       <style dangerouslySetInnerHTML={{ __html: CSS_ANIMATIONS }} />
 
       {/* LAYER 1: Core UI - Brand Header */}
-      <div className="w-full flex items-center justify-between p-3 border-b border-slate-200/50 dark:border-white/5 bg-white/50 dark:bg-[#0C0E12]/50 backdrop-blur-md sticky top-0 z-50">
-        <div className="flex items-center gap-2 select-none">
-          <AppexQuantLogo variant="symbol" className="h-[30px] w-auto" />
-          <span className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">AQ GLOBAL</span>
+      <div className="w-full flex items-center justify-between p-4 md:p-6 border-b border-slate-200/50 dark:border-white/5 bg-white/50 dark:bg-[#0C0E12]/50 backdrop-blur-md sticky top-0 z-50">
+        <div className="flex items-center gap-3 select-none">
+          <div className="p-1.5 md:p-2 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 text-white font-black text-xs md:text-sm font-mono shadow-md shadow-blue-500/20">AQ</div>
+          <span className="text-xs md:text-sm font-bold uppercase tracking-[0.2em] text-slate-800 dark:text-slate-200">APPEXQUANT GLOBAL</span>
         </div>
-        <div className="text-right">
-          <TelemetryTicker />
-        </div>
+        {authView === 'landing' && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setAuthView('login')}
+              className="px-3 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+            >
+              Secure Gateway
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Background Engine - Refined Institutional Environment */}
-      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className={`absolute inset-0 ${theme.bg} transition-colors duration-1000`} />
-        {/* Atmosphere Gradient */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#181A20] to-[#0B0F19] opacity-80" />
-        {/* Subtle Grid - Enhanced */}
-        <div className={`absolute inset-0 ${theme.grid} [background-size:48px_48px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_30%,transparent_100%)]`} />
+      {/* Background Engine */}
+      <div className={\`absolute inset-0 z-0 overflow-hidden pointer-events-none transition-opacity duration-1000 \${authView === 'landing' ? 'opacity-100' : 'opacity-30'}\`}>
+        <div className="absolute inset-0 bg-slate-50 dark:bg-[#0C0E12]" />
+        <div 
+          className="absolute inset-[-50%] opacity-40 dark:opacity-30"
+          style={{
+            backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.15) 0%, rgba(6, 182, 212, 0.08) 25%, rgba(245, 158, 11, 0.05) 50%, transparent 70%)',
+            backgroundSize: '200% 200%',
+            animation: reducedMotion ? 'none' : 'slowPan 25s infinite ease-in-out alternate'
+          }}
+        />
+        {/* Subtle grid pattern for institutional feel */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_80%_80%_at_50%_50%,#000_70%,transparent_100%)] pointer-events-none" />
       </div>
 
-      {/* Main Content Area - RELATIVE CONTAINER FOR LAYOUT */}
+      {/* Main Content Area */}
       {authView === 'landing' ? (
-        <div className="flex-1 relative flex flex-col w-full z-10 pt-4 md:pt-8">
+        <div className="flex-1 relative flex flex-col w-full h-full min-h-[70vh]">
           
           {/* PHASE 1: Initialization */}
           {phase === 'init' && !reducedMotion && (
-            <div className="flex flex-col items-center justify-center min-h-[40vh] p-4">
-              <div className="flex flex-col items-center gap-6 w-full max-w-sm">
-                <AppexQuantLogo variant="symbol" className="h-[30px] w-auto" />
-                <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-700">
-                  <div className={`h-full bg-gradient-to-r ${theme.progress} transition-all duration-300 shadow-[0_0_15px_rgba(255,255,255,0.3)]`} style={{ width: `${progress}%` }} />
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none animate-in fade-in zoom-in duration-1000 z-10">
+              <div className="relative flex items-center justify-center mb-8">
+                <svg className="absolute w-40 h-40 md:w-56 md:h-56 opacity-20" viewBox="0 0 100 100" style={{ animation: 'spinSlow 10s linear infinite' }}>
+                   <circle cx="50" cy="50" r="48" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 6" className="text-blue-500" />
+                </svg>
+                <svg className="w-32 h-32 md:w-48 md:h-48 -rotate-90" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="48" fill="none" stroke="currentColor" strokeWidth="1" className="text-slate-200 dark:text-white/10" />
+                  <circle 
+                    cx="50" cy="50" r="48" fill="none" 
+                    stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" 
+                    className="text-blue-500 drop-shadow-[0_0_12px_rgba(59,130,246,0.6)]" 
+                    style={{ strokeDasharray: 301.59, animation: 'drawRing 4s ease-in-out forwards' }} 
+                  />
+                </svg>
+                <div className="absolute font-black text-2xl md:text-4xl tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-cyan-500 dark:from-blue-400 dark:to-cyan-300 drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]">
+                  AQ
                 </div>
-                <div className="text-slate-400 font-mono text-xs tracking-widest">{progress}%</div>
-                {progress >= 100 && <div className="text-emerald-500 font-black text-3xl [animation:successBurst_0.6s_ease-out_forwards] drop-shadow-[0_0_15px_rgba(16,185,129,0.8)]">SUCCESS</div>}
               </div>
+              <h2 className="text-sm md:text-base font-bold tracking-[0.4em] uppercase text-slate-800 dark:text-slate-300">
+                System Initialization
+              </h2>
             </div>
           )}
 
           {/* PHASE 2: Welcome */}
           {phase === 'welcome' && !reducedMotion && (
-            <div className="flex flex-col items-center justify-center min-h-[40vh] p-4">
-              <div style={{ animation: 'blurDisperse 3.5s ease-in-out forwards' }}>
-                <h2 className="text-4xl md:text-5xl font-black text-white tracking-[0.2em] uppercase text-center drop-shadow-md">
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+              <div className="absolute w-full px-4" style={{ animation: 'blurDisperse 3.5s ease-in-out forwards' }}>
+                <h2 className="text-4xl md:text-6xl lg:text-8xl font-black text-blue-500/90 dark:text-blue-400/90 tracking-[0.3em] uppercase text-center drop-shadow-[0_0_25px_rgba(59,130,246,0.5)]">
                   SUCCESS
                 </h2>
               </div>
-              <div style={{ opacity: 0, animation: 'blurConverge 2.5s ease-out 3s forwards' }}>
-                <h1 className="text-2xl md:text-4xl font-black tracking-tight text-white mb-2 text-center leading-[1.1]">
-                  Seamless Trading
+              <div className="absolute w-full px-4 flex flex-col items-center" style={{ opacity: 0, animation: 'blurConverge 2.5s ease-out 3s forwards' }}>
+                <h1 className="text-3xl md:text-5xl lg:text-6xl font-black tracking-tight text-slate-900 dark:text-white mb-4 text-center leading-[1.1]">
+                  WELCOME TO SEAMLESS TRADING
                 </h1>
-                <p className="text-[10px] md:text-xs text-slate-200 font-bold uppercase tracking-[0.2em] text-center max-w-lg">
-                  Institutional Edge. One Ecosystem.
+                <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400 font-bold uppercase tracking-[0.25em] text-center max-w-2xl">
+                  Your markets. Your analysis. Your edge. One ecosystem.
                 </p>
               </div>
             </div>
           )}
 
-                  {/* PHASE 3: Marketing Carousel */}
+          {/* PHASE 3: Marketing Carousel */}
           {(phase === 'carousel' || reducedMotion) && (
-            <div className="flex-1 flex flex-col items-center justify-center p-4">
-              {MARKETING_CONTENT.map((scene, idx) => {
-                const Icon = scene.Icon;
-                return (
-                  <div
-                    key={scene.id}
-                    className={`flex flex-col items-center justify-center px-4 text-center transition-opacity duration-1000 ease-in-out
-                      ${activeSceneIndex === idx 
-                        ? 'opacity-100' 
-                        : 'hidden'
-                      }`}
-                  >
-                    <div className={`mb-4 ${theme.icon} ${theme.iconGlow}`}>
-                      <Icon className="w-10 h-10 md:w-14 md:h-14" />
-                    </div>
-                    <div className="text-[9px] font-bold tracking-[0.2em] uppercase text-white mb-2 px-2 py-0.5 bg-white/20 rounded-full border border-white/20">
-                      {scene.capability}
-                    </div>
-                    <h1 className="text-2xl md:text-4xl font-black tracking-tighter uppercase text-white font-sans max-w-2xl mx-auto leading-[1.05] mb-2 drop-shadow-sm">
-                      {scene.headline}
-                    </h1>
-                    <p className="text-[10px] md:text-xs text-slate-100 font-bold tracking-[0.1em] uppercase max-w-lg mx-auto drop-shadow-sm">
-                      {scene.sub}
-                    </p>
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none animate-in fade-in duration-1000 z-10">
+              {MARKETING_CONTENT.map((scene, idx) => (
+                <div
+                  key={scene.id}
+                  className={\`absolute inset-0 flex flex-col items-center justify-center px-4 pt-12 pb-32 text-center transition-all duration-1000 ease-in-out
+                    \${activeSceneIndex === idx 
+                      ? 'opacity-100 transform translate-y-0 scale-100' 
+                      : 'opacity-0 transform translate-y-8 scale-95 pointer-events-none'
+                    }\`}
+                >
+                  <div className="mb-6 md:mb-8">{scene.icon}</div>
+                  <div className="text-[10px] md:text-xs font-bold tracking-[0.3em] uppercase text-blue-600 dark:text-blue-400 mb-4 md:mb-6 px-3 py-1 bg-blue-500/10 rounded-full border border-blue-500/20">
+                    {scene.capability}
                   </div>
-                );
-              })}
+                  <h1 className="text-3xl md:text-5xl lg:text-6xl font-black tracking-tighter uppercase text-slate-900 dark:text-white font-sans max-w-5xl mx-auto leading-[1.05] mb-4 md:mb-6">
+                    {scene.headline}
+                  </h1>
+                  <p className="text-[11px] md:text-sm lg:text-base text-slate-600 dark:text-slate-400 font-bold tracking-[0.15em] md:tracking-[0.2em] uppercase max-w-3xl mx-auto leading-relaxed px-4">
+                    {scene.sub}
+                  </p>
+                </div>
+              ))}
             </div>
           )}
 
-          {/* LAYER: Compact Action Dock */}
-          <div className="w-full p-4 mt-auto border-t border-white/10 bg-white/5 backdrop-blur-md">
-            <div className="flex flex-col sm:flex-row justify-center items-center gap-2 w-full max-w-sm mx-auto">
+          {/* LAYER 1: Core Navigation & CTAs (Fixed interaction area at bottom) */}
+          <div className="relative z-20 flex-1 flex flex-col justify-end pb-12 md:pb-16 px-4 shrink-0">
+            <div className="flex flex-col sm:flex-row justify-center items-center gap-4 w-full max-w-lg mx-auto">
               <button
                 onClick={() => setAuthView('login')}
-                className={`w-full sm:w-1/2 px-4 py-2.5 rounded-lg border transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] ${theme.buttonLogin} text-[10px] font-bold uppercase tracking-widest`}
+                className="w-full sm:w-1/2 px-6 py-4 rounded-xl bg-white/90 dark:bg-[#1A1D24]/90 backdrop-blur-sm border border-slate-200 dark:border-white/10 text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-white hover:bg-white dark:hover:bg-[#252A34] transition-all duration-300 hover:scale-[1.02] hover:-translate-y-0.5 shadow-sm hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 Log In
               </button>
               <button
                 onClick={() => setAuthView('register')}
-                className={`w-full sm:w-1/2 px-4 py-2.5 rounded-lg transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-lg ${theme.buttonRegister} text-[10px] font-bold uppercase tracking-widest`}
+                className="w-full sm:w-1/2 px-6 py-4 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white text-sm font-bold uppercase tracking-wider transition-all duration-300 hover:scale-[1.02] hover:-translate-y-0.5 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 focus:outline-none focus:ring-2 focus:ring-blue-400"
               >
                 Create Account
               </button>
+            </div>
+            
+            {/* Safe Fallback Navigation Dots */}
+            <div className={\`flex justify-center items-center gap-2 mt-8 transition-opacity duration-500 \${(phase === 'carousel' || reducedMotion) ? 'opacity-100' : 'opacity-0'}\`}>
+              {MARKETING_CONTENT.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setActiveSceneIndex(idx)}
+                  className={\`h-1.5 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-400 \${
+                    activeSceneIndex === idx 
+                      ? 'w-8 bg-blue-500' 
+                      : 'w-2 bg-slate-300 dark:bg-white/20 hover:bg-slate-400 dark:hover:bg-white/40'
+                  }\`}
+                  aria-label={\`Go to scene \${idx + 1}\`}
+                />
+              ))}
             </div>
           </div>
 
@@ -440,46 +428,18 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       ) : (
         /* Safe Auth Forms Layer */
         <div className="flex-1 flex items-center justify-center p-4 py-12 relative z-20">
-          <div className="w-full max-w-sm bg-white dark:bg-[#181A20] border border-slate-200 dark:border-white/5 rounded-2xl p-5 shadow-lg space-y-4 transition-colors duration-300">
+          <div className="w-full max-w-md bg-white/95 dark:bg-[#0C0E12]/95 backdrop-blur-xl border border-slate-200 dark:border-white/10 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6 transition-colors duration-300">
             
-            <div className="text-center space-y-1">
-              <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
-                {authView === 'login' ? 'Institutional Access' : 'Create Elite Account'}
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                {authView === 'login' ? 'Secure quantified gateway.' : 'Provision infrastructure.'}
-              </p>
-            </div>
-
-            <div className="bg-white dark:bg-[#181A20] p-3 rounded-xl border border-slate-200 dark:border-white/5 my-2 shadow-[0_2px_4px_rgba(0,0,0,0.05)]">
-              <h3 className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
-                {getAwardType() === 'MONTH' ? 'TOP TRADER THIS MONTH' : 'TOP TRADER THIS WEEK'}
-              </h3>
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center font-black text-blue-600 dark:text-blue-400 text-[10px] border border-blue-500/20">
-                  {topTrader ? topTrader.name.charAt(0) : '?'}
-                </div>
-                <div>
-                   <div className="font-bold text-slate-900 dark:text-white text-xs">{topTrader ? topTrader.name : 'Calculating...'}</div>
-                   <div className="text-emerald-600 dark:text-emerald-400 font-mono text-[10px] font-bold">{topTrader ? topTrader.roi : 'LIVE'}</div>
-                </div>
+            <div className="text-center space-y-2">
+              <div className="inline-flex p-3 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 mb-2 border border-blue-100 dark:border-blue-500/20">
+                <Orbit className="w-8 h-8" />
               </div>
-            </div>
-            
-            {/* Feature Bar Icons */}
-            <div className="grid grid-cols-4 gap-1 py-2 border-t border-slate-200 dark:border-white/5 my-3">
-              {['MARKET', 'AI', 'SMC', 'ACAD'].map(f => (
-                <div key={f} className="flex flex-col items-center gap-0.5">
-                  <div className="w-7 h-7 rounded-md bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-cyan-600 dark:text-cyan-400 font-bold text-[9px] border border-slate-200 dark:border-slate-700">{f[0]}</div>
-                  <span className="text-[7px] text-slate-500 uppercase tracking-wider">{f}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Pillars and Footer */}
-            <div className="text-center pb-6 border-b border-slate-700/50 mb-6">
-              <p className="text-[9px] tracking-[0.1em] text-slate-400 uppercase font-bold">ANALYZE • AUTOMATE • EXECUTE • EVOLVE</p>
-              <p className="text-[8px] text-slate-600 mt-1 uppercase tracking-widest">ONE ECOSYSTEM. LIMITLESS POSSIBILITIES.</p>
+              <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                {authView === 'login' ? 'Welcome Back' : 'Create Account'}
+              </h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
+                Secure institutional access gateway.
+              </p>
             </div>
 
             {errorMessage && (
@@ -507,27 +467,6 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
             )}
 
             <form onSubmit={authView === 'login' ? handleStandardLogin : handleStandardRegister} className="space-y-4">
-              <button
-                type="button"
-                onClick={async () => {
-                  const verifier = await generateCodeVerifier();
-                  const challenge = await generateCodeChallenge(verifier);
-                  // Initiate OAuth flow with PKCE challenge
-                  window.location.href = `/api/auth/deriv/login?code_challenge=${challenge}&code_verifier=${verifier}`;
-                }}
-                className="w-full h-12 rounded-xl bg-slate-900 border border-slate-700 hover:bg-slate-800 text-white font-bold text-xs tracking-wider uppercase transition-all flex items-center justify-center gap-2 shadow-lg mb-4"
-              >
-                Sign in with Deriv
-              </button>
-              
-              <div className="relative my-4">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-slate-700"></div>
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-[#181A20] px-2 text-slate-500">Or</span>
-                </div>
-              </div>
               {authView === 'register' && (
                 <div className="space-y-1.5 animate-in slide-in-from-top-4 duration-300">
                   <label className="text-xs font-bold uppercase text-slate-600 dark:text-slate-400">Full Name</label>
@@ -629,3 +568,5 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     </div>
   );
 };
+`
+fs.writeFileSync('src/components/auth/AuthGate.tsx', code);

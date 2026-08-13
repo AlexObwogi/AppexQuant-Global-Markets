@@ -40,6 +40,9 @@ export const NewsView: React.FC = () => {
   const { state, dispatch } = useGlobalState();
   const apiFetch = useApiFetch();
   
+  const userRole = state.user?.role || 'USER';
+  const isAdminOrOwner = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'RISK_MANAGER';
+  
   // Tabs State
   const [activeTab, setActiveTab] = useState<'alerts' | 'news'>('alerts');
 
@@ -897,96 +900,98 @@ export const NewsView: React.FC = () => {
             </div>
 
             {/* REALTIME TRIGGER SIMULATOR PANEL */}
-            <div className="p-5 rounded-2xl bg-bg-hover border border-border-color shadow-xl space-y-4">
-              <div className="flex items-center gap-2 pb-3 border-b border-border-color">
-                <ShieldAlert className="w-5 h-5 text-rose-500" />
-                <div>
-                  <h2 className="text-sm font-extrabold text-text-primary">Manual Alert Injection</h2>
-                  <p className="text-[10px] text-text-secondary">Inject custom simulated events to test the pipeline</p>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {/* Select Type */}
-                <div>
-                  <label className="text-[10px] text-text-secondary uppercase tracking-widest font-mono font-bold block mb-1">
-                    Alert Event Type
-                  </label>
-                  <select
-                    value={simType}
-                    onChange={(e) => setSimType(e.target.value as AlertType)}
-                    className="w-full bg-bg-hover border border-border-color rounded-xl text-xs px-3 py-2 text-text-secondary focus:outline-none focus:border-cyan-500/50"
-                  >
-                    {Object.values(AlertType).map((val) => (
-                      <option key={val} value={val}>
-                        {val}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Select Severity */}
-                <div>
-                  <label className="text-[10px] text-text-secondary uppercase tracking-widest font-mono font-bold block mb-1">
-                    Severity Level
-                  </label>
-                  <select
-                    value={simSeverity}
-                    onChange={(e) => setSimSeverity(e.target.value as AlertSeverity)}
-                    className="w-full bg-bg-hover border border-border-color rounded-xl text-xs px-3 py-2 text-text-secondary focus:outline-none focus:border-cyan-500/50"
-                  >
-                    {Object.values(AlertSeverity).map((val) => (
-                      <option key={val} value={val}>
-                        {val}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Input Source */}
-                <div>
-                  <label className="text-[10px] text-text-secondary uppercase tracking-widest font-mono font-bold block mb-1">
-                    Event Source Controller
-                  </label>
-                  <input
-                    type="text"
-                    value={simSource}
-                    onChange={(e) => setSimSource(e.target.value)}
-                    placeholder="e.g., RiskEngine-01"
-                    className="w-full bg-bg-hover border border-border-color rounded-xl text-xs px-3 py-2 text-text-secondary placeholder-slate-700 focus:outline-none focus:border-cyan-500/50"
-                  />
-                </div>
-
-                {/* Input Message */}
-                <div>
-                  <label className="text-[10px] text-text-secondary uppercase tracking-widest font-mono font-bold block mb-1">
-                    Event Message Log
-                  </label>
-                  <textarea
-                    value={simMessage}
-                    onChange={(e) => setSimMessage(e.target.value)}
-                    rows={3}
-                    placeholder="Describe the technical context or incident logs..."
-                    className="w-full bg-bg-hover border border-border-color rounded-xl text-xs px-3 py-2 text-text-secondary placeholder-slate-700 focus:outline-none focus:border-cyan-500/50"
-                  />
-                </div>
-
-                {simulationMessage && (
-                  <div className="p-2 rounded-lg bg-bg-hover border border-border-color text-[10px] text-cyan-400 font-mono text-center">
-                    {simulationMessage}
+            {isAdminOrOwner && (
+              <div className="p-5 rounded-2xl bg-bg-hover border border-border-color shadow-xl space-y-4 animate-in fade-in duration-200">
+                <div className="flex items-center gap-2 pb-3 border-b border-border-color">
+                  <ShieldAlert className="w-5 h-5 text-rose-500" />
+                  <div>
+                    <h2 className="text-sm font-extrabold text-text-primary">Manual Alert Injection</h2>
+                    <p className="text-[10px] text-text-secondary">Inject custom simulated events to test the pipeline</p>
                   </div>
-                )}
+                </div>
 
-                <button
-                  onClick={handleTriggerSimulatedAlert}
-                  disabled={isSimulating}
-                  className="w-full py-2.5 rounded-xl bg-bg-hover border border-rose-500/40 hover:bg-rose-950/20 text-rose-400 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-40"
-                >
-                  <Volume2 className="w-4 h-4" />
-                  <span>Trigger Simulated Alert</span>
-                </button>
+                <div className="space-y-3">
+                  {/* Select Type */}
+                  <div>
+                    <label className="text-[10px] text-text-secondary uppercase tracking-widest font-mono font-bold block mb-1">
+                      Alert Event Type
+                    </label>
+                    <select
+                      value={simType}
+                      onChange={(e) => setSimType(e.target.value as AlertType)}
+                      className="w-full bg-bg-hover border border-border-color rounded-xl text-xs px-3 py-2 text-text-secondary focus:outline-none focus:border-cyan-500/50"
+                    >
+                      {Object.values(AlertType).map((val) => (
+                        <option key={val} value={val}>
+                          {val}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Select Severity */}
+                  <div>
+                    <label className="text-[10px] text-text-secondary uppercase tracking-widest font-mono font-bold block mb-1">
+                      Severity Level
+                    </label>
+                    <select
+                      value={simSeverity}
+                      onChange={(e) => setSimSeverity(e.target.value as AlertSeverity)}
+                      className="w-full bg-bg-hover border border-border-color rounded-xl text-xs px-3 py-2 text-text-secondary focus:outline-none focus:border-cyan-500/50"
+                    >
+                      {Object.values(AlertSeverity).map((val) => (
+                        <option key={val} value={val}>
+                          {val}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Input Source */}
+                  <div>
+                    <label className="text-[10px] text-text-secondary uppercase tracking-widest font-mono font-bold block mb-1">
+                      Event Source Controller
+                    </label>
+                    <input
+                      type="text"
+                      value={simSource}
+                      onChange={(e) => setSimSource(e.target.value)}
+                      placeholder="e.g., RiskEngine-01"
+                      className="w-full bg-bg-hover border border-border-color rounded-xl text-xs px-3 py-2 text-text-secondary placeholder-slate-700 focus:outline-none focus:border-cyan-500/50"
+                    />
+                  </div>
+
+                  {/* Input Message */}
+                  <div>
+                    <label className="text-[10px] text-text-secondary uppercase tracking-widest font-mono font-bold block mb-1">
+                      Event Message Log
+                    </label>
+                    <textarea
+                      value={simMessage}
+                      onChange={(e) => setSimMessage(e.target.value)}
+                      rows={3}
+                      placeholder="Describe the technical context or incident logs..."
+                      className="w-full bg-bg-hover border border-border-color rounded-xl text-xs px-3 py-2 text-text-secondary placeholder-slate-700 focus:outline-none focus:border-cyan-500/50"
+                    />
+                  </div>
+
+                  {simulationMessage && (
+                    <div className="p-2 rounded-lg bg-bg-hover border border-border-color text-[10px] text-cyan-400 font-mono text-center">
+                      {simulationMessage}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleTriggerSimulatedAlert}
+                    disabled={isSimulating}
+                    className="w-full py-2.5 rounded-xl bg-bg-hover border border-rose-500/40 hover:bg-rose-950/20 text-rose-400 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-40"
+                  >
+                    <Volume2 className="w-4 h-4" />
+                    <span>Trigger Simulated Alert</span>
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
           </div>
         </div>

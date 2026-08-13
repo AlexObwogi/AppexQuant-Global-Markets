@@ -216,6 +216,12 @@ export function sessionMiddleware(req: Request, res: Response, next: NextFunctio
 // CSRF Defense Middleware
 export function csrfMiddleware(req: Request, res: Response, next: NextFunction): void {
   // Skip read-only requests
+  // Allow unauthenticated routes to bypass CSRF
+  const bypassPaths = ['/api/auth/login', '/api/auth/register'];
+  if (bypassPaths.includes(req.path)) {
+    return next();
+  }
+
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     return next();
   }

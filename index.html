@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0B0E14" />
+    <meta name="description" content="AppexQuant Markets Global - Production-Grade Financial Trading Command Center" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <title>AppexQuant Markets Global</title>
+    <script>
+      (function() {
+        try {
+          var saved = localStorage.getItem('appex_theme_mode_v1');
+          var dark = false;
+          if (saved === 'dark' || saved === 'light') {
+            dark = saved === 'dark';
+          } else {
+            dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          }
+          var html = document.documentElement;
+          html.classList.remove('dark', 'light');
+          html.classList.add(dark ? 'dark' : 'light');
+          html.setAttribute('data-theme', dark ? 'dark' : 'light');
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body class="bg-[#0B0E14] text-slate-100 antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(err => {
+            console.log('ServiceWorker registration failed: ', err);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
+

@@ -1,0 +1,157 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-main: var(--bg-main);
+  --color-bg-surface: var(--bg-surface);
+  --color-bg-secondary: var(--bg-secondary);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-border-color: var(--border-color);
+  --color-border-strong: var(--border-strong);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-accent-primary: var(--accent-primary);
+  --color-accent-hover: var(--accent-hover);
+  --color-color-success: var(--color-success);
+  --color-color-danger: var(--color-danger);
+  --color-color-warning: var(--color-warning);
+  --color-color-info: var(--color-info);
+
+  --color-bg-nav: var(--bg-nav);
+  --color-bg-chart: var(--bg-chart);
+  --color-bg-modal: var(--bg-modal);
+  --color-bg-dropdown: var(--bg-dropdown);
+  --color-bg-input: var(--bg-input);
+  --color-bg-hover: var(--bg-hover);
+  --color-bg-active: var(--bg-active);
+  --color-bg-disabled: var(--bg-disabled);
+  --color-color-selected: var(--color-selected);
+  --color-bg-tooltip: var(--bg-tooltip);
+  --color-color-overlay: var(--color-overlay);
+  --color-color-divider: var(--color-divider);
+  --color-color-focus: var(--color-focus);
+  --color-pl-positive: var(--pl-positive);
+  --color-pl-negative: var(--pl-negative);
+  --color-pl-neutral: var(--pl-neutral);
+
+  /* Spacing system and border radii */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+}
+
+:root {
+  /* LIGHT MODE */
+  --bg-main: #FFFFFF;
+  --bg-surface: #FFFFFF;
+  --bg-secondary: #F5F5F5;
+  --bg-elevated: #FFFFFF;
+  --border-color: #EAECEF;
+  --border-strong: #D9DDE3;
+  --text-primary: #1E2329;
+  --text-secondary: #707A8A;
+  --text-muted: #929AA5;
+  --accent-primary: #FCD535;
+  --accent-hover: #F0C920;
+  --color-success: #0ECB81;
+  --color-danger: #F6465D;
+  --color-warning: #F0B90B;
+  --color-info: #1E88E5;
+
+  --bg-nav: #FFFFFF;
+  --bg-chart: #FFFFFF;
+  --bg-modal: #FFFFFF;
+  --bg-dropdown: #FFFFFF;
+  --bg-input: #F5F5F5;
+  --bg-hover: #F5F5F5;
+  --bg-active: #EAECEF;
+  --bg-disabled: #ECEEF2;
+  --color-selected: #FCD535;
+  --bg-tooltip: #1E2329;
+  --color-overlay: rgba(30, 35, 41, 0.5);
+  --color-divider: #EAECEF;
+  --color-focus: #FCD535;
+  --pl-positive: #0ECB81;
+  --pl-negative: #F6465D;
+  --pl-neutral: #707A8A;
+}
+
+html.dark {
+  /* DARK MODE */
+  --bg-main: #0C0E12;
+  --bg-surface: #1E2329;
+  --bg-secondary: #181A20;
+  --bg-elevated: #232830;
+  --border-color: #2B313A;
+  --border-strong: #3A414B;
+  --text-primary: #EAECEF;
+  --text-secondary: #848E9C;
+  --text-muted: #5E6673;
+  --accent-primary: #FCD535;
+  --accent-hover: #F0C920;
+  --color-success: #0ECB81;
+  --color-danger: #F6465D;
+  --color-warning: #F0B90B;
+  --color-info: #3B82F6;
+
+  --bg-nav: #181A20;
+  --bg-chart: #0C0E12;
+  --bg-modal: #1E2329;
+  --bg-dropdown: #1E2329;
+  --bg-input: #181A20;
+  --bg-hover: #2B313A;
+  --bg-active: #3A414B;
+  --bg-disabled: #2B313A;
+  --color-selected: #FCD535;
+  --bg-tooltip: #2B313A;
+  --color-overlay: rgba(0, 0, 0, 0.6);
+  --color-divider: #2B313A;
+  --color-focus: #FCD535;
+  --pl-positive: #0ECB81;
+  --pl-negative: #F6465D;
+  --pl-neutral: #848E9C;
+}
+
+@layer base {
+  body {
+    background-color: var(--bg-main) !important;
+    color: var(--text-primary) !important;
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-primary);
+}
+
+/* Custom styles and utilities */
+.font-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

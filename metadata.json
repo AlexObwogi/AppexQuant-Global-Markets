@@ -1,0 +1,6 @@
+{
+  "name": "AppexQuant Markets Global",
+  "description": "Production-grade financial technology trading platform and command center architecture",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -143,28 +143,28 @@ export const CalendarView: React.FC = () => {
         </div>
 
         {/* Quick Stats */}
-        <div className="flex items-center gap-3 bg-[#080B10] p-2.5 rounded-xl border border-border-color text-xs w-full md:w-auto justify-around">
+        <div className="flex items-center gap-3 bg-bg-surface p-2.5 rounded-xl border border-border-color text-xs w-full md:w-auto justify-around">
           <div className="text-center px-2">
             <span className="text-text-secondary text-[9px] uppercase block">High Impact</span>
-            <span className="text-rose-400 font-bold">
+            <span className="text-rose-600 dark:text-rose-400 font-bold">
               {events.filter((e) => e.impact === 'HIGH').length} Events
             </span>
           </div>
           <div className="w-px h-6 bg-bg-hover" />
           <div className="text-center px-2">
             <span className="text-text-secondary text-[9px] uppercase block">Risk Buffer</span>
-            <span className="text-cyan-400 font-bold">{preNewsMinutesBuffer}m Active</span>
+            <span className="text-cyan-600 dark:text-cyan-400 font-bold">{preNewsMinutesBuffer}m Active</span>
           </div>
         </div>
       </div>
 
       {/* AUTOMATED PRE-NEWS RISK CONTROL GUARDRAIL BOX */}
-      <div className="p-4 rounded-xl bg-[#111622] border border-border-color space-y-3">
+      <div className="p-4 rounded-xl bg-bg-surface border border-border-color space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0" />
+            <ShieldAlert className="w-5 h-5 text-amber-500 shrink-0" />
             <div>
-              <h3 className="text-xs font-bold text-text-secondary uppercase">Pre-News Execution Guardrail</h3>
+              <h3 className="text-xs font-bold text-text-primary uppercase">Pre-News Execution Guardrail</h3>
               <p className="text-[11px] text-text-secondary font-sans">
                 Automatically halt automated signal processing before high-tier news events.
               </p>
@@ -175,7 +175,7 @@ export const CalendarView: React.FC = () => {
             <select
               value={preNewsMinutesBuffer}
               onChange={(e) => setPreNewsMinutesBuffer(Number(e.target.value))}
-              className="bg-[#080B10] border border-border-color rounded-lg px-2.5 py-1.5 text-xs text-text-secondary focus:outline-none focus:border-cyan-500"
+              className="bg-bg-surface border border-border-color rounded-lg px-2.5 py-1.5 text-xs text-text-primary focus:outline-none focus:border-cyan-500"
             >
               <option value={5}>5m Buffer</option>
               <option value={15}>15m Buffer</option>
@@ -285,22 +285,22 @@ export const CalendarView: React.FC = () => {
                 </div>
 
                 {/* Metrics Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 py-2 px-3 rounded-lg bg-[#111622] border border-border-color/80 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 py-2 px-3 rounded-lg bg-bg-secondary border border-border-color text-xs">
                   <div>
                     <span className="text-text-secondary text-[9px] uppercase block">Forecast</span>
-                    <span className="font-bold text-text-secondary">{evt.forecast}</span>
+                    <span className="font-bold text-text-primary">{evt.forecast}</span>
                   </div>
                   <div>
                     <span className="text-text-secondary text-[9px] uppercase block">Previous</span>
-                    <span className="font-bold text-text-secondary">{evt.previous}</span>
+                    <span className="font-bold text-text-primary">{evt.previous}</span>
                   </div>
                   <div>
                     <span className="text-text-secondary text-[9px] uppercase block">Currency Pair</span>
-                    <span className="font-bold text-cyan-400">{evt.currency}USD</span>
+                    <span className="font-bold text-cyan-600 dark:text-cyan-400">{evt.currency}USD</span>
                   </div>
                   <div>
                     <span className="text-text-secondary text-[9px] uppercase block">Volatility Impact</span>
-                    <span className="font-bold text-amber-400">
+                    <span className="font-bold text-amber-600 dark:text-amber-400">
                       {evt.impact === 'HIGH' ? 'High Tier' : 'Moderate'}
                     </span>
                   </div>

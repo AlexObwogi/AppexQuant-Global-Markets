@@ -204,14 +204,14 @@ export const CommunityView: React.FC = () => {
   return (
     <div className="space-y-8 pb-12">
       {/* Top Banner & User Profile Quick Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-[#131822] to-slate-900 border border-border-color shadow-xl">
+      <div className="flex flex-wrap items-center justify-between gap-4 p-6 rounded-2xl bg-bg-surface border border-border-color shadow-xl">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-extrabold text-text-primary tracking-tight flex items-center gap-2">
-              <Users className="w-7 h-7 text-cyan-400" />
+              <Users className="w-7 h-7 text-cyan-500" />
               AppexQuant Trader Community
             </h1>
-            <span className="text-xs px-2.5 py-0.5 rounded-full font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-bold uppercase">
+            <span className="text-xs px-2.5 py-0.5 rounded-full font-mono bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 font-bold uppercase">
               AUDITED TRUST ECOSYSTEM
             </span>
           </div>
@@ -223,7 +223,7 @@ export const CommunityView: React.FC = () => {
         {/* User Status Badge & Action Controls */}
         <div className="flex flex-wrap items-center gap-3">
           {currentUserProfile && (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0B0E14] border border-border-color">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-bg-secondary border border-border-color">
               <div className="w-8 h-8 rounded-lg bg-bg-hover border border-border-color flex items-center justify-center font-bold text-xs text-text-secondary">
                 {currentUserProfile.avatar || currentUserProfile.displayName.charAt(0)}
               </div>
@@ -276,8 +276,8 @@ export const CommunityView: React.FC = () => {
               onClick={() => setActiveTab(tab.id as any)}
               className={`px-4 py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-2 ${
                 activeTab === tab.id
-                  ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-sm'
-                  : 'bg-[#111622] text-text-secondary border border-border-color/80 hover:text-text-secondary'
+                  ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-300 border border-cyan-500/30 shadow-sm'
+                  : 'bg-bg-secondary text-text-secondary border border-border-color/80 hover:bg-bg-hover hover:text-text-primary'
               }`}
             >
               {tab.icon}
@@ -295,7 +295,7 @@ export const CommunityView: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search posts, strategy, tags..."
-              className="w-full bg-[#111622] border border-border-color rounded-xl pl-9 pr-3 py-2 text-xs text-text-secondary focus:outline-none focus:border-cyan-500"
+              className="w-full bg-bg-secondary border border-border-color rounded-xl pl-9 pr-3 py-2 text-xs text-text-secondary focus:outline-none focus:border-cyan-500"
             />
           </div>
         )}
@@ -321,8 +321,8 @@ export const CommunityView: React.FC = () => {
                 onClick={() => setSelectedCategory(cat.id)}
                 className={`px-3 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer border ${
                   selectedCategory === cat.id
-                    ? 'bg-bg-hover text-cyan-300 border-cyan-500/40'
-                    : 'bg-[#111622] text-text-secondary border-border-color hover:text-text-secondary'
+                    ? 'bg-bg-hover text-cyan-600 dark:text-cyan-300 border-cyan-500/40'
+                    : 'bg-bg-secondary text-text-secondary border-border-color hover:bg-bg-hover'
                 }`}
               >
                 {cat.label}
@@ -332,7 +332,7 @@ export const CommunityView: React.FC = () => {
 
           {/* Posts List */}
           {posts.length === 0 ? (
-            <div className="p-12 text-center rounded-2xl bg-[#111622] border border-border-color space-y-3 font-mono">
+            <div className="p-12 text-center rounded-2xl bg-bg-secondary border border-border-color space-y-3 font-mono">
               <Sparkles className="w-8 h-8 text-text-secondary mx-auto" />
               <h4 className="text-sm font-bold text-text-secondary">No community posts match your filter</h4>
               <p className="text-xs text-text-secondary">Be the first trader to publish a post or strategy share!</p>
@@ -358,11 +358,11 @@ export const CommunityView: React.FC = () => {
       {/* VIEW 2: TRADER DIRECTORY */}
       {activeTab === 'TRADERS' && (
         <div className="space-y-6">
-          <div className="p-4 rounded-xl bg-[#0B0E14] border border-border-color text-xs font-mono text-text-secondary flex items-center justify-between">
+          <div className="p-4 rounded-xl bg-bg-secondary border border-border-color text-xs font-mono text-text-secondary flex items-center justify-between">
             <span>
               Showing <strong className="text-text-secondary">{profiles.length}</strong> Community Traders
             </span>
-            <span className="text-cyan-400">Explicit Verification Levels Enforced</span>
+            <span className="text-cyan-500 dark:text-cyan-400">Explicit Verification Levels Enforced</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -386,9 +386,9 @@ export const CommunityView: React.FC = () => {
 
       {/* VIEW 4: OFFICIAL CHANNELS */}
       {activeTab === 'CHANNELS' && (
-        <div className="p-6 rounded-2xl bg-[#111622] border border-border-color space-y-4">
+        <div className="p-6 rounded-2xl bg-bg-surface border border-border-color space-y-4">
           <h3 className="text-base font-bold text-text-primary flex items-center gap-2">
-            <Globe className="w-5 h-5 text-cyan-400" />
+            <Globe className="w-5 h-5 text-cyan-500 dark:text-cyan-400" />
             Official Community Channels
           </h3>
           <p className="text-xs text-text-secondary">
@@ -396,40 +396,40 @@ export const CommunityView: React.FC = () => {
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 font-mono">
-            <div className="p-4 rounded-xl bg-[#0B0E14] border border-border-color space-y-2">
-              <span className="text-xs font-bold text-cyan-400 block">Telegram Channel</span>
+            <div className="p-4 rounded-xl bg-bg-secondary border border-border-color space-y-2">
+              <span className="text-xs font-bold text-cyan-600 dark:text-cyan-400 block">Telegram Channel</span>
               <p className="text-[11px] text-text-secondary font-sans">Daily quantitative signals and market news updates.</p>
               <a
                 href="https://telegram.org"
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-cyan-300 font-bold hover:underline inline-flex items-center gap-1 pt-1"
+                className="text-xs text-cyan-600 dark:text-cyan-300 font-bold hover:underline inline-flex items-center gap-1 pt-1"
               >
                 Join Telegram ↗
               </a>
             </div>
 
-            <div className="p-4 rounded-xl bg-[#0B0E14] border border-border-color space-y-2">
-              <span className="text-xs font-bold text-indigo-400 block">Discord Server</span>
+            <div className="p-4 rounded-xl bg-bg-secondary border border-border-color space-y-2">
+              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 block">Discord Server</span>
               <p className="text-[11px] text-text-secondary font-sans">Strategy backtesting rooms, MQL5 coding channels & Q&A.</p>
               <a
                 href="https://discord.com"
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-indigo-300 font-bold hover:underline inline-flex items-center gap-1 pt-1"
+                className="text-xs text-indigo-600 dark:text-indigo-300 font-bold hover:underline inline-flex items-center gap-1 pt-1"
               >
                 Join Discord ↗
               </a>
             </div>
 
-            <div className="p-4 rounded-xl bg-[#0B0E14] border border-border-color space-y-2">
-              <span className="text-xs font-bold text-emerald-400 block">WhatsApp Community</span>
+            <div className="p-4 rounded-xl bg-bg-secondary border border-border-color space-y-2">
+              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 block">WhatsApp Community</span>
               <p className="text-[11px] text-text-secondary font-sans">Instant trade alerts and Deriv MT5 notifications.</p>
               <a
                 href="https://whatsapp.com"
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-emerald-300 font-bold hover:underline inline-flex items-center gap-1 pt-1"
+                className="text-xs text-emerald-600 dark:text-emerald-300 font-bold hover:underline inline-flex items-center gap-1 pt-1"
               >
                 Join WhatsApp ↗
               </a>

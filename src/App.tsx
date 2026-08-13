@@ -8,6 +8,7 @@ import { GlobalStateProvider, useGlobalState } from './state/GlobalStateContext'
 import { MarketDataProvider } from './state/MarketDataContext';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { AppShell } from './components/layout/AppShell';
+import { AuthGate } from './components/auth/AuthGate';
 
 import { DashboardView } from './views/DashboardView';
 import { MarketsView } from './views/MarketsView';
@@ -109,11 +110,13 @@ export default function App() {
   return (
     <ErrorBoundary>
       <GlobalStateProvider>
-        <MarketDataProvider>
-          <AppShell>
-            <ActiveViewRenderer />
-          </AppShell>
-        </MarketDataProvider>
+        <AuthGate>
+          <MarketDataProvider>
+            <AppShell>
+              <ActiveViewRenderer />
+            </AppShell>
+          </MarketDataProvider>
+        </AuthGate>
       </GlobalStateProvider>
     </ErrorBoundary>
   );

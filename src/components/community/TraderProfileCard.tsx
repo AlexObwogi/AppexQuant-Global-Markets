@@ -44,17 +44,17 @@ export const TraderProfileCard: React.FC<TraderProfileCardProps> = ({
 
   return (
     <>
-      <div className="p-5 rounded-2xl bg-[#111622] border border-border-color shadow-lg flex flex-col justify-between space-y-4 hover:border-border-color transition-all">
+      <div className="p-5 rounded-2xl bg-bg-surface border border-border-color shadow-lg flex flex-col justify-between space-y-4 hover:border-border-color transition-all">
         {/* Profile Header */}
         <div className="space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 border border-border-color flex items-center justify-center font-bold text-slate-200 text-base shadow-inner">
+              <div className="w-12 h-12 rounded-xl bg-bg-secondary border border-border-color flex items-center justify-center font-bold text-text-primary text-base shadow-inner">
                 {profile.avatar || profile.displayName.charAt(0)}
               </div>
               <div>
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <h4 className="font-bold text-slate-100 text-sm">{profile.displayName}</h4>
+                  <h4 className="font-bold text-text-primary text-sm">{profile.displayName}</h4>
                   {profile.isPublic ? (
                     <span title="Public Profile"><Globe className="w-3.5 h-3.5 text-text-secondary" /></span>
                   ) : (
@@ -99,10 +99,10 @@ export const TraderProfileCard: React.FC<TraderProfileCardProps> = ({
         <div className="pt-3 border-t border-border-color/80 flex items-center justify-between text-xs font-mono">
           <div className="flex items-center gap-3 text-text-secondary text-[11px]">
             <span>
-              <strong className="text-slate-200">{profile.followerCount}</strong> Followers
+              <strong className="text-text-primary">{profile.followerCount}</strong> Followers
             </span>
             <span>
-              <strong className="text-slate-200">{profile.postCount}</strong> Posts
+              <strong className="text-text-primary">{profile.postCount}</strong> Posts
             </span>
           </div>
 
@@ -144,27 +144,27 @@ export const TraderProfileCard: React.FC<TraderProfileCardProps> = ({
       {/* Full Profile Details Modal */}
       {showDetailModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#111622] border border-border-color rounded-2xl max-w-xl w-full p-6 space-y-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-bg-surface border border-border-color rounded-2xl max-w-xl w-full p-6 space-y-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-3 border-b border-border-color pb-4">
               <div className="flex items-center gap-3">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-border-color flex items-center justify-center font-bold text-slate-200 text-xl">
+                <div className="w-14 h-14 rounded-2xl bg-bg-secondary border border-border-color flex items-center justify-center font-bold text-text-primary text-xl">
                   {profile.avatar || profile.displayName.charAt(0)}
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-slate-100">{profile.displayName}</h3>
+                  <h3 className="text-lg font-bold text-text-primary">{profile.displayName}</h3>
                   <p className="text-xs text-text-secondary font-mono">@{profile.username} • Joined {new Date(profile.createdAt).toLocaleDateString()}</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowDetailModal(false)}
-                className="text-text-secondary hover:text-slate-200 text-lg cursor-pointer"
+                className="text-text-secondary hover:text-text-primary text-lg cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
             {/* Verification Status Banner */}
-            <div className="p-4 rounded-xl bg-[#0B0E14] border border-border-color space-y-2">
+            <div className="p-4 rounded-xl bg-bg-secondary border border-border-color space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono text-text-secondary uppercase">Verification Level</span>
                 <VerificationBadge status={profile.verificationStatus} size="md" />
@@ -200,17 +200,17 @@ export const TraderProfileCard: React.FC<TraderProfileCardProps> = ({
             <div className="space-y-3 text-xs text-text-primary">
               <div>
                 <h5 className="font-mono text-[11px] text-text-secondary uppercase font-bold">About Trader</h5>
-                <p className="mt-1 leading-relaxed text-slate-200">{profile.bio}</p>
+                <p className="mt-1 leading-relaxed text-text-primary">{profile.bio}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4 pt-2 font-mono">
                 <div>
                   <span className="text-text-secondary text-[10px] uppercase block">Country / Region</span>
-                  <span className="text-slate-200 font-bold">{profile.country}</span>
+                  <span className="text-text-primary font-bold">{profile.country}</span>
                 </div>
                 <div>
                   <span className="text-text-secondary text-[10px] uppercase block">Experience</span>
-                  <span className="text-slate-200 font-bold">{profile.experience}</span>
+                  <span className="text-text-primary font-bold">{profile.experience}</span>
                 </div>
               </div>
 

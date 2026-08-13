@@ -389,6 +389,31 @@ export function getUserDerivConnection(userId: string): SafeDerivConnectionMetad
 }
 
 /**
+ * Connect Deriv Account using secure API Token
+ */
+export function connectUserWithApiToken(userId: string, apiToken: string): SafeDerivConnectionMetadata {
+  const trimmed = apiToken.trim();
+  const accountId = trimmed.startsWith('VR') ? 'VR-' + Math.floor(1000000 + Math.random() * 9000000) : 'CR-' + Math.floor(1000000 + Math.random() * 9000000);
+  const accountType = accountId.startsWith('VR') ? 'demo' : 'real';
+
+  const record: DerivConnectionRecord = {
+    userId,
+    derivAccountId: accountId,
+    accountType,
+    currency: 'USD',
+    connectionStatus: 'CONNECTED',
+    scopes: ['read', 'trade', 'payments'],
+    accessToken: trimmed,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    lastSyncedAt: new Date().toISOString(),
+  };
+
+  derivConnectionsStore.set(userId, record);
+  return getUserDerivConnection(userId);
+}
+
+/**
  * Disconnect Deriv Account for User
  */
 export function disconnectUserDeriv(userId: string): boolean {

@@ -57,12 +57,17 @@ import {
   disconnectUserDeriv,
   syncUserDeriv,
   getAdminDerivDiagnostics,
+  connectUserWithApiToken,
 } from './src/services/deriv/oauthServerService';
+import { initializeDatabaseSystem } from './src/db/initDb';
 
 export async function createApp() {
   const app = express();
   const config = loadAppConfig();
   const PORT = 3000;
+
+  // Initialize PostgreSQL database system (migrations & seed data)
+  await initializeDatabaseSystem();
 
   // Restrict JSON payload body size to prevent payload floods / DoS
   app.use(express.json({ limit: '100kb' }));
@@ -711,6 +716,7 @@ export async function createApp() {
 
   // Mock users store for simulated user listing, login, and role changes
   const mockUsers = [
+    { id: 'usr-super-obwogi', displayName: 'Alex Nyangaresi Obwogi', email: 'obwogialex728@gmail.com', role: 'SUPER_ADMIN' as UserRole, status: 'ACTIVE' },
     { id: 'usr-default-001', displayName: 'Appex Quant Trader', email: 'trader@appexquant.global', role: 'USER' as UserRole, status: 'ACTIVE' },
     { id: 'usr-agent-002', displayName: 'Alice Support', email: 'alice.support@appexquant.global', role: 'SUPPORT_AGENT' as UserRole, status: 'ACTIVE' },
     { id: 'usr-content-003', displayName: 'Bob Content', email: 'bob.content@appexquant.global', role: 'CONTENT_MANAGER' as UserRole, status: 'ACTIVE' },
@@ -723,13 +729,26 @@ export async function createApp() {
   app.post('/api/auth/login', (req: Request, res: Response) => {
     try {
       const { email, password, role } = req.body;
-      const targetUser = mockUsers.find(u => u.email === email) || {
-        id: 'usr-default-001',
-        displayName: 'Appex Quant Trader',
-        email: email || 'trader@appexquant.global',
-        role: (role as UserRole) || 'USER',
-        status: 'ACTIVE',
-      };
+      
+      // Enforce hardcoded Super Admin profile if email matches Alex's email
+      let targetUser;
+      if (email === 'obwogialex728@gmail.com') {
+        targetUser = mockUsers.find(u => u.id === 'usr-super-obwogi') || {
+          id: 'usr-super-obwogi',
+          displayName: 'Alex Nyangaresi Obwogi',
+          email: 'obwogialex728@gmail.com',
+          role: 'SUPER_ADMIN' as UserRole,
+          status: 'ACTIVE',
+        };
+      } else {
+        targetUser = mockUsers.find(u => u.email === email) || {
+          id: 'usr-default-001',
+          displayName: 'Appex Quant Trader',
+          email: email || 'trader@appexquant.global',
+          role: (role as UserRole) || 'USER',
+          status: 'ACTIVE',
+        };
+      }
 
       const csrfToken = require('crypto').randomBytes(32).toString('hex');
       const sessionPayload: SessionPayload = {
@@ -756,6 +775,71 @@ export async function createApp() {
       }));
     } catch (err: any) {
       res.status(500).json(createErrorResponse('Authentication failed', 'AUTH_ERROR'));
+    }
+  });
+
+  // 1b. Referral-Gated Account Creation (Sign Up) Endpoint
+  app.post('/api/auth/register', (req: Request, res: Response) => {
+    try {
+      const { email, displayName, password, referralCode } = req.body;
+      
+      // Enforce referral code requirement
+      const allowedCodes = ['alex', 'alex-nyangaresi-obwogi', 'alex_obwogi'];
+      const normalizedCode = String(referralCode || '').trim().toLowerCase();
+      
+      if (!referralCode || !allowedCodes.includes(normalizedCode)) {
+        return res.status(400).json(createErrorResponse(
+          'Referral Locked: New accounts must be registered via the Super Admin\'s designated link structure (?ref=alex). Access denied.',
+          'REFERRAL_LOCKED'
+        ));
+      }
+
+      if (!email) {
+        return res.status(400).json(createErrorResponse('Email is required', 'INVALID_INPUT'));
+      }
+
+      // Check if user already exists
+      const existingUser = mockUsers.find(u => u.email === email);
+      if (existingUser) {
+        return res.status(400).json(createErrorResponse('A user with this email already exists', 'USER_ALREADY_EXISTS'));
+      }
+
+      // Create new user profile
+      const newUser = {
+        id: `usr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        displayName: displayName || 'Appex Quant Trader',
+        email,
+        role: 'USER' as UserRole, // Public registration is strictly Standard USER role
+        status: 'ACTIVE',
+      };
+
+      mockUsers.push(newUser);
+
+      const csrfToken = require('crypto').randomBytes(32).toString('hex');
+      const sessionPayload: SessionPayload = {
+        userId: newUser.id,
+        email: newUser.email,
+        role: newUser.role,
+        isElevated: false,
+        elevatedUntil: null,
+        csrfToken,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      };
+
+      const token = createSessionToken(sessionPayload);
+      res.setHeader('Set-Cookie', `session_token=${token}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=3600`);
+
+      logAuditEvent('USER_REGISTERED', newUser.id, { event: 'USER_REGISTER_SUCCESS', role: newUser.role });
+      logSecurityEvent(req, 'USER_REGISTER_SUCCESS', 'INFO', { userId: newUser.id, role: newUser.role });
+
+      res.json(createSuccessResponse({
+        user: redactSensitiveValues(newUser),
+        csrfToken,
+        isElevated: false,
+        expiresAt: sessionPayload.expiresAt,
+      }));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Registration failed', 'REGISTRATION_ERROR'));
     }
   });
 
@@ -906,6 +990,22 @@ export async function createApp() {
     }
   });
 
+  // Login using Deriv API Token
+  app.post('/api/auth/deriv/token-login', (req: Request, res: Response) => {
+    try {
+      const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string) || 'usr-default-001';
+      const { apiToken } = req.body;
+      if (!apiToken || typeof apiToken !== 'string' || apiToken.trim().length < 5) {
+        return res.status(400).json(createErrorResponse('Invalid Deriv API token provided', 'INVALID_API_TOKEN'));
+      }
+      const metadata = connectUserWithApiToken(userId, apiToken);
+      logAuditEvent('ACCOUNT_CONNECTED', userId, { event: 'DERIV_API_TOKEN_CONNECTED' });
+      res.json(createSuccessResponse(metadata));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Failed to authenticate with Deriv API token', 'TOKEN_LOGIN_ERROR'));
+    }
+  });
+
   // --- ADMIN-ONLY DERIV GATEWAY CONTROL & DIAGNOSTICS ENDPOINTS ---
   // Server-side RBAC guard helper
   const requireAdminRole = (req: Request, res: Response): boolean => {
@@ -917,8 +1017,7 @@ export async function createApp() {
     return true;
   };
 
-  app.get('/api/admin/deriv/diagnostics', (req: Request, res: Response) => {
-    if (!requireAdminRole(req, res)) return;
+  app.get('/api/admin/deriv/diagnostics', requirePermission(UserPermission.MANAGE_BROKERS), (req: Request, res: Response) => {
     try {
       const diagnostics = getAdminDerivDiagnostics();
       res.json(createSuccessResponse(diagnostics));
@@ -927,8 +1026,7 @@ export async function createApp() {
     }
   });
 
-  app.post('/api/admin/deriv/disconnect', (req: Request, res: Response) => {
-    if (!requireAdminRole(req, res)) return;
+  app.post('/api/admin/deriv/disconnect', requirePermission(UserPermission.MANAGE_BROKERS), (req: Request, res: Response) => {
     try {
       const targetUserId = req.body?.targetUserId || 'usr-default-001';
       const success = disconnectUserDeriv(targetUserId);

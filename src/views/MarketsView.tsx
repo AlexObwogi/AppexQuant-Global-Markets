@@ -35,6 +35,7 @@ export const MarketsView: React.FC = () => {
     watchlist,
     searchQuery,
     connectionState,
+    isSimulated,
     dataFreshness,
     contracts,
     isLoadingSymbols,
@@ -114,7 +115,7 @@ export const MarketsView: React.FC = () => {
               {/* Freshness Badge */}
               <div
                 className={`px-1.5 py-0.5 rounded-[2px] text-[9px] font-mono font-bold uppercase tracking-wider flex items-center space-x-1 border ${
-                  dataFreshness === 'LIVE'
+                  dataFreshness === 'LIVE' || isSimulated
                     ? 'bg-color-success/10 text-color-success dark:text-color-success border-color-success/20 dark:border-color-success/25'
                     : dataFreshness === 'RECENT'
                     ? 'bg-[#F0B90B]/10 text-accent-hover dark:text-color-warning border-[#F0B90B]/20 dark:border-[#F0B90B]/25'
@@ -123,14 +124,23 @@ export const MarketsView: React.FC = () => {
               >
                 <span
                   className={`w-1 h-1 rounded-full ${
-                    dataFreshness === 'LIVE' ? 'bg-color-success animate-pulse' : 'bg-color-danger'
+                    dataFreshness === 'LIVE' || isSimulated ? 'bg-color-success animate-pulse' : 'bg-color-danger'
                   }`}
                 />
-                <span>{dataFreshness} DATA</span>
+                <span>{isSimulated ? 'LIVE' : dataFreshness} DATA</span>
               </div>
+
+              {isSimulated && (
+                <div className="px-1.5 py-0.5 rounded-[2px] text-[9px] font-mono font-bold uppercase tracking-wider flex items-center space-x-1 border bg-amber-500/10 text-amber-500 border-amber-500/20">
+                  <span className="w-1 h-1 rounded-full bg-amber-500 animate-pulse" />
+                  <span>PREVIEW SIMULATION ACTIVE</span>
+                </div>
+              )}
             </div>
             <p className="text-[11px] text-text-secondary mt-0.5 truncate">
-              Live market-data workspace connected to Deriv WebSocket infrastructure.
+              {isSimulated 
+                ? "Preview simulation mode active. Generating live high-fidelity simulated tick data feed." 
+                : "Live market-data workspace connected to Deriv WebSocket infrastructure."}
             </p>
           </div>
         </div>

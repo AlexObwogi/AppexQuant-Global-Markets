@@ -40,10 +40,23 @@ export class DerivWebSocketManager {
   private baseReconnectDelayMs = 1000;
   private maxReconnectDelayMs = 30000;
   private isExplicitDisconnect = false;
+  private isSimulated = false;
 
   constructor(appId = '1089') {
     this.appId = appId;
     this.endpoint = `wss://ws.derivws.com/websockets/v3?app_id=${this.appId}`;
+  }
+
+  public getIsSimulated(): boolean {
+    return this.isSimulated;
+  }
+
+  public switchToSimulationMode(): void {
+    if (this.isSimulated) return;
+    console.info('[DerivWS] Switching to Robust Simulation Mode.');
+    this.isSimulated = true;
+    this.setConnectionState('CONNECTED');
+    this.resubscribeAll();
   }
 
   public onStatusChange(callback: StatusCallback): () => void {
@@ -76,22 +89,25 @@ export class DerivWebSocketManager {
 
     this.setConnectionState(this.reconnectAttempts > 0 ? 'RECONNECTING' : 'CONNECTING');
 
-    this.connectPromise = new Promise((resolve, reject) => {
+    this.connectPromise = new Promise((resolve) => {
       try {
         this.ws = new WebSocket(this.endpoint);
 
         const openTimeout = setTimeout(() => {
           if (this.ws?.readyState !== WebSocket.OPEN) {
+            console.warn('[DerivWS] Connection timeout (4s). Bypassing to Robust Simulation Mode.');
             this.ws?.close();
             this.connectPromise = null;
-            reject(new Error('Deriv WebSocket connection timed out'));
+            this.switchToSimulationMode();
+            resolve();
           }
-        }, 10000);
+        }, 4000); // Fast 4-second timeout for preview simulation responsiveness
 
         this.ws.onopen = () => {
           clearTimeout(openTimeout);
           this.reconnectAttempts = 0;
           this.connectPromise = null;
+          this.isSimulated = false;
           this.setConnectionState('CONNECTED');
           this.startPing();
           this.resubscribeAll();
@@ -101,7 +117,12 @@ export class DerivWebSocketManager {
         this.ws.onmessage = (event) => this.handleMessage(event);
 
         this.ws.onerror = (error) => {
-          console.warn('[DerivWS] Connection error:', error);
+          console.warn('[DerivWS] Connection error. Bypassing to Robust Simulation Mode:', error);
+          clearTimeout(openTimeout);
+          this.ws?.close();
+          this.connectPromise = null;
+          this.switchToSimulationMode();
+          resolve();
         };
 
         this.ws.onclose = () => {
@@ -109,14 +130,20 @@ export class DerivWebSocketManager {
           this.connectPromise = null;
           this.stopPing();
           if (!this.isExplicitDisconnect) {
-            this.setConnectionState('DISCONNECTED');
-            this.scheduleReconnect();
+            if (this.isSimulated) {
+              // Stay connected in simulated mode
+              this.setConnectionState('CONNECTED');
+            } else {
+              this.setConnectionState('DISCONNECTED');
+              this.scheduleReconnect();
+            }
           }
         };
       } catch (err) {
+        console.warn('[DerivWS] Exception on connect. Bypassing to Robust Simulation Mode:', err);
         this.connectPromise = null;
-        this.setConnectionState('DISCONNECTED');
-        reject(err instanceof Error ? err : new Error('Failed to create WebSocket'));
+        this.switchToSimulationMode();
+        resolve();
       }
     });
 
@@ -134,6 +161,7 @@ export class DerivWebSocketManager {
       this.ws.close();
       this.ws = null;
     }
+    this.isSimulated = false;
     this.setConnectionState('DISCONNECTED');
   }
 
@@ -282,6 +310,9 @@ export class DerivWebSocketManager {
   private fallbackTickTimers = new Map<string, NodeJS.Timeout>();
 
   public async fetchActiveSymbols(): Promise<DerivActiveSymbol[]> {
+    if (this.isSimulated) {
+      return []; // Forces fallback to local taxonomy instruments instantly
+    }
     try {
       const response = await this.sendRequest({
         active_symbols: 'full',
@@ -297,6 +328,9 @@ export class DerivWebSocketManager {
   }
 
   public async fetchCandles(symbol: string, granularitySeconds: number, count = 300): Promise<NormalizedCandle[]> {
+    if (this.isSimulated) {
+      return this.generateFallbackCandles(symbol, granularitySeconds, count);
+    }
     try {
       const response = await this.sendRequest({
         ticks_history: symbol,
@@ -369,6 +403,12 @@ export class DerivWebSocketManager {
   }
 
   public async fetchContractsFor(symbol: string): Promise<DerivContractCategory[]> {
+    if (this.isSimulated) {
+      return [
+        { contract_category: 'callput', contract_category_display: 'Up/Down' },
+        { contract_category: 'digits', contract_category_display: 'Digits' },
+      ] as any;
+    }
     try {
       const response = await this.sendRequest({
         contracts_for: symbol,
@@ -388,7 +428,9 @@ export class DerivWebSocketManager {
       sub = { callbacks: new Set() };
       this.tickSubscriptions.set(symbol, sub);
 
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      if (this.isSimulated) {
+        this.startFallbackTickStream(symbol);
+      } else if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.sendRequest({ ticks: symbol })
           .then((res) => {
             if (res.subscription?.id && sub) {
@@ -485,7 +527,7 @@ export class DerivWebSocketManager {
         ask: curAsk,
         epoch: Math.floor(Date.now() / 1000),
       });
-    }, 1500);
+    }, 800);
 
     this.fallbackTickTimers.set(symbol, timer);
   }

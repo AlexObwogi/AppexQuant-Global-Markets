@@ -23,9 +23,10 @@ export const MoreDrawer: React.FC<MoreDrawerProps> = ({ isOpen, onClose }) => {
     return true;
   });
 
-  const coreItems = filteredNavItems.filter((i) => i.group === 'core');
-  const resourceItems = filteredNavItems.filter((i) => i.group === 'resources');
-  const systemItems = filteredNavItems.filter((i) => i.group === 'system');
+  const coreItems = filteredNavItems.filter((i) => i.group === 'core' && !i.adminOnly);
+  const resourceItems = filteredNavItems.filter((i) => i.group === 'resources' && !i.adminOnly);
+  const systemItems = filteredNavItems.filter((i) => i.group === 'system' && !i.adminOnly);
+  const adminItems = filteredNavItems.filter((i) => i.adminOnly);
 
   const handleSelectRoute = (route: AppViewRoute) => {
     dispatch({ type: 'SET_ROUTE', payload: route });
@@ -64,9 +65,10 @@ export const MoreDrawer: React.FC<MoreDrawerProps> = ({ isOpen, onClose }) => {
   return (
     <Drawer isOpen={isOpen} onClose={onClose} title="AppexQuant Navigation" side="bottom">
       <div className="pt-2 pb-6 max-h-[70vh] overflow-y-auto pr-1">
-        {renderSection('Trading Modules', coreItems)}
-        {renderSection('AI Intelligence & Tools', resourceItems)}
-        {renderSection('Account & Settings', systemItems)}
+        {renderSection('Trading & Core Terminals', coreItems)}
+        {renderSection('Intelligence & Strategy Hub', resourceItems)}
+        {renderSection('Community & Account Settings', systemItems)}
+        {isAdminOrOwner && adminItems.length > 0 && renderSection('Administration Controls', adminItems)}
       </div>
     </Drawer>
   );

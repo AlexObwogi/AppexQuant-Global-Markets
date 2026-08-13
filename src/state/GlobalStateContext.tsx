@@ -106,13 +106,13 @@ const initialAccount: TradingAccount = {
 };
 
 export const initialGlobalState: GlobalState = {
-  user: initialUser,
+  user: null,
   session: {
     sessionId: 'sess-init-101',
     userId: 'usr-default-001',
     token: null,
     expiresAt: null,
-    isAuthenticated: true,
+    isAuthenticated: false,
     lastActive: new Date().toISOString(),
     isElevated: false,
     elevatedUntil: null,
@@ -165,7 +165,15 @@ export type GlobalAction =
 function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
   switch (action.type) {
     case 'SET_USER_PROFILE':
-      return { ...state, user: action.payload };
+      return {
+        ...state,
+        user: action.payload,
+        session: {
+          ...state.session,
+          userId: action.payload ? action.payload.id : 'usr-default-001',
+          isAuthenticated: !!action.payload,
+        },
+      };
 
     case 'SET_SESSION_ELEVATION':
       return {

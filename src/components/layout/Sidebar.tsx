@@ -39,23 +39,25 @@ export interface NavItem {
 }
 
 export const navItems: NavItem[] = [
-  { id: 'dashboard', label: 'Home', icon: <LayoutDashboard className="w-4 h-4" />, group: 'core' },
-  { id: 'markets', label: 'Markets & Charts', icon: <BarChart2 className="w-4 h-4" />, group: 'core' },
+  // Group 1: Trading & Core Terminals
+  { id: 'dashboard', label: 'Home Dashboard', icon: <LayoutDashboard className="w-4 h-4" />, group: 'core' },
+  { id: 'markets', label: 'Markets & Watchlist', icon: <BarChart2 className="w-4 h-4" />, group: 'core' },
   { id: 'trade', label: 'Trade Terminal', icon: <ArrowRightLeft className="w-4 h-4" />, group: 'core' },
   { id: 'analytics', label: 'Portfolio & Analytics', icon: <PieChart className="w-4 h-4" />, group: 'core' },
-  { id: 'education', label: 'Education Hub', icon: <GraduationCap className="w-4 h-4 text-color-info" />, group: 'resources', badge: 'New' },
-  { id: 'ai-analysis', label: 'AI Intelligence', icon: <Brain className="w-4 h-4 text-accent-primary" />, group: 'resources', badge: 'Pro' },
-  { id: 'strategy-lab', label: 'AI Strategy Lab', icon: <FlaskConical className="w-4 h-4 text-accent-primary" />, group: 'resources', badge: 'New' },
-  { id: 'p2p', label: 'P2P Marketplace', icon: <DollarSign className="w-4 h-4 text-color-success" />, group: 'resources', badge: 'Escrow' },
-  { id: 'strategies', label: 'AI & Strategy Builder', icon: <Code2 className="w-4 h-4" />, group: 'resources' },
-  { id: 'backtest', label: 'Backtesting Engine', icon: <LineChart className="w-4 h-4" />, group: 'resources' },
-  { id: 'eas', label: 'Tools & EA Hub', icon: <Bot className="w-4 h-4" />, group: 'resources' },
-  { id: 'signals', label: 'Signals & Intelligence', icon: <Zap className="w-4 h-4" />, group: 'resources' },
-  { id: 'community', label: 'P2P & Community', icon: <Users className="w-4 h-4" />, group: 'resources' },
-  { id: 'calendar', label: 'Journal / Calendar', icon: <Calendar className="w-4 h-4" />, group: 'resources' },
-  { id: 'news', label: 'Alerts & News', icon: <Newspaper className="w-4 h-4" />, group: 'resources' },
-  { id: 'account', label: 'Profile & Broker', icon: <User className="w-4 h-4" />, group: 'system' },
-  { id: 'legal', label: 'Settings & Security', icon: <ShieldCheck className="w-4 h-4" />, group: 'system' },
+
+  // Group 2: Intelligence & Strategy Hub
+  { id: 'education', label: 'Education Hub (Academy)', icon: <GraduationCap className="w-4 h-4 text-color-info" />, group: 'resources', badge: 'New' },
+  { id: 'ai-analysis', label: 'AI Intelligence & Strategy Lab', icon: <Brain className="w-4 h-4 text-accent-primary" />, group: 'resources', badge: 'Pro' },
+  { id: 'backtest', label: 'Backtesting Engine & EA Hub', icon: <LineChart className="w-4 h-4" />, group: 'resources' },
+  { id: 'signals', label: 'Signals & Alerts', icon: <Zap className="w-4 h-4 text-accent-primary" />, group: 'resources' },
+
+  // Group 3: Community & Account Settings
+  { id: 'p2p', label: 'P2P Marketplace', icon: <DollarSign className="w-4 h-4 text-color-success" />, group: 'system', badge: 'Escrow' },
+  { id: 'community', label: 'Trader Community & Directory', icon: <Users className="w-4 h-4 text-color-info" />, group: 'system' },
+  { id: 'account', label: 'Profile & OAuth Broker Connection', icon: <User className="w-4 h-4" />, group: 'system' },
+  { id: 'legal', label: 'Platform Settings & Security', icon: <ShieldCheck className="w-4 h-4" />, group: 'system' },
+
+  // Group 4: Administration Controls
   { id: 'automation', label: 'Automation Control', icon: <Cpu className="w-4 h-4 text-color-info" />, group: 'system', badge: 'Ops', adminOnly: true },
   { id: 'health', label: 'System Operations', icon: <Activity className="w-4 h-4 text-color-info" />, group: 'system', badge: 'Live', adminOnly: true },
   { id: 'admin', label: 'Admin Portal', icon: <Lock className="w-4 h-4 text-color-danger" />, group: 'system', badge: 'Secure', adminOnly: true },
@@ -71,9 +73,10 @@ export const Sidebar: React.FC = () => {
     return true;
   });
 
-  const coreItems = filteredNavItems.filter((i) => i.group === 'core');
-  const resourceItems = filteredNavItems.filter((i) => i.group === 'resources');
-  const systemItems = filteredNavItems.filter((i) => i.group === 'system');
+  const coreItems = filteredNavItems.filter((i) => i.group === 'core' && !i.adminOnly);
+  const resourceItems = filteredNavItems.filter((i) => i.group === 'resources' && !i.adminOnly);
+  const systemItems = filteredNavItems.filter((i) => i.group === 'system' && !i.adminOnly);
+  const adminItems = filteredNavItems.filter((i) => i.adminOnly);
 
   const renderNavGroup = (title: string, items: NavItem[]) => (
     <div className="mb-6">
@@ -117,9 +120,10 @@ export const Sidebar: React.FC = () => {
   return (
     <aside className="hidden lg:flex flex-col w-64 border-r border-border-color bg-bg-nav p-6 shrink-0 justify-between h-[calc(100vh-4rem)] sticky top-16 overflow-y-auto">
       <div>
-        {renderNavGroup('Core Command', coreItems)}
-        {renderNavGroup('Resources', resourceItems)}
-        {renderNavGroup('System & Security', systemItems)}
+        {renderNavGroup('Trading & Core Terminals', coreItems)}
+        {renderNavGroup('Intelligence & Strategy Hub', resourceItems)}
+        {renderNavGroup('Community & Account Settings', systemItems)}
+        {isAdminOrOwner && adminItems.length > 0 && renderNavGroup('Administration Controls', adminItems)}
       </div>
 
       {/* Footer Profile Baseline */}

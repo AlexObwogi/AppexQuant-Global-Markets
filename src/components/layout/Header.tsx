@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { useGlobalState, AppViewRoute } from '../../state/GlobalStateContext';
+import { useMarketData } from '../../state/MarketDataContext';
 import { EnvironmentSelector } from '../common/EnvironmentSelector';
 import { ThemeSelector } from '../common/ThemeSelector';
 import { Menu, User, Eye, EyeOff } from 'lucide-react';
@@ -18,6 +19,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
   const { state, dispatch, selectedAccount } = useGlobalState();
+  const { isSimulated } = useMarketData();
   const [showDerivModal, setShowDerivModal] = useState(false);
 
   const handleNavigate = (route: AppViewRoute) => {
@@ -55,6 +57,14 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
           </div>
         </div>
       </div>
+
+      {/* Simulation Badge */}
+      {isSimulated && (
+        <div className="hidden md:flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#E3A008]/10 text-[#E3A008] border border-[#E3A008]/20 text-[10px] font-bold uppercase tracking-wider shrink-0 animate-pulse">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#E3A008]" />
+          <span>Preview Simulation Active</span>
+        </div>
+      )}
 
       {/* Right Controls: Environment, Balance Privacy, Connection, Theme, Profile */}
       <div className="flex items-center space-x-1 sm:space-x-2.5 shrink-0">

@@ -125,13 +125,13 @@ export const PerformanceDisclaimerBanner: React.FC<PerformanceDisclaimerBannerPr
 }) => {
   return (
     <div
-      className={`p-3.5 sm:p-4 bg-[#111622] border border-amber-500/20 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs ${className}`}
+      className={`p-3.5 sm:p-4 bg-bg-surface border border-[#D97706]/40 dark:border-amber-500/20 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs ${className}`}
     >
       <div className="flex items-start gap-3">
-        <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+        <ShieldAlert className="w-5 h-5 text-[#D97706] dark:text-amber-400 shrink-0 mt-0.5" />
         <div className="space-y-0.5">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-bold text-amber-300">
+            <span className="font-bold text-[#D97706] dark:text-amber-300">
               {title || 'Regulatory Performance Disclaimer'}
             </span>
             <PerformanceBadge environment={environment} size="sm" />

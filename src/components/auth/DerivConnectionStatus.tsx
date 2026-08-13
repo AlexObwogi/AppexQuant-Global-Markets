@@ -1,45 +1,40 @@
-import React, { useEffect, useState } from 'react';
-import { useGlobalState } from '../../state/GlobalStateContext';
-import { useApiFetch } from '../../utils/apiFetch';
-import { derivAuthService } from '../../services/deriv/authService';
-import { formatUserConnectionStatus } from '../../utils/userStatusPresentation';
+import React from 'react';
+import { useMarketData } from '../../state/MarketDataContext';
 import { StatusPill } from '../ui/StatusPill';
 
 export const DerivConnectionStatus: React.FC = () => {
-  const { state, dispatch } = useGlobalState();
-  const apiFetch = useApiFetch();
-  const [isServerConnected, setIsServerConnected] = useState<boolean | null>(null);
+  const { connectionState, isSimulated } = useMarketData();
 
-  useEffect(() => {
-    let isMounted = true;
-    apiFetch('/api/auth/deriv/status')
-      .then((res) => res.json())
-      .then((json) => {
-        if (isMounted && json.success && json.data) {
-          const connected = Boolean(json.data.connected);
-          setIsServerConnected(connected);
-          dispatch({ type: 'SET_CONNECTION_STATUS', payload: connected ? 'ONLINE' : 'OFFLINE' });
-        }
-      })
-      .catch(() => {
-        if (isMounted) setIsServerConnected(false);
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  let label = 'Markets Offline';
+  let badgeType: 'success' | 'warning' | 'danger' | 'info' | 'neutral' = 'neutral';
+  let subtext = 'Market stream unavailable';
+  let pulse = false;
 
-  const isConnected = isServerConnected === true;
-
-  const userStatus = formatUserConnectionStatus(isConnected ? 'ONLINE' : 'OFFLINE');
+  if (connectionState === 'CONNECTED') {
+    pulse = true;
+    if (isSimulated) {
+      label = 'Simulated Feed';
+      badgeType = 'success';
+      subtext = 'High-fidelity preview feed active';
+    } else {
+      label = 'Markets Connected';
+      badgeType = 'success';
+      subtext = 'Live market streaming active';
+    }
+  } else if (connectionState === 'CONNECTING' || connectionState === 'RECONNECTING') {
+    label = 'Connecting...';
+    badgeType = 'warning';
+    subtext = 'Establishing stream connection';
+    pulse = true;
+  }
 
   return (
     <StatusPill
-      label={userStatus.label}
-      type={userStatus.badgeType}
-      subtext={userStatus.subtext}
+      label={label}
+      type={badgeType}
+      subtext={subtext}
       size="sm"
-      pulse={isConnected}
+      pulse={pulse}
       className="cursor-pointer hover:opacity-90 transition-opacity"
     />
   );

@@ -248,11 +248,11 @@ export const LegalView: React.FC = () => {
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Header Banner */}
-      <div className="p-6 bg-[#131822] border border-border-color rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="p-6 bg-bg-surface border border-border-color rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <ShieldCheck className="w-6 h-6 text-sky-400" />
-            <h2 className="text-2xl font-light text-text-secondary">Legal & Regulatory Disclosure Center</h2>
+            <ShieldCheck className="w-6 h-6 text-sky-500 dark:text-sky-400" />
+            <h2 className="text-2xl font-bold text-text-primary">Legal & Regulatory Disclosure Center</h2>
           </div>
           <p className="text-xs text-text-secondary">
             Binding terms of service, regulatory disclaimers, AI disclosures, and automated acceptance verification console.
@@ -261,22 +261,22 @@ export const LegalView: React.FC = () => {
 
         {/* Master Acceptance Status Counter */}
         {summary && (
-          <div className="flex items-center gap-3 bg-[#0B0E14] p-3 rounded-xl border border-border-color">
+          <div className="flex items-center gap-3 bg-bg-secondary p-3 rounded-xl border border-border-color">
             <div className="text-right">
               <div className="text-xs text-text-secondary uppercase font-mono tracking-wider">Acceptance Status</div>
               <div className="text-sm font-bold flex items-center gap-1.5 justify-end">
                 {summary.allAccepted ? (
-                  <span className="text-emerald-400 flex items-center gap-1">
+                  <span className="text-emerald-500 dark:text-emerald-400 flex items-center gap-1">
                     <CheckCircle2 className="w-4 h-4" /> ALL TERMS ACCEPTED
                   </span>
                 ) : (
-                  <span className="text-amber-400 flex items-center gap-1">
+                  <span className="text-amber-500 dark:text-amber-400 flex items-center gap-1">
                     <AlertTriangle className="w-4 h-4" /> RE-ACCEPTANCE REQUIRED
                   </span>
                 )}
               </div>
             </div>
-            <div className="px-3 py-1.5 bg-bg-hover/80 rounded-lg text-xs font-mono font-bold text-text-secondary">
+            <div className="px-3 py-1.5 bg-bg-hover rounded-lg text-xs font-mono font-bold text-text-secondary">
               {summary.acceptedCount} / {summary.totalDocuments}
             </div>
           </div>
@@ -356,7 +356,7 @@ export const LegalView: React.FC = () => {
       {activeTab === 'documents' && (
         <div className="space-y-6">
           {/* Search & Category Filter Bar */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-[#111622] p-4 rounded-xl border border-border-color">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-bg-surface p-4 rounded-xl border border-border-color">
             {/* Search Input */}
             <div className="relative flex-1">
               <Search className="w-4 h-4 absolute left-3 top-2.5 text-text-secondary" />
@@ -365,7 +365,7 @@ export const LegalView: React.FC = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search legal clauses, terms, or disclosures..."
-                className="w-full bg-[#0B0E14] border border-border-color rounded-lg pl-9 pr-4 py-2 text-xs text-text-secondary focus:outline-none focus:border-sky-500/50"
+                className="w-full bg-bg-secondary border border-border-color rounded-lg pl-9 pr-4 py-2 text-xs text-text-secondary focus:outline-none focus:border-sky-500/50"
               />
             </div>
 
@@ -459,7 +459,7 @@ export const LegalView: React.FC = () => {
 
                   {/* Document Content Clauses */}
                   {isExpanded && (
-                    <div className="p-6 bg-[#0B0E14] space-y-4 text-xs sm:text-sm text-text-secondary leading-relaxed border-t border-border-color/80">
+                    <div className="p-6 bg-bg-secondary space-y-4 text-xs sm:text-sm text-text-secondary leading-relaxed border-t border-border-color/80">
                       <div className="text-text-secondary font-mono uppercase text-[11px] tracking-wider mb-2">
                         Official Legal Clauses & Regulatory Terms
                       </div>
@@ -467,7 +467,7 @@ export const LegalView: React.FC = () => {
                         {doc.content.map((clause, cIdx) => (
                           <div
                             key={cIdx}
-                            className="p-3 bg-[#131822] rounded-lg border border-border-color/60 leading-relaxed"
+                            className="p-3 bg-bg-surface rounded-lg border border-border-color/60 leading-relaxed"
                           >
                             {clause}
                           </div>
@@ -560,7 +560,7 @@ export const LegalView: React.FC = () => {
         <Card variant="surface" className="p-6 space-y-6">
           <div className="border-b border-border-color pb-3">
             <h3 className="text-base font-bold text-text-secondary flex items-center gap-2">
-              <Zap className="w-5 h-5 text-amber-400" />
+              <Zap className="w-5 h-5 text-amber-500 dark:text-amber-400" />
               Material Document Version Simulator
             </h3>
             <p className="text-xs text-text-secondary mt-0.5">
@@ -568,14 +568,14 @@ export const LegalView: React.FC = () => {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#0B0E14] p-5 rounded-xl border border-border-color">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-bg-secondary p-5 rounded-xl border border-border-color">
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-mono text-text-secondary mb-1">Target Legal Document</label>
                 <select
                   value={adminDocId}
                   onChange={(e) => setAdminDocId(e.target.value)}
-                  className="w-full bg-[#131822] border border-border-color rounded-lg p-2.5 text-xs text-text-secondary focus:outline-none focus:border-sky-500"
+                  className="w-full bg-bg-surface border border-border-color rounded-lg p-2.5 text-xs text-text-secondary focus:outline-none focus:border-sky-500"
                 >
                   {documents.map((d) => (
                     <option key={d.id} value={d.id}>
@@ -592,7 +592,7 @@ export const LegalView: React.FC = () => {
                   value={adminNewVersion}
                   onChange={(e) => setAdminNewVersion(e.target.value)}
                   placeholder="e.g. v2.5, v3.0"
-                  className="w-full bg-[#131822] border border-border-color rounded-lg p-2.5 text-xs text-text-secondary focus:outline-none focus:border-sky-500"
+                  className="w-full bg-bg-surface border border-border-color rounded-lg p-2.5 text-xs text-text-secondary focus:outline-none focus:border-sky-500"
                 />
               </div>
 
@@ -605,7 +605,7 @@ export const LegalView: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-4 bg-[#131822] rounded-xl border border-border-color space-y-2 text-xs text-text-secondary">
+            <div className="p-4 bg-bg-surface rounded-xl border border-border-color space-y-2 text-xs text-text-secondary">
               <div className="font-bold text-amber-300 flex items-center gap-1.5">
                 <Info className="w-4 h-4" /> How Re-acceptance Works:
               </div>

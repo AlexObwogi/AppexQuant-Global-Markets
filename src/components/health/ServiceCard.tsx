@@ -4,8 +4,8 @@
  */
 
 import React, { useState } from 'react';
-import { MonitoredService, HealthStatus } from '../../types/health';
-import { ServiceStatusBadge } from './ServiceStatusBadge';
+import { MonitoredService, HealthStatus } from '../../types/health.js';
+import { ServiceStatusBadge } from './ServiceStatusBadge.js';
 import {
   Activity,
   Clock,

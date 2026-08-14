@@ -4,4 +4,4 @@
  * conforming to RFC 7636 (Proof Key for Code Exchange by OAuth Public Clients).
  */
 
-export * from '../utils/auth/pkce';
+export * from '../utils/auth/pkce.js';

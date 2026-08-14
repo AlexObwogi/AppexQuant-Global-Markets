@@ -40,7 +40,7 @@ import {
   SystemHealthEvent,
   LegalDocument,
   LegalAcceptance,
-} from './schema';
+} from './schema.js';
 
 /**
  * Metadata definition for database indices

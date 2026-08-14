@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { useGlobalState } from '../../state/GlobalStateContext';
-import { ThemeMode, getEffectiveTheme } from '../../design/theme';
+import { useGlobalState } from '../../state/GlobalStateContext.js';
+import { ThemeMode, getEffectiveTheme } from '../../design/theme.js';
 import { Sun, Moon, Monitor, ChevronDown } from 'lucide-react';
 
 export const ThemeSelector: React.FC = () => {

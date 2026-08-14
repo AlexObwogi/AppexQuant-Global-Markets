@@ -4,14 +4,14 @@
  */
 
 import React, { useState } from 'react';
-import { useGlobalState, AppViewRoute } from '../../state/GlobalStateContext';
-import { useMarketData } from '../../state/MarketDataContext';
-import { EnvironmentSelector } from '../common/EnvironmentSelector';
-import { ThemeSelector } from '../common/ThemeSelector';
+import { useGlobalState, AppViewRoute } from '../../state/GlobalStateContext.js';
+import { useMarketData } from '../../state/MarketDataContext.js';
+import { EnvironmentSelector } from '../common/EnvironmentSelector.js';
+import { ThemeSelector } from '../common/ThemeSelector.js';
 import { Menu, User, Eye, EyeOff } from 'lucide-react';
-import { DerivConnectionStatus } from '../auth/DerivConnectionStatus';
-import { DerivConnectionModal } from '../auth/DerivConnectionModal';
-import { formatCurrencyValue } from '../../utils/userStatusPresentation';
+import { DerivConnectionStatus } from '../auth/DerivConnectionStatus.js';
+import { DerivConnectionModal } from '../auth/DerivConnectionModal.js';
+import { formatCurrencyValue } from '../../utils/userStatusPresentation.js';
 
 interface HeaderProps {
   onToggleMobileDrawer: () => void;

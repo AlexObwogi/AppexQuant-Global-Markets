@@ -4,8 +4,8 @@
  */
 
 import React, { useState } from 'react';
-import { INITIAL_NEWS_ITEMS } from '../../services/ai/newsSentinelEngine';
-import { NewsItem } from '../../types/ai';
+import { INITIAL_NEWS_ITEMS } from '../../services/ai/newsSentinelEngine.js';
+import { NewsItem } from '../../types/ai.js';
 import { Newspaper, TrendingUp, TrendingDown, Minus, ExternalLink, Filter, ShieldAlert } from 'lucide-react';
 
 export const NewsSentinelFeed: React.FC = () => {

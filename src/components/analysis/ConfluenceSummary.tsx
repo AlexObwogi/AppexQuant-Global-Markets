@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
 import { Target, AlertTriangle } from 'lucide-react';
-import { evaluateConfluenceMatrix, ConfluenceMatrixResult } from '../../services/ai/confluenceEngine';
-import { MarketInstrument } from '../../types/market';
-import { NormalizedCandle } from '../../services/deriv/derivTypes';
+import { evaluateConfluenceMatrix, ConfluenceMatrixResult } from '../../services/ai/confluenceEngine.js';
+import { MarketInstrument } from '../../types/market.js';
+import { NormalizedCandle } from '../../services/deriv/derivTypes.js';
 
 interface ConfluenceSummaryProps {
   instrument: MarketInstrument | null;

@@ -5,10 +5,10 @@
 
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { SuccessStory } from '../../types/ea';
-import { getSuccessStories, submitSuccessStory } from '../../services/success/successStoryService';
-import { VerificationBadge } from '../community/VerificationBadge';
-import { PerformanceBadge } from '../common/PerformanceDisclaimer';
+import { SuccessStory } from '../../types/ea.js';
+import { getSuccessStories, submitSuccessStory } from '../../services/success/successStoryService.js';
+import { VerificationBadge } from '../community/VerificationBadge.js';
+import { PerformanceBadge } from '../common/PerformanceDisclaimer.js';
 import {
   Award,
   PlusCircle,

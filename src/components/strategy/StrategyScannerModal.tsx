@@ -5,9 +5,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { UserStrategy, MarketCompatibilityItem } from '../../types/ai';
-import { useMarketData } from '../../state/MarketDataContext';
-import { evaluateMarketCompatibility } from '../../services/ai/strategyEngine';
+import { UserStrategy, MarketCompatibilityItem } from '../../types/ai.js';
+import { useMarketData } from '../../state/MarketDataContext.js';
+import { evaluateMarketCompatibility } from '../../services/ai/strategyEngine.js';
 import { Search, CheckCircle2, AlertTriangle, X, RefreshCw, ChevronRight, Layers, ArrowRight } from 'lucide-react';
 
 interface StrategyScannerModalProps {

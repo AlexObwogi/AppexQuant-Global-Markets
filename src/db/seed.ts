@@ -3,8 +3,8 @@
  * Seeds roles, permissions, default instruments, SMC/ICT strategies, academy courses, and feature flags.
  */
 
-import { getDatabasePool } from './connection';
-import { logger } from '../observability/logger';
+import { getDatabasePool } from './connection.js';
+import { logger } from '../observability/logger.js';
 
 export async function seedDatabase(): Promise<{ success: boolean; error?: string }> {
   const pool = getDatabasePool();

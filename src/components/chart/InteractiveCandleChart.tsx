@@ -5,8 +5,8 @@
  */
 
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
-import { NormalizedCandle, NormalizedTick } from '../../services/deriv/derivTypes';
-import { DataFreshness } from '../../state/MarketDataContext';
+import { NormalizedCandle, NormalizedTick } from '../../services/deriv/derivTypes.js';
+import { DataFreshness } from '../../state/MarketDataContext.js';
 import {
   ZoomIn,
   ZoomOut,

@@ -4,10 +4,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useGlobalState } from '../../state/GlobalStateContext';
-import { useApiFetch } from '../../utils/apiFetch';
+import { useGlobalState } from '../../state/GlobalStateContext.js';
+import { useApiFetch } from '../../utils/apiFetch.js';
 import { ShieldCheck, ExternalLink, RefreshCw, Unplug, CheckCircle, AlertCircle, Loader2, KeyRound, UserPlus } from 'lucide-react';
-import { StatusPill } from '../ui/StatusPill';
+import { StatusPill } from '../ui/StatusPill.js';
 
 interface ConnectionMeta {
   connected: boolean;

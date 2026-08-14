@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { SignalObject } from '../../types/aiIntelligence';
+import { SignalObject } from '../../types/aiIntelligence.js';
 import { X, ShieldCheck, AlertCircle, BarChart3, Database, Layers, Check, Clock, Cpu, ExternalLink } from 'lucide-react';
 
 interface SignalDetailModalProps {

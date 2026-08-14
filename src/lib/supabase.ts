@@ -5,7 +5,7 @@
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { logger } from '../observability/logger';
+import { logger } from '../observability/logger.js';
 
 let supabaseClient: SupabaseClient | null = null;
 

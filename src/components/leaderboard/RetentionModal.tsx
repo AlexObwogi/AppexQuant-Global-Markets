@@ -4,8 +4,8 @@
  */
 
 import React, { useState } from 'react';
-import { LeaderboardEntry, MonthlyRecord } from '../../types/leaderboard';
-import { VerifiedLeaderBadge } from './VerifiedLeaderBadge';
+import { LeaderboardEntry, MonthlyRecord } from '../../types/leaderboard.js';
+import { VerifiedLeaderBadge } from './VerifiedLeaderBadge.js';
 import {
   X,
   TrendingUp,

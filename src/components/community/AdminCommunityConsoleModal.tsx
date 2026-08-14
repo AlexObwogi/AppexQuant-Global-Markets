@@ -3,8 +3,8 @@
  */
 
 import React, { useState } from 'react';
-import { CommunityReport, VerificationRequest } from '../../types/community';
-import { VerificationBadge } from './VerificationBadge';
+import { CommunityReport, VerificationRequest } from '../../types/community.js';
+import { VerificationBadge } from './VerificationBadge.js';
 import {
   ShieldAlert,
   ShieldCheck,

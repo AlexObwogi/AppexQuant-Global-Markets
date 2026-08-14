@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { SignalObject } from '../../types/aiIntelligence';
+import { SignalObject } from '../../types/aiIntelligence.js';
 import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, ShieldAlert, ArrowRight, Activity, Clock } from 'lucide-react';
 
 interface SignalCardProps {

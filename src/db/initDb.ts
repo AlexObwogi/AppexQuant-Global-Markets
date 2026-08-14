@@ -3,10 +3,10 @@
  * Automatically runs migrations and seeds database on server start if connected.
  */
 
-import { testDatabaseConnection } from './connection';
-import { runDatabaseMigrations } from './migrations';
-import { seedDatabase } from './seed';
-import { logger } from '../observability/logger';
+import { testDatabaseConnection } from './connection.js';
+import { runDatabaseMigrations } from './migrations.js';
+import { seedDatabase } from './seed.js';
+import { logger } from '../observability/logger.js';
 
 export async function initializeDatabaseSystem(): Promise<void> {
   const connTest = await testDatabaseConnection();

@@ -6,12 +6,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { failSafeEngineService } from '../../services/failSafeEngineService';
+import { failSafeEngineService } from '../../services/failSafeEngineService.js';
 import {
   FailSafeState,
   FailSafeTriggerType,
   SubsystemHealth,
-} from '../../types/failSafe';
+} from '../../types/failSafe.js';
 import {
   X,
   ShieldAlert,

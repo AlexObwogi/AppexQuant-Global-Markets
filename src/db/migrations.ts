@@ -5,8 +5,8 @@
 
 import fs from 'fs';
 import path from 'path';
-import { getDatabasePool } from './connection';
-import { logger } from '../observability/logger';
+import { getDatabasePool } from './connection.js';
+import { logger } from '../observability/logger.js';
 
 export async function runDatabaseMigrations(): Promise<{ success: boolean; error?: string }> {
   const pool = getDatabasePool();

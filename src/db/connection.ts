@@ -6,7 +6,7 @@
 
 import pkg from 'pg';
 const { Pool } = pkg;
-import { logger } from '../observability/logger';
+import { logger } from '../observability/logger.js';
 
 let pool: pkg.Pool | null = null;
 

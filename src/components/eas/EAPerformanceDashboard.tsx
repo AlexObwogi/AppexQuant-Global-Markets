@@ -4,8 +4,8 @@
  */
 
 import React from 'react';
-import { ExpertAdvisor } from '../../types/ea';
-import { getSampleDailyPerformance } from '../../services/ea/eaEngine';
+import { ExpertAdvisor } from '../../types/ea.js';
+import { getSampleDailyPerformance } from '../../services/ea/eaEngine.js';
 import { BarChart3, TrendingUp, Calendar, ShieldCheck, DollarSign } from 'lucide-react';
 
 interface EAPerformanceDashboardProps {

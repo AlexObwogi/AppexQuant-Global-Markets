@@ -3,7 +3,7 @@
  * Complete 10-Section Regulatory Disclosures, Terms, and Policies
  */
 
-import { LegalDocument } from '../types/legal';
+import { LegalDocument } from '../types/legal.js';
 
 export const OFFICIAL_LEGAL_DOCUMENTS: LegalDocument[] = [
   {

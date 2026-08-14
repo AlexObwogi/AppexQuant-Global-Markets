@@ -5,8 +5,8 @@
  */
 
 import React, { useState } from 'react';
-import { HallOfFameInductee } from '../../types/leaderboard';
-import { VerifiedLeaderBadge } from './VerifiedLeaderBadge';
+import { HallOfFameInductee } from '../../types/leaderboard.js';
+import { VerifiedLeaderBadge } from './VerifiedLeaderBadge.js';
 import {
   Award,
   Crown,

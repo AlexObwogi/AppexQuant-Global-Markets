@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { useGlobalState, AppViewRoute } from '../../state/GlobalStateContext';
+import { useGlobalState, AppViewRoute } from '../../state/GlobalStateContext.js';
 import { LayoutDashboard, BarChart2, Zap, ArrowRightLeft, MoreHorizontal } from 'lucide-react';
 
 interface BottomNavProps {

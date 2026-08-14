@@ -4,7 +4,7 @@
  */
 
 import React, { ReactNode } from 'react';
-import { Card } from './Card';
+import { Card } from './Card.js';
 import { ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
 
 export interface MetricCardProps {

@@ -3,7 +3,7 @@
  */
 
 import React, { useState } from 'react';
-import { TraderProfile } from '../../types/community';
+import { TraderProfile } from '../../types/community.js';
 import { User, X, Save, ShieldCheck } from 'lucide-react';
 
 interface EditProfileModalProps {

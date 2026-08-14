@@ -8,13 +8,13 @@ import path from 'path';
 import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import { loadAppConfig } from './src/config/appConfig.js';
-import { createSuccessResponse, createErrorResponse } from './src/types/api';
-import { getAuditLogs, logAuditEvent } from './src/observability/audit';
-import { logger } from './src/observability/logger';
-import { hasPermission, isHighRiskPermission } from './src/utils/auth';
-import { UserPermission, UserRole } from './src/types/user';
-import { OFFICIAL_LEGAL_DOCUMENTS } from './src/data/legalDocuments';
-import { LegalAcceptanceRecord } from './src/types/legal';
+import { createSuccessResponse, createErrorResponse } from './src/types/api.js';
+import { getAuditLogs, logAuditEvent } from './src/observability/audit.js';
+import { logger } from './src/observability/logger.js';
+import { hasPermission, isHighRiskPermission } from './src/utils/auth.js';
+import { UserPermission, UserRole } from './src/types/user.js';
+import { OFFICIAL_LEGAL_DOCUMENTS } from './src/data/legalDocuments.js';
+import { LegalAcceptanceRecord } from './src/types/legal.js';
 import {
   getTraderProfiles,
   getTraderProfileByUserId,
@@ -31,7 +31,7 @@ import {
   resolveAdminReport,
   getAdminVerificationRequests,
   reviewAdminVerificationRequest,
-} from './src/services/community/communityService';
+} from './src/services/community/communityService.js';
 import {
   requestIdMiddleware,
   rateLimiterMiddleware,
@@ -49,7 +49,7 @@ import {
   logSecurityEvent,
   parseCookies,
   SessionPayload
-} from './src/services/security';
+} from './src/services/security.js';
 
 import {
   initiateDerivOAuth,
@@ -60,9 +60,9 @@ import {
   syncUserDeriv,
   getAdminDerivDiagnostics,
   connectUserWithApiToken,
-} from './src/services/deriv/oauthServerService';
-import { initializeDatabaseSystem } from './src/db/initDb';
-import { getDatabasePool, testDatabaseConnection } from './src/db/connection';
+} from './src/services/deriv/oauthServerService.js';
+import { initializeDatabaseSystem } from './src/db/initDb.js';
+import { getDatabasePool, testDatabaseConnection } from './src/db/connection.js';
 
 export async function createApp() {
   const app = express();
@@ -183,7 +183,7 @@ export async function createApp() {
   // Get active risk policy
   app.get('/api/risk/policy', async (req: Request, res: Response) => {
     try {
-      const { activePolicy } = await import('./src/services/ai/riskEngine');
+      const { activePolicy } = await import('./src/services/ai/riskEngine.js');
       res.json(createSuccessResponse(activePolicy));
     } catch (err: any) {
       res.status(500).json(createErrorResponse(err.message || 'Failed to fetch risk policy', 'RISK_POLICY_ERROR'));
@@ -194,7 +194,7 @@ export async function createApp() {
   app.post('/api/risk/policy', requirePermission(UserPermission.MANAGE_RISK), async (req: Request, res: Response) => {
     try {
       validateRiskPolicyUpdate(req.body);
-      const { updateRiskPolicy } = await import('./src/services/ai/riskEngine');
+      const { updateRiskPolicy } = await import('./src/services/ai/riskEngine.js');
       const updated = updateRiskPolicy(req.body);
       logAuditEvent('ADMIN_ACTION', req.sessionUser?.userId || 'admin-01', { event: 'RISK_POLICY_UPDATE', updatedFields: Object.keys(req.body) });
       res.json(createSuccessResponse(updated));
@@ -207,7 +207,7 @@ export async function createApp() {
   // Evaluate order request through server-side risk engine with rate limiting and schema validation
   app.post('/api/risk/evaluate', orderRateLimiterMiddleware, async (req: Request, res: Response) => {
     try {
-      const { evaluateRisk, activePolicy } = await import('./src/services/ai/riskEngine');
+      const { evaluateRisk, activePolicy } = await import('./src/services/ai/riskEngine.js');
       const { order, environment } = req.body;
       if (!order) {
         return res.status(400).json(createErrorResponse('Missing order object in request body.', 'INVALID_REQUEST'));
@@ -232,8 +232,8 @@ export async function createApp() {
 
       if (decision.status === 'REJECTED') {
         try {
-          const { triggerAlert } = await import('./src/services/alertsService');
-          const { AlertType, AlertSeverity } = await import('./src/types/alerts');
+          const { triggerAlert } = await import('./src/services/alertsService.js');
+          const { AlertType, AlertSeverity } = await import('./src/types/alerts.js');
           triggerAlert(
             AlertType.RISK_THRESHOLD_REACHED,
             AlertSeverity.HIGH,
@@ -267,7 +267,7 @@ export async function createApp() {
   app.post('/api/ai/analyze', async (req: Request, res: Response) => {
     try {
       const { symbol, marketSummary, userStrategyText } = req.body;
-      const { analyzeMarketWithGemini } = await import('./src/services/ai/geminiBridge');
+      const { analyzeMarketWithGemini } = await import('./src/services/ai/geminiBridge.js');
       const analysis = await analyzeMarketWithGemini(symbol || 'EUR/USD', marketSummary || '', userStrategyText);
       res.json(createSuccessResponse({ symbol, analysis, timestamp: new Date().toISOString() }));
     } catch (err: any) {
@@ -279,7 +279,7 @@ export async function createApp() {
   app.post('/api/ai/parse-strategy', async (req: Request, res: Response) => {
     try {
       const { promptText } = req.body;
-      const { parseNaturalLanguageStrategy } = await import('./src/services/ai/strategyEngine');
+      const { parseNaturalLanguageStrategy } = await import('./src/services/ai/strategyEngine.js');
       const parsedRules = parseNaturalLanguageStrategy(promptText || '');
       res.json(createSuccessResponse({ rules: parsedRules, timestamp: new Date().toISOString() }));
     } catch (err: any) {
@@ -291,7 +291,7 @@ export async function createApp() {
   app.post('/api/ai/build-strategy', async (req: Request, res: Response) => {
     try {
       const { promptText } = req.body;
-      const { buildStrategyWithAI } = await import('./src/services/ai/aiStrategyBuilder');
+      const { buildStrategyWithAI } = await import('./src/services/ai/aiStrategyBuilder.js');
       const aiStrategy = await buildStrategyWithAI(promptText || '');
       res.json(createSuccessResponse(aiStrategy));
     } catch (err: any) {
@@ -302,7 +302,7 @@ export async function createApp() {
   // 7. Multi-Tier Leaderboard, Hall of Fame, & 2-Year Retention API Endpoints
   app.get('/api/leaderboard', async (req: Request, res: Response) => {
     try {
-      const { leaderboardService } = await import('./src/services/leaderboard/leaderboardService');
+      const { leaderboardService } = await import('./src/services/leaderboard/leaderboardService.js');
       const window = (req.query.window as any) || 'MONTHLY';
       const search = req.query.search as string | undefined;
       const data = leaderboardService.getLeaderboard(window, search);
@@ -314,7 +314,7 @@ export async function createApp() {
 
   app.get('/api/leaderboard/top', async (req: Request, res: Response) => {
     try {
-      const { leaderboardService } = await import('./src/services/leaderboard/leaderboardService');
+      const { leaderboardService } = await import('./src/services/leaderboard/leaderboardService.js');
       const topMonthly = leaderboardService.getLeaderboard('MONTHLY')[0];
       res.json(createSuccessResponse({
         name: topMonthly ? topMonthly.displayName : 'Alex Nyangaresi Obwogi',
@@ -333,7 +333,7 @@ export async function createApp() {
 
   app.get('/api/leaderboard/hall-of-fame', async (req: Request, res: Response) => {
     try {
-      const { leaderboardService } = await import('./src/services/leaderboard/leaderboardService');
+      const { leaderboardService } = await import('./src/services/leaderboard/leaderboardService.js');
       const inductees = leaderboardService.getHallOfFame();
       res.json(createSuccessResponse(inductees));
     } catch (err: any) {
@@ -343,7 +343,7 @@ export async function createApp() {
 
   app.get('/api/leaderboard/retention/:userId', async (req: Request, res: Response) => {
     try {
-      const { leaderboardService } = await import('./src/services/leaderboard/leaderboardService');
+      const { leaderboardService } = await import('./src/services/leaderboard/leaderboardService.js');
       const trader = leaderboardService.getTraderById(req.params.userId);
       if (!trader) {
         return res.status(404).json(createErrorResponse('Trader retention ledger not found', 'TRADER_NOT_FOUND'));
@@ -364,7 +364,7 @@ export async function createApp() {
   // Get orchestrator status & dashboard
   app.get('/api/orchestrator/dashboard', async (req: Request, res: Response) => {
     try {
-      const { getOrchestratorDashboard } = await import('./src/services/ea/automationOrchestrator');
+      const { getOrchestratorDashboard } = await import('./src/services/ea/automationOrchestrator.js');
       res.json(createSuccessResponse(getOrchestratorDashboard()));
     } catch (err: any) {
       res.status(500).json(createErrorResponse(err.message || 'Failed to fetch orchestrator state', 'ORCHESTRATOR_ERROR'));
@@ -374,7 +374,7 @@ export async function createApp() {
   // Update orchestrator configuration settings
   app.post('/api/orchestrator/settings', requirePermission(UserPermission.MANAGE_SYSTEM), async (req: Request, res: Response) => {
     try {
-      const { updateOrchestratorSettings } = await import('./src/services/ea/automationOrchestrator');
+      const { updateOrchestratorSettings } = await import('./src/services/ea/automationOrchestrator.js');
       const updated = updateOrchestratorSettings(req.body);
       logAuditEvent('ADMIN_ACTION', (req.headers['x-user-id'] || 'admin-01') as string, { event: 'ORCHESTRATOR_SETTINGS_UPDATE', updatedFields: Object.keys(req.body) });
       res.json(createSuccessResponse(updated));
@@ -386,7 +386,7 @@ export async function createApp() {
   // Modify active automation orchestrator state
   app.post('/api/orchestrator/state', requirePermission(UserPermission.MANAGE_SYSTEM), async (req: Request, res: Response) => {
     try {
-      const { setOrchestratorState } = await import('./src/services/ea/automationOrchestrator');
+      const { setOrchestratorState } = await import('./src/services/ea/automationOrchestrator.js');
       const { state } = req.body;
       const updatedState = setOrchestratorState(state);
       logAuditEvent('ADMIN_ACTION', (req.headers['x-user-id'] || 'admin-01') as string, { event: 'ORCHESTRATOR_STATE_CHANGE', newState: updatedState });
@@ -399,7 +399,7 @@ export async function createApp() {
   // Perform cross-system alignment (Reconciliation)
   app.post('/api/orchestrator/reconcile', requirePermission(UserPermission.MANAGE_SYSTEM), async (req: Request, res: Response) => {
     try {
-      const { runReconciliationProcess } = await import('./src/services/ea/automationOrchestrator');
+      const { runReconciliationProcess } = await import('./src/services/ea/automationOrchestrator.js');
       const reconResult = runReconciliationProcess();
       logAuditEvent('ADMIN_ACTION', (req.headers['x-user-id'] || 'admin-01') as string, { event: 'ORCHESTRATOR_RECONCILIATION', totalResolved: reconResult.discrepanciesResolved });
       res.json(createSuccessResponse(reconResult));
@@ -411,7 +411,7 @@ export async function createApp() {
   // Inject manual data drifts for demonstration purposes
   app.post('/api/orchestrator/drift', requirePermission(UserPermission.MANAGE_SYSTEM), async (req: Request, res: Response) => {
     try {
-      const { triggerDrifts } = await import('./src/services/ea/automationOrchestrator');
+      const { triggerDrifts } = await import('./src/services/ea/automationOrchestrator.js');
       const updatedState = triggerDrifts();
       logAuditEvent('ADMIN_ACTION', (req.headers['x-user-id'] || 'admin-01') as string, { event: 'ORCHESTRATOR_DATA_DRIFT_INJECTED' });
       res.json(createSuccessResponse(updatedState));
@@ -423,7 +423,7 @@ export async function createApp() {
   // Run a single tick of the automated 15-stage pipeline loop
   app.post('/api/orchestrator/run', requirePermission(UserPermission.MANAGE_SYSTEM), async (req: Request, res: Response) => {
     try {
-      const { runPipelineIteration } = await import('./src/services/ea/automationOrchestrator');
+      const { runPipelineIteration } = await import('./src/services/ea/automationOrchestrator.js');
       const { order } = req.body;
       const result = await runPipelineIteration(order);
       if (result.success) {
@@ -441,7 +441,7 @@ export async function createApp() {
   // Get all execution orders (automatically progress pending orders for realism)
   app.get('/api/execution/orders', async (req: Request, res: Response) => {
     try {
-      const { getExecutionOrders, progressOrderStage } = await import('./src/services/ea/executionEngine');
+      const { getExecutionOrders, progressOrderStage } = await import('./src/services/ea/executionEngine.js');
       const orders = getExecutionOrders();
 
       // Auto-progress orders that are in transitional states so they simulate a pre-trade pipeline on consecutive polls
@@ -460,10 +460,10 @@ export async function createApp() {
   // Submit a new execution order (from manual trading, approved strategies, or automation)
   app.post('/api/execution/submit', requirePermission(UserPermission.EXECUTE_MANUAL_ORDER), orderRateLimiterMiddleware, async (req: Request, res: Response) => {
     try {
-      const { activePolicy } = await import('./src/services/ai/riskEngine');
+      const { activePolicy } = await import('./src/services/ai/riskEngine.js');
       validateOrder(req.body, activePolicy);
 
-      const { submitExecutionOrder } = await import('./src/services/ea/executionEngine');
+      const { submitExecutionOrder } = await import('./src/services/ea/executionEngine.js');
       const newOrder = submitExecutionOrder(req.body);
 
       logAuditEvent('TRADE_REQUESTED', req.sessionUser?.userId || 'sys-01', {
@@ -484,7 +484,7 @@ export async function createApp() {
   // Synchronize actual broker status
   app.post('/api/execution/sync', async (req: Request, res: Response) => {
     try {
-      const { synchronizeBrokerStatus, getExecutionOrders } = await import('./src/services/ea/executionEngine');
+      const { synchronizeBrokerStatus, getExecutionOrders } = await import('./src/services/ea/executionEngine.js');
       synchronizeBrokerStatus();
       const updatedOrders = getExecutionOrders();
 
@@ -499,7 +499,7 @@ export async function createApp() {
   // Request order cancellation
   app.post('/api/execution/cancel', async (req: Request, res: Response) => {
     try {
-      const { requestOrderCancellation } = await import('./src/services/ea/executionEngine');
+      const { requestOrderCancellation } = await import('./src/services/ea/executionEngine.js');
       const { requestId } = req.body;
       const updated = requestOrderCancellation(requestId);
 
@@ -518,7 +518,7 @@ export async function createApp() {
   // Reset execution engine state
   app.post('/api/execution/reset', async (req: Request, res: Response) => {
     try {
-      const { resetExecutionOrders, getExecutionOrders } = await import('./src/services/ea/executionEngine');
+      const { resetExecutionOrders, getExecutionOrders } = await import('./src/services/ea/executionEngine.js');
       resetExecutionOrders();
       res.json(createSuccessResponse(getExecutionOrders()));
     } catch (err: any) {
@@ -530,7 +530,7 @@ export async function createApp() {
   // Get positions state (ticks prices, runs safeguards evaluation, and lists metrics)
   app.get('/api/positions', async (req: Request, res: Response) => {
     try {
-      const { getPositions, tickPositionPrices, evaluatePositionSafeguards, getRealizedPlHistory, getSafeguardsConfig, getSafeguardActions } = await import('./src/services/ea/positionEngine');
+      const { getPositions, tickPositionPrices, evaluatePositionSafeguards, getRealizedPlHistory, getSafeguardsConfig, getSafeguardActions } = await import('./src/services/ea/positionEngine.js');
       
       // Tick the prices for live simulation
       tickPositionPrices();
@@ -558,7 +558,7 @@ export async function createApp() {
   // Update safeguards configuration
   app.post('/api/positions/safeguards', requirePermission(UserPermission.MANAGE_RISK), async (req: Request, res: Response) => {
     try {
-      const { updateSafeguardsConfig } = await import('./src/services/ea/positionEngine');
+      const { updateSafeguardsConfig } = await import('./src/services/ea/positionEngine.js');
       const updatedConfig = updateSafeguardsConfig(req.body);
       res.json(createSuccessResponse(updatedConfig));
     } catch (err: any) {
@@ -569,7 +569,7 @@ export async function createApp() {
   // Approve and Execute a manual/automated safeguard exit action (strictly transparent, audited, non-silent)
   app.post('/api/positions/safeguards/execute', requirePermission(UserPermission.MANAGE_RISK), async (req: Request, res: Response) => {
     try {
-      const { executeSafeguardAction } = await import('./src/services/ea/positionEngine');
+      const { executeSafeguardAction } = await import('./src/services/ea/positionEngine.js');
       const { proposal } = req.body;
       if (!proposal) {
         return res.status(400).json(createErrorResponse('Missing safeguard proposal parameters', 'BAD_REQUEST'));
@@ -584,7 +584,7 @@ export async function createApp() {
   // Reset positions state
   app.post('/api/positions/reset', requirePermission(UserPermission.MANAGE_SYSTEM), async (req: Request, res: Response) => {
     try {
-      const { resetPositionsState, getPositions } = await import('./src/services/ea/positionEngine');
+      const { resetPositionsState, getPositions } = await import('./src/services/ea/positionEngine.js');
       resetPositionsState();
       res.json(createSuccessResponse({ positions: getPositions() }));
     } catch (err: any) {
@@ -596,7 +596,7 @@ export async function createApp() {
   // 1. Fetch trades & performance metrics
   app.get('/api/analytics/trades', async (req: Request, res: Response) => {
     try {
-      const { getTradeJournal, calculatePerformanceMetrics } = await import('./src/services/ea/analyticsEngine');
+      const { getTradeJournal, calculatePerformanceMetrics } = await import('./src/services/ea/analyticsEngine.js');
       const trades = getTradeJournal();
       const metrics = calculatePerformanceMetrics(trades);
       res.json(createSuccessResponse({ trades, metrics }));
@@ -608,7 +608,7 @@ export async function createApp() {
   // 2. Update trade manual notes (strictly preserves historical records, only updates user editable fields)
   app.put('/api/analytics/trades/:id/notes', async (req: Request, res: Response) => {
     try {
-      const { updateTradeNotes } = await import('./src/services/ea/analyticsEngine');
+      const { updateTradeNotes } = await import('./src/services/ea/analyticsEngine.js');
       const { id } = req.params;
       const { notes } = req.body;
       const updated = updateTradeNotes(id, notes || '');
@@ -624,7 +624,7 @@ export async function createApp() {
   // 3. Generate or regenerate AI Post-Trade Summaries
   app.post('/api/analytics/trades/:id/ai-summary', async (req: Request, res: Response) => {
     try {
-      const { generateAISummary } = await import('./src/services/ea/analyticsEngine');
+      const { generateAISummary } = await import('./src/services/ea/analyticsEngine.js');
       const { id } = req.params;
       const updated = await generateAISummary(id);
       if (!updated) {
@@ -639,7 +639,7 @@ export async function createApp() {
   // 4. Reset trade database to seed state
   app.post('/api/analytics/reset', async (req: Request, res: Response) => {
     try {
-      const { seedTradeJournal, getTradeJournal, calculatePerformanceMetrics } = await import('./src/services/ea/analyticsEngine');
+      const { seedTradeJournal, getTradeJournal, calculatePerformanceMetrics } = await import('./src/services/ea/analyticsEngine.js');
       seedTradeJournal();
       const trades = getTradeJournal();
       const metrics = calculatePerformanceMetrics(trades);
@@ -653,7 +653,7 @@ export async function createApp() {
   // 1. Fetch all alerts
   app.get('/api/alerts', async (req: Request, res: Response) => {
     try {
-      const { getAlerts } = await import('./src/services/alertsService');
+      const { getAlerts } = await import('./src/services/alertsService.js');
       res.json(createSuccessResponse(getAlerts()));
     } catch (err: any) {
       res.status(500).json(createErrorResponse(err.message || 'Failed to fetch alerts', 'ALERTS_ERROR'));
@@ -666,7 +666,7 @@ export async function createApp() {
       const { id, userEmail } = req.body;
       const email = userEmail || 'trader@appexquant.global';
 
-      const { acknowledgeAlert, acknowledgeAllAlerts } = await import('./src/services/alertsService');
+      const { acknowledgeAlert, acknowledgeAllAlerts } = await import('./src/services/alertsService.js');
       
       if (id === 'all') {
         const updatedAlerts = acknowledgeAllAlerts(email);
@@ -691,7 +691,7 @@ export async function createApp() {
         return res.status(400).json(createErrorResponse('Missing required parameters to trigger alert: type, severity, source, message', 'BAD_REQUEST'));
       }
 
-      const { triggerAlert } = await import('./src/services/alertsService');
+      const { triggerAlert } = await import('./src/services/alertsService.js');
       const newAlert = triggerAlert(type, severity, source, message);
       res.json(createSuccessResponse(newAlert));
     } catch (err: any) {
@@ -711,7 +711,7 @@ export async function createApp() {
         return res.status(403).json(createErrorResponse(`Forbidden: You are not authorized to access user resources for ${userId}`, 'FORBIDDEN_RESOURCE'));
       }
 
-      const { getUserPreferences } = await import('./src/services/alertsService');
+      const { getUserPreferences } = await import('./src/services/alertsService.js');
       res.json(createSuccessResponse(getUserPreferences(userId)));
     } catch (err: any) {
       res.status(500).json(createErrorResponse(err.message || 'Failed to fetch preferences', 'ALERTS_ERROR'));
@@ -730,7 +730,7 @@ export async function createApp() {
         return res.status(403).json(createErrorResponse(`Forbidden: You are not authorized to update user resources for ${userId}`, 'FORBIDDEN_RESOURCE'));
       }
 
-      const { updateUserPreferences } = await import('./src/services/alertsService');
+      const { updateUserPreferences } = await import('./src/services/alertsService.js');
       const updated = updateUserPreferences(userId, req.body);
       res.json(createSuccessResponse(updated));
     } catch (err: any) {

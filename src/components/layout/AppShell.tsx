@@ -4,17 +4,17 @@
  */
 
 import React, { ReactNode, useState, useEffect } from 'react';
-import { useGlobalState } from '../../state/GlobalStateContext';
-import { Header } from './Header';
-import { Sidebar } from './Sidebar';
-import { BottomNav } from './BottomNav';
-import { MoreDrawer } from './MoreDrawer';
-import { ProductionFooter } from './ProductionFooter';
-import { OfflineBanner } from '../common/OfflineBanner';
-import { SystemFailSafeBanner } from '../common/SystemFailSafeBanner';
-import { PWAInstallPrompt } from '../common/PWAInstallPrompt';
-import { CinematicBackground } from '../common/CinematicBackground';
-import { EnvironmentGlobalBanner } from '../common/EnvironmentSelector';
+import { useGlobalState } from '../../state/GlobalStateContext.js';
+import { Header } from './Header.js';
+import { Sidebar } from './Sidebar.js';
+import { BottomNav } from './BottomNav.js';
+import { MoreDrawer } from './MoreDrawer.js';
+import { ProductionFooter } from './ProductionFooter.js';
+import { OfflineBanner } from '../common/OfflineBanner.js';
+import { SystemFailSafeBanner } from '../common/SystemFailSafeBanner.js';
+import { PWAInstallPrompt } from '../common/PWAInstallPrompt.js';
+import { CinematicBackground } from '../common/CinematicBackground.js';
+import { EnvironmentGlobalBanner } from '../common/EnvironmentSelector.js';
 import { X } from 'lucide-react';
 
 interface AppShellProps {

@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useGlobalState } from '../../state/GlobalStateContext';
-import { useApiFetch } from '../../utils/apiFetch';
+import { useGlobalState } from '../../state/GlobalStateContext.js';
+import { useApiFetch } from '../../utils/apiFetch.js';
 import { ShieldAlert, CheckCircle2, XCircle, ExternalLink, Lock, AlertTriangle, ArrowRight, ShieldCheck, Flame } from 'lucide-react';
 
 interface LiveAuthorizationModalProps {

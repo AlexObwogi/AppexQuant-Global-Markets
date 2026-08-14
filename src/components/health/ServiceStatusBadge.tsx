@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { HealthStatus } from '../../types/health';
+import { HealthStatus } from '../../types/health.js';
 import { CheckCircle2, AlertTriangle, AlertCircle, XCircle, PowerOff } from 'lucide-react';
 
 interface ServiceStatusBadgeProps {

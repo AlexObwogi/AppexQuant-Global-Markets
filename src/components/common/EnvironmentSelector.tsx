@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { useGlobalState, ExecutionEnvironment } from '../../state/GlobalStateContext';
-import { LiveAuthorizationModal } from './LiveAuthorizationModal';
+import { useGlobalState, ExecutionEnvironment } from '../../state/GlobalStateContext.js';
+import { LiveAuthorizationModal } from './LiveAuthorizationModal.js';
 import { ChevronDown, Database, Info, Flame, Check } from 'lucide-react';
 
 export const EnvironmentSelector: React.FC = () => {

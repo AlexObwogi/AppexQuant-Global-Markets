@@ -3,8 +3,8 @@
  */
 
 import React, { useState } from 'react';
-import { TraderProfile } from '../../types/community';
-import { VerificationBadge } from './VerificationBadge';
+import { TraderProfile } from '../../types/community.js';
+import { VerificationBadge } from './VerificationBadge.js';
 import {
   User,
   MapPin,

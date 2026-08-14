@@ -3,8 +3,8 @@
  */
 
 import React, { useState } from 'react';
-import { HealthLogEntry } from '../../types/health';
-import { ServiceStatusBadge } from './ServiceStatusBadge';
+import { HealthLogEntry } from '../../types/health.js';
+import { ServiceStatusBadge } from './ServiceStatusBadge.js';
 import { Terminal, Filter, Search, CheckCircle2, AlertTriangle, AlertCircle, Trash2 } from 'lucide-react';
 
 interface HealthAuditLogTableProps {

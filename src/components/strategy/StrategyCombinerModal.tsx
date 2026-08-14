@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { UserStrategy } from '../../types/ai';
+import { UserStrategy } from '../../types/ai.js';
 import { X, Plus, GitMerge, ArrowRight, Save, Trash2, Layers } from 'lucide-react';
 
 interface StrategyCombinerModalProps {

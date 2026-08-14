@@ -21,11 +21,11 @@ import {
   X,
   Gauge
 } from 'lucide-react';
-import { ExecutionOrder, OrderExecutionState } from '../../types/execution';
-import { useApiFetch } from '../../utils/apiFetch';
-import { useGlobalState } from '../../state/GlobalStateContext';
-import { hasPermission } from '../../utils/auth';
-import { UserPermission } from '../../types/user';
+import { ExecutionOrder, OrderExecutionState } from '../../types/execution.js';
+import { useApiFetch } from '../../utils/apiFetch.js';
+import { useGlobalState } from '../../state/GlobalStateContext.js';
+import { hasPermission } from '../../utils/auth.js';
+import { UserPermission } from '../../types/user.js';
 
 export const ExecutionCommandDesk: React.FC = () => {
   const apiFetch = useApiFetch();

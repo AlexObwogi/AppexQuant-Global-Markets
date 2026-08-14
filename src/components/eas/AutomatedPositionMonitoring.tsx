@@ -25,8 +25,8 @@ import {
   Layers,
   ArrowRight
 } from 'lucide-react';
-import { OpenPosition, SafeguardActionRecord, SafeguardsConfig } from '../../services/ea/positionEngine';
-import { useApiFetch } from '../../utils/apiFetch';
+import { OpenPosition, SafeguardActionRecord, SafeguardsConfig } from '../../services/ea/positionEngine.js';
+import { useApiFetch } from '../../utils/apiFetch.js';
 
 export const AutomatedPositionMonitoring: React.FC = () => {
   const apiFetch = useApiFetch();

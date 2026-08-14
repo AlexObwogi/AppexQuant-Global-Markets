@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Brain, Sparkles } from 'lucide-react';
-import { analyzeMarketWithGemini } from '../../services/ai/geminiBridge';
-import { MarketInstrument } from '../../types/market';
-import { NormalizedCandle } from '../../services/deriv/derivTypes';
+import { analyzeMarketWithGemini } from '../../services/ai/geminiBridge.js';
+import { MarketInstrument } from '../../types/market.js';
+import { NormalizedCandle } from '../../services/deriv/derivTypes.js';
 
 interface AiExplanationPanelProps {
   instrument: MarketInstrument | null;

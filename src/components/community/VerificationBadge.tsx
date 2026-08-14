@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { VerificationStatus } from '../../types/community';
+import { VerificationStatus } from '../../types/community.js';
 import { ShieldCheck, UserCheck, Award, AlertCircle, Info } from 'lucide-react';
 
 interface VerificationBadgeProps {

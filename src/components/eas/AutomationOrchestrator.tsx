@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useApiFetch } from '../../utils/apiFetch';
+import { useApiFetch } from '../../utils/apiFetch.js';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Play,

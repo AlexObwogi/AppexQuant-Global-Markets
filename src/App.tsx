@@ -4,35 +4,35 @@
  */
 
 import React from 'react';
-import { GlobalStateProvider, useGlobalState } from './state/GlobalStateContext';
-import { MarketDataProvider } from './state/MarketDataContext';
-import { ErrorBoundary } from './components/common/ErrorBoundary';
-import { AppShell } from './components/layout/AppShell';
-import { AuthGate } from './components/auth/AuthGate';
+import { GlobalStateProvider, useGlobalState } from './state/GlobalStateContext.js';
+import { MarketDataProvider } from './state/MarketDataContext.js';
+import { ErrorBoundary } from './components/common/ErrorBoundary.js';
+import { AppShell } from './components/layout/AppShell.js';
+import { AuthGate } from './components/auth/AuthGate.js';
 
-import { DashboardView } from './views/DashboardView';
-import { MarketsView } from './views/MarketsView';
-import { SignalsView } from './views/SignalsView';
-import { StrategiesView } from './views/StrategiesView';
-import { BacktestView } from './views/BacktestView';
-import { TradingWorkspaceView } from './views/TradingWorkspaceView';
-import { StrategyLabView } from './views/StrategyLabView';
-import { EAsView } from './views/EAsView';
-import { AnalyticsView } from './views/AnalyticsView';
-import { CalendarView } from './views/CalendarView';
-import { NewsView } from './views/NewsView';
-import { CommunityView } from './views/CommunityView';
-import { LeaderboardView } from './views/LeaderboardView';
-import { AccountView } from './views/AccountView';
-import { LegalView } from './views/LegalView';
-import { AdminBoundaryView } from './views/AdminBoundaryView';
-import { SystemHealthView } from './views/SystemHealthView';
-import { AutomationControlCenterView } from './views/AutomationControlCenterView';
-import { EducationView } from './views/EducationView';
-import { P2PView } from './views/P2PView';
-import { MarketAnalysisView } from './views/MarketAnalysisView';
+import { DashboardView } from './views/DashboardView.js';
+import { MarketsView } from './views/MarketsView.js';
+import { SignalsView } from './views/SignalsView.js';
+import { StrategiesView } from './views/StrategiesView.js';
+import { BacktestView } from './views/BacktestView.js';
+import { TradingWorkspaceView } from './views/TradingWorkspaceView.js';
+import { StrategyLabView } from './views/StrategyLabView.js';
+import { EAsView } from './views/EAsView.js';
+import { AnalyticsView } from './views/AnalyticsView.js';
+import { CalendarView } from './views/CalendarView.js';
+import { NewsView } from './views/NewsView.js';
+import { CommunityView } from './views/CommunityView.js';
+import { LeaderboardView } from './views/LeaderboardView.js';
+import { AccountView } from './views/AccountView.js';
+import { LegalView } from './views/LegalView.js';
+import { AdminBoundaryView } from './views/AdminBoundaryView.js';
+import { SystemHealthView } from './views/SystemHealthView.js';
+import { AutomationControlCenterView } from './views/AutomationControlCenterView.js';
+import { EducationView } from './views/EducationView.js';
+import { P2PView } from './views/P2PView.js';
+import { MarketAnalysisView } from './views/MarketAnalysisView.js';
 import { Lock, ShieldAlert } from 'lucide-react';
-import { Button } from './components/ui/Button';
+import { Button } from './components/ui/Button.js';
 
 function AccessDeniedView() {
   const { dispatch } = useGlobalState();

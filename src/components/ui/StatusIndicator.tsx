@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { ConnectionStatus } from '../../types/market';
+import { ConnectionStatus } from '../../types/market.js';
 import { Wifi, WifiOff, AlertTriangle, RefreshCw } from 'lucide-react';
 
 export interface StatusIndicatorProps {

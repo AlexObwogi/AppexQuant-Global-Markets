@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { isReducedMotionPreferred } from '../../design/motion';
+import { isReducedMotionPreferred } from '../../design/motion.js';
 
 export const AmbientBackground: React.FC = () => {
   const [reducedMotion, setReducedMotion] = useState(false);

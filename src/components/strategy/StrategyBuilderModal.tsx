@@ -7,12 +7,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { UserStrategy, StrategyStatus, StrategyVersionSnapshot } from '../../types/ai';
-import { runBacktest } from '../../services/ai/backtestEngine';
-import { BacktestParams, BacktestResult } from '../../types/backtest';
-import { parseNaturalLanguageStrategy } from '../../services/ai/strategyEngine';
-import { AISuggestionResult } from '../../services/ai/aiStrategyBuilder';
-import { useApiFetch } from '../../utils/apiFetch';
+import { UserStrategy, StrategyStatus, StrategyVersionSnapshot } from '../../types/ai.js';
+import { runBacktest } from '../../services/ai/backtestEngine.js';
+import { BacktestParams, BacktestResult } from '../../types/backtest.js';
+import { parseNaturalLanguageStrategy } from '../../services/ai/strategyEngine.js';
+import { AISuggestionResult } from '../../services/ai/aiStrategyBuilder.js';
+import { useApiFetch } from '../../utils/apiFetch.js';
 import {
   Code2,
   Sparkles,

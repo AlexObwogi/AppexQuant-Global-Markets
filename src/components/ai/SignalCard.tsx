@@ -4,8 +4,8 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Signal } from '../../types/ai';
-import { AnimatedCounter } from '../common/AnimatedCounter';
+import { Signal } from '../../types/ai.js';
+import { AnimatedCounter } from '../common/AnimatedCounter.js';
 import {
   TrendingUp,
   TrendingDown,

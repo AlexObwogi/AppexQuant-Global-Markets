@@ -70,19 +70,24 @@ export function generateAISignal(
   };
 
   // 1. Data Freshness & Candle Fallback Check
+  const isExplicitlyEmptyOrStale = Array.isArray(candles) && (
+    candles.length === 0 ||
+    (candles.length > 0 && (Date.now() - (candles[candles.length - 1]?.timestamp || 0)) > 120 * 1000)
+  );
+
   let activeCandles = candles;
   if (!activeCandles || activeCandles.length < 5) {
     activeCandles = synthesizeCandlesForInstrument(instrument);
   }
 
   const lastCandle = activeCandles[activeCandles.length - 1];
-  const isDataStale = false; // Synthesized/live telemetry guarantees valid analysis
 
   const dataFreshness = {
     marketDataCapturedAt: lastCandle?.timestamp ? new Date(lastCandle.timestamp).toISOString() : generatedAt,
     newsDataCapturedAt: newsList[0]?.publishedAt || generatedAt,
     analysisGeneratedAt: generatedAt,
-    isStale: false,
+    isStale: isExplicitlyEmptyOrStale,
+    staleReason: isExplicitlyEmptyOrStale ? 'Market data is stale or missing' : undefined,
   };
 
   // 2. Market Structure & Patterns
@@ -121,14 +126,17 @@ export function generateAISignal(
     dxyAligned: dxyEval.isAligned,
     volatilitySuitability: structure.atr > 0,
     dataQualityScore: 95,
-    isDataStale: false,
+    isDataStale: isExplicitlyEmptyOrStale,
   });
 
   // 6. Determine Signal Status & Rejection
   let status: SignalStatus = 'ACTIVE';
   let rejectionReason: string | undefined = undefined;
 
-  if (direction === 'NEUTRAL' || structure.structure === 'RANGING' || confidenceResult.totalConfidence < 60) {
+  if (isExplicitlyEmptyOrStale) {
+    status = 'STALE';
+    rejectionReason = 'Signal flagged as STALE due to stale or missing market data.';
+  } else if (direction === 'NEUTRAL' || structure.structure === 'RANGING' || confidenceResult.totalConfidence < 60) {
     status = 'REJECTED';
     rejectionReason = 'No qualifying setup. Market conditions are ranging or confidence score (< 60%) is below threshold.';
   } else if (!riskResult.passed) {

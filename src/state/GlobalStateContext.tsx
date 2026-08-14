@@ -70,7 +70,7 @@ export interface GlobalState {
 const initialUser: UserProfile = {
   id: 'usr-default-001',
   email: 'trader@appexquant.global',
-  displayName: 'Alex Nyangaresi Obwogi',
+  displayName: 'Appex Quant Trader',
   role: 'USER',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
@@ -107,7 +107,7 @@ const initialAccount: TradingAccount = {
 };
 
 export const initialGlobalState: GlobalState = {
-  user: null,
+  user: initialUser,
   session: {
     sessionId: 'sess-init-101',
     userId: 'usr-default-001',

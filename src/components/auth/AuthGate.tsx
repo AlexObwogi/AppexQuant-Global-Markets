@@ -522,26 +522,61 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       return;
     }
 
-    // Case D: Resume from encrypted cookie or local storage
-    getEncryptedCookie('deriv_oauth_token').then((cookieToken) => {
-      const storedToken = cookieToken || localStorage.getItem('deriv_access_token');
-      const storedAccountId = localStorage.getItem('deriv_account_id');
-      if (storedToken && storedAccountId) {
-        derivAuthService.authorize(storedToken).then((ok) => {
-          if (ok) {
-            establishUserSession({
-              id: storedAccountId,
-              accountId: storedAccountId,
-              token: storedToken,
+    // Case D: Resume from active server session (HttpOnly cookie), encrypted cookie, or local storage
+    apiFetch('/api/auth/session')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.data?.authenticated && data.data.user) {
+          const user = data.data.user;
+          establishUserSession({
+            id: user.userId || user.derivAccountId,
+            accountId: user.derivAccountId || user.userId,
+            email: user.email,
+            displayName: user.displayName,
+            role: user.role,
+          });
+          return;
+        }
+
+        // Fallback: check encrypted cookie or local storage if server session is not yet active
+        getEncryptedCookie('deriv_oauth_token').then((cookieToken) => {
+          const storedToken = cookieToken || localStorage.getItem('deriv_access_token');
+          const storedAccountId = localStorage.getItem('deriv_account_id');
+          if (storedToken && storedAccountId) {
+            derivAuthService.authorize(storedToken).then((ok) => {
+              if (ok) {
+                establishUserSession({
+                  id: storedAccountId,
+                  accountId: storedAccountId,
+                  token: storedToken,
+                });
+              }
+            }).catch((err) => {
+              console.warn('[AuthGate] Resume token auth failed:', err);
             });
           }
         }).catch((err) => {
-          console.warn('[AuthGate] Resume token auth failed:', err);
+          console.warn('[AuthGate] Cookie retrieval warning:', err);
         });
-      }
-    }).catch((err) => {
-      console.warn('[AuthGate] Cookie retrieval warning:', err);
-    });
+      })
+      .catch(() => {
+        // Fallback to client-side cookie if session endpoint is unreachable
+        getEncryptedCookie('deriv_oauth_token').then((cookieToken) => {
+          const storedToken = cookieToken || localStorage.getItem('deriv_access_token');
+          const storedAccountId = localStorage.getItem('deriv_account_id');
+          if (storedToken && storedAccountId) {
+            derivAuthService.authorize(storedToken).then((ok) => {
+              if (ok) {
+                establishUserSession({
+                  id: storedAccountId,
+                  accountId: storedAccountId,
+                  token: storedToken,
+                });
+              }
+            });
+          }
+        });
+      });
   }, [apiFetch, establishUserSession, exchangeCodeForToken]);
 
   // Fetch top trader data for live display

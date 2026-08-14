@@ -7,16 +7,16 @@ export const designTokens = {
   colors: {
     dark: {
       background: {
-        primary: '#0B0E11',   // Binance Dark Main
-        secondary: '#181A20', // Binance Card/Surface
-        tertiary: '#2B3139',  // Binance Input/Hover
+        primary: '#0B0E14',   // Deep Space
+        secondary: '#181A20', // Surface Card
+        tertiary: '#2B3139',  // Input/Hover
         glass: 'rgba(24, 26, 32, 0.85)',
       },
       surface: {
-        primary: '#181A20',
-        secondary: '#2B3139',
+        primary: '#131822',
+        secondary: '#181A20',
         border: '#2B3139',
-        borderHover: '#FCD535',
+        borderHover: '#38BDF8',
       },
       text: {
         primary: '#EAECEF',
@@ -25,17 +25,17 @@ export const designTokens = {
         inverse: '#181A20',
       },
       accent: {
-        primary: '#FCD535',   // Binance Gold
-        primaryHover: '#F0B90B',
-        primaryMuted: 'rgba(252, 213, 53, 0.1)',
+        primary: '#38BDF8',   // Ice Blue
+        primaryHover: '#00E5FF',
+        primaryMuted: 'rgba(56, 189, 248, 0.1)',
       },
       status: {
-        success: '#0ECB81',  // Binance Green
-        successMuted: 'rgba(14, 203, 129, 0.1)',
-        danger: '#F6465D',   // Binance Red
-        dangerMuted: 'rgba(246, 70, 93, 0.1)',
-        warning: '#F0B90B',
-        warningMuted: 'rgba(240, 185, 11, 0.1)',
+        success: '#22C55E',  // Profit
+        successMuted: 'rgba(34, 197, 94, 0.1)',
+        danger: '#EF4444',   // Risk
+        dangerMuted: 'rgba(239, 68, 68, 0.1)',
+        warning: '#F59E0B',  // Warning
+        warningMuted: 'rgba(245, 158, 11, 0.1)',
         info: '#38BDF8',
       },
     },
@@ -50,7 +50,7 @@ export const designTokens = {
         primary: '#FFFFFF',
         secondary: '#F5F5F5',
         border: '#EAECEF',
-        borderHover: '#F0B90B',
+        borderHover: '#00E5FF',
       },
       text: {
         primary: '#1E2329',
@@ -59,17 +59,17 @@ export const designTokens = {
         inverse: '#FFFFFF',
       },
       accent: {
-        primary: '#F0B90B',   // Darker Gold for legibility on Light Mode
-        primaryHover: '#C99400',
-        primaryMuted: 'rgba(240, 185, 11, 0.1)',
+        primary: '#0284C7',
+        primaryHover: '#0369A1',
+        primaryMuted: 'rgba(2, 132, 199, 0.1)',
       },
       status: {
-        success: '#03A66D',
-        successMuted: 'rgba(3, 166, 109, 0.1)',
-        danger: '#CF304A',
-        dangerMuted: 'rgba(207, 48, 74, 0.1)',
-        warning: '#C99400',
-        warningMuted: 'rgba(201, 148, 0, 0.1)',
+        success: '#16A34A',
+        successMuted: 'rgba(22, 163, 74, 0.1)',
+        danger: '#DC2626',
+        dangerMuted: 'rgba(220, 38, 38, 0.1)',
+        warning: '#D97706',
+        warningMuted: 'rgba(217, 119, 6, 0.1)',
         info: '#0284C7',
       },
     },
@@ -77,26 +77,26 @@ export const designTokens = {
   spacing: {
     xs: '4px',
     sm: '8px',
-    md: '12px',
-    lg: '16px',
-    xl: '24px',
-    '2xl': '32px',
+    md: '16px',
+    lg: '24px',
+    xl: '32px',
+    '2xl': '48px',
   },
   radius: {
-    sm: '2px',   // Sharp Binance feel
-    md: '4px',   // Binance-style standard cards and inputs
-    lg: '8px',   // Container corners max
-    xl: '12px',
+    sm: '4px',
+    md: '8px',
+    lg: '16px',
+    xl: '20px',
     pill: '9999px',
   },
   shadows: {
     sm: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
     md: '0 3px 6px -1px rgba(0, 0, 0, 0.12), 0 1px 3px -1px rgba(0, 0, 0, 0.08)',
     lg: '0 10px 15px -3px rgba(0, 0, 0, 0.22), 0 4px 6px -2px rgba(0, 0, 0, 0.1)',
-    glow: '0 0 12px rgba(252, 213, 53, 0.12)',
+    glow: '0 0 12px rgba(56, 189, 248, 0.15)',
   },
   typography: {
-    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    fontFamily: 'Plus Jakarta Sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
     monoFamily: 'JetBrains Mono, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
   },
 };

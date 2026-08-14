@@ -1,0 +1,21 @@
+name: Bug Report
+description: Create a report to help us improve AppExQuant
+title: "[BUG]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear description of what the bug is.
+      placeholder: Describe the unexpected behavior...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to recreate the behavior.
+      placeholder: 1. Go to... 2. Click on...
+    validations:
+      required: true

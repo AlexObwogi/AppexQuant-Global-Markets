@@ -411,6 +411,28 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     [dispatch, state.theme]
   );
 
+  // Redirect to server-side Deriv OAuth PKCE login gateway
+  const handleDerivLogin = useCallback(
+    (action: 'connect' | 'signup' = 'connect') => {
+      setIsAuthorizing(true);
+      setErrorMessage(null);
+      setAuthStatusMessage(
+        action === 'signup'
+          ? 'Redirecting to official Deriv account registration...'
+          : 'Redirecting to secure Deriv OAuth 2.0 PKCE authentication gateway...'
+      );
+
+      const destination = encodeURIComponent(window.location.pathname || '/');
+      const loginEndpoint = `/api/auth/deriv/login?action=${action}&destination=${destination}`;
+
+      // Orchestrate browser redirect to server-side PKCE gateway
+      setTimeout(() => {
+        window.location.href = loginEndpoint;
+      }, 150);
+    },
+    []
+  );
+
   // 1. DEDICATED OAUTH REDIRECT CALLBACK & PKCE VERIFIER TOKEN EXCHANGE
   useEffect(() => {
     if (typeof window === 'undefined' || callbackHandledRef.current) return;
@@ -422,6 +444,18 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     const acct1 = urlParams.get('acct1');
     const cur1 = urlParams.get('cur1');
     const connection = urlParams.get('connection');
+    const authError = urlParams.get('auth_error') || urlParams.get('error') || urlParams.get('error_description');
+
+    // Case 0: Handle Auth Error returned in query params
+    if (authError) {
+      callbackHandledRef.current = true;
+      setErrorMessage(
+        urlParams.get('error_description') || 
+        'Deriv authorization was cancelled or encountered an error. Please try logging in again.'
+      );
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
 
     // Case A: Authorization Code returned -> async exchange with stored verifier
     if (code) {
@@ -1025,7 +1059,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
             {/* Primary Broker OAuth Buttons Synchronized with Progress Stages */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <button
-                onClick={() => initiateRedirect('connect')}
+                onClick={() => handleDerivLogin('connect')}
                 disabled={isBusy}
                 className={`w-full py-3 px-4 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer ${syncStyles.primaryBtn}`}
               >
@@ -1034,7 +1068,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
               </button>
 
               <button
-                onClick={() => initiateRedirect('signup')}
+                onClick={() => handleDerivLogin('signup')}
                 disabled={isBusy}
                 className={`w-full py-3 px-4 rounded-xl border font-bold text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer ${syncStyles.secondaryBtn}`}
               >

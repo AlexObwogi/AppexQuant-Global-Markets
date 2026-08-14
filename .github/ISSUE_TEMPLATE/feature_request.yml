@@ -1,0 +1,12 @@
+name: Feature Request
+description: Suggest an idea for AppExQuant Markets Global
+title: "[FEAT]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Feature Description
+      description: Describe the proposed feature or enhancement.
+    validations:
+      required: true

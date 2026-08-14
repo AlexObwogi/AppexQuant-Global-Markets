@@ -1,0 +1,19 @@
+name: Quantitative Strategy Proposal
+description: Propose a new quantitative trading strategy or SMC/ICT model.
+title: "[STRATEGY]: "
+labels: ["strategy", "quant"]
+body:
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Strategy Hypothesis
+      description: Explain the quantitative hypothesis, market structure principle, or edge.
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risk Management Parameters
+      description: Detail stop loss, maximum drawdown, and exposure limits.
+    validations:
+      required: true

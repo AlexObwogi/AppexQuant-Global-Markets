@@ -47,6 +47,7 @@ import {
   validateStrategyActivation,
   redactSensitiveValues,
   logSecurityEvent,
+  parseCookies,
   SessionPayload
 } from './src/services/security';
 
@@ -1027,47 +1028,75 @@ export async function createApp() {
     }
   });
 
-  // 3. Current Session Profile Endpoint
-  app.get('/api/auth/me', (req: Request, res: Response) => {
+  // 3. Current Session Profile & Session Status Endpoints
+  const sessionHandler = (req: Request, res: Response) => {
     if (!req.sessionUser) {
-      return res.status(401).json(createErrorResponse('Unauthenticated', 'UNAUTHORIZED'));
+      return res.json(createSuccessResponse({
+        authenticated: false,
+        user: null,
+      }));
     }
+    const derivAcct = (req.sessionUser as any).derivAccountId || req.sessionUser.userId;
     res.json(createSuccessResponse({
-      user: { userId: req.sessionUser.userId, email: req.sessionUser.email, role: req.sessionUser.role },
+      authenticated: true,
+      user: {
+        userId: req.sessionUser.userId,
+        email: req.sessionUser.email,
+        role: req.sessionUser.role,
+        derivAccountId: derivAcct,
+        displayName: `Deriv Trader (${derivAcct})`,
+        accountType: (req.sessionUser as any).accountType || (derivAcct.startsWith('VR') ? 'demo' : 'real'),
+        currency: (req.sessionUser as any).currency || 'USD',
+      },
       csrfToken: req.sessionUser.csrfToken,
       isElevated: req.sessionUser.isElevated,
       elevatedUntil: req.sessionUser.elevatedUntil,
       expiresAt: req.sessionUser.expiresAt,
     }));
-  });
+  };
+
+  app.get('/api/auth/session', sessionHandler);
+  app.get('/api/auth/me', sessionHandler);
 
   // 4. Secure Logout Endpoint
   app.post('/api/auth/logout', (req: Request, res: Response) => {
     if (req.sessionToken) {
       revokeSessionToken(req.sessionToken);
     }
-    res.setHeader('Set-Cookie', 'session_token=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0');
+    const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    const secureFlag = isHttps || process.env.NODE_ENV === 'production' ? '; Secure' : '';
+    res.setHeader('Set-Cookie', [
+      `session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`,
+      `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`,
+      `deriv_oauth_token=; Path=/; Max-Age=0${secureFlag}`,
+    ]);
     logSecurityEvent(req, 'USER_LOGOUT', 'INFO', { userId: req.sessionUser?.userId });
     res.json(createSuccessResponse({ message: 'Logged out successfully' }));
   });
 
   // --- DERIV OAUTH 2.0 PKCE API ENDPOINTS ---
-  // Initiate Deriv OAuth PKCE flow (Connect or Signup)
-  app.all(['/api/auth/deriv/login', '/api/deriv/oauth/init'], (req: Request, res: Response) => {
+  // Initiate Deriv OAuth PKCE flow (Connect or Register/Signup)
+  const derivAuthInitHandler = (req: Request, res: Response) => {
     try {
-      const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string) || 'usr-default-001';
-      const action = ((req.query.action || req.body?.action) as 'connect' | 'signup') || 'connect';
-      const destination = ((req.query.destination || req.body?.destination) as string) || '/dashboard';
+      const isRegisterRoute = req.path.includes('register') || req.path.includes('signup');
+      const action = isRegisterRoute ? 'signup' : (((req.query.action || req.body?.action) as 'connect' | 'signup') || 'connect');
+      const destination = ((req.query.destination || req.body?.destination) as string) || '/';
       const requestHost = req.headers.host || 'localhost:3000';
+      const requestProtocol = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
 
-      const { authUrl, state } = initiateDerivOAuth({
-        userId,
+      const { authUrl, state, cookieValue } = initiateDerivOAuth({
+        userId: req.sessionUser?.userId,
         action,
         destination,
         requestHost,
+        requestProtocol,
       });
 
-      logSecurityEvent(req, 'DERIV_OAUTH_INITIATED', 'INFO', { userId, action, state });
+      const isHttps = requestProtocol === 'https' || process.env.NODE_ENV === 'production';
+      const secureFlag = isHttps ? '; Secure' : '';
+      res.setHeader('Set-Cookie', `deriv_oauth_state=${cookieValue}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600${secureFlag}`);
+
+      logSecurityEvent(req, 'DERIV_OAUTH_INITIATED', 'INFO', { action, state });
 
       if (req.method === 'POST' || req.headers.accept?.includes('application/json') || req.query.json === 'true') {
         return res.json(createSuccessResponse({ authUrl, state }));
@@ -1076,34 +1105,103 @@ export async function createApp() {
       // Redirect user directly to Deriv OAuth 2.0 authorization server
       res.redirect(authUrl);
     } catch (err: any) {
-      res.status(500).json(createErrorResponse(err.message || 'Failed to initiate Deriv OAuth', 'DERIV_OAUTH_ERROR'));
+      logger.error('Failed to initiate Deriv OAuth:', { error: err.message });
+      res.status(500).json(createErrorResponse('Something went wrong. Please try again.', 'DERIV_OAUTH_ERROR'));
     }
-  });
+  };
 
-  // Deriv OAuth Callback endpoint (Backend token exchange)
+  app.all(['/api/auth/deriv/login', '/api/auth/deriv/signin', '/api/deriv/oauth/init'], derivAuthInitHandler);
+  app.all(['/api/auth/deriv/register', '/api/auth/deriv/signup'], derivAuthInitHandler);
+
+  // Deriv OAuth Callback endpoint (Server-side token exchange & session establishment)
   app.get('/api/auth/deriv/callback', async (req: Request, res: Response) => {
+    const isHttps = (req.headers['x-forwarded-proto'] as string) === 'https' || req.secure || process.env.NODE_ENV === 'production';
+    const secureFlag = isHttps ? '; Secure' : '';
+
     try {
       const code = req.query.code as string | undefined;
       const state = req.query.state as string | undefined;
       const error = req.query.error as string | undefined;
       const errorDescription = req.query.error_description as string | undefined;
+      const cookies = parseCookies(req.headers.cookie);
+      const cookieState = cookies['deriv_oauth_state'];
+      const requestHost = req.headers.host || 'localhost:3000';
+      const requestProtocol = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
 
       const result = await handleDerivOAuthCallback({
         code,
         state,
+        cookieState,
         error,
         errorDescription,
+        requestHost,
+        requestProtocol,
       });
 
-      logSecurityEvent(req, result.success ? 'DERIV_OAUTH_SUCCESS' : 'DERIV_OAUTH_FAILED', result.success ? 'INFO' : 'WARNING', {
-        errorMessage: result.errorMessage,
-      });
+      if (!result.success) {
+        logSecurityEvent(req, 'DERIV_OAUTH_FAILED', 'WARNING', { errorMessage: result.errorMessage });
+        res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`);
+        if (req.headers.accept?.includes('application/json')) {
+          return res.status(400).json(createErrorResponse(result.errorMessage || 'Unable to complete authentication. Please try again.', 'AUTH_FAILED'));
+        }
+        return res.redirect('/?auth_error=1');
+      }
 
-      // Secure redirect back to AppexQuant dashboard or saved destination
-      const safeDestination = result.destination.startsWith('/') ? result.destination : '/dashboard';
+      // Successful exchange: Create authenticated AppExQuant user session
+      const rawAcct = result.rawAccountDetails?.derivAccountId || result.userId || 'CR-TRADER';
+      const accountType = result.rawAccountDetails?.accountType || (rawAcct.startsWith('VR') ? 'demo' : 'real');
+      const currency = result.rawAccountDetails?.currency || 'USD';
+      const csrfToken = crypto.randomBytes(32).toString('hex');
+
+      const sessionPayload: SessionPayload = {
+        userId: rawAcct,
+        email: `${rawAcct.toLowerCase()}@deriv.trader`,
+        role: rawAcct.toLowerCase().includes('admin') ? UserRole.ADMIN : UserRole.USER,
+        isElevated: false,
+        elevatedUntil: null,
+        csrfToken,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 Days
+      };
+
+      (sessionPayload as any).derivAccountId = rawAcct;
+      (sessionPayload as any).accountType = accountType;
+      (sessionPayload as any).currency = currency;
+
+      const sessionToken = createSessionToken(sessionPayload);
+
+      // Set session cookie & clean temporary OAuth state cookie
+      res.setHeader('Set-Cookie', [
+        `session_token=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800${secureFlag}`,
+        `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`,
+      ]);
+
+      logSecurityEvent(req, 'DERIV_OAUTH_SUCCESS', 'INFO', { userId: rawAcct, accountType });
+
+      if (req.headers.accept?.includes('application/json')) {
+        return res.json(createSuccessResponse({
+          sessionToken,
+          user: {
+            userId: rawAcct,
+            derivAccountId: rawAcct,
+            accountType,
+            currency,
+            email: sessionPayload.email,
+            role: sessionPayload.role,
+          },
+          csrfToken,
+          destination: result.destination || '/',
+        }));
+      }
+
+      const safeDestination = result.destination.startsWith('/') ? result.destination : '/';
       res.redirect(safeDestination);
     } catch (err: any) {
-      res.redirect('/dashboard?connection=error');
+      logger.error('Deriv OAuth callback server error:', { error: err.message });
+      res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`);
+      if (req.headers.accept?.includes('application/json')) {
+        return res.status(500).json(createErrorResponse('Something went wrong. Please try again.', 'SERVER_ERROR'));
+      }
+      res.redirect('/?auth_error=1');
     }
   });
 

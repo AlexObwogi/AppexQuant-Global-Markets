@@ -2,15 +2,16 @@
  * AppexQuant Markets Global - User & Identity Types
  */
 
-export type UserRole = 
-  | 'USER'
-  | 'SUPPORT_AGENT'
-  | 'CONTENT_MANAGER'
-  | 'TRADING_OPERATOR'
-  | 'RISK_MANAGER'
-  | 'AI_OPERATOR'
-  | 'ADMIN'
-  | 'SUPER_ADMIN';
+export enum UserRole {
+  USER = 'USER',
+  SUPPORT_AGENT = 'SUPPORT_AGENT',
+  CONTENT_MANAGER = 'CONTENT_MANAGER',
+  TRADING_OPERATOR = 'TRADING_OPERATOR',
+  RISK_MANAGER = 'RISK_MANAGER',
+  AI_OPERATOR = 'AI_OPERATOR',
+  ADMIN = 'ADMIN',
+  SUPER_ADMIN = 'SUPER_ADMIN',
+}
 
 export enum UserPermission {
   VIEW_MARKETS = 'VIEW_MARKETS',

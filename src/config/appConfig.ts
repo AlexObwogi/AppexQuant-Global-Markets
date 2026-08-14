@@ -27,24 +27,10 @@ export interface AppConfig {
 }
 
 function getEnvVariable(key: string, fallback?: string): string {
-  // Check client import.meta.env or Node process.env safely
-  let value: string | undefined = undefined;
-
   if (typeof process !== 'undefined' && process.env && process.env[key]) {
-    value = process.env[key];
-  } else if (typeof import.meta !== 'undefined') {
-    const metaEnv = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
-    if (metaEnv) {
-      value = metaEnv[key] || metaEnv[`VITE_${key}`];
-    }
+    return process.env[key]!;
   }
-
-  if (value === undefined || value === '') {
-    if (fallback !== undefined) {
-      return fallback;
-    }
-  }
-  return value || fallback || '';
+  return fallback || '';
 }
 
 export function loadAppConfig(): AppConfig {

@@ -165,7 +165,7 @@ export function orderRateLimiterMiddleware(req: Request, res: Response, next: Ne
 }
 
 // Cookie parser utility (Manual implementation to guarantee no external dependency issues)
-function parseCookies(cookieHeader?: string): Record<string, string> {
+export function parseCookies(cookieHeader?: string): Record<string, string> {
   const cookies: Record<string, string> = {};
   if (!cookieHeader) return cookies;
   cookieHeader.split(';').forEach(c => {
@@ -180,7 +180,8 @@ function parseCookies(cookieHeader?: string): Record<string, string> {
 // Session Authenticator Middleware
 export function sessionMiddleware(req: Request, res: Response, next: NextFunction): void {
   const cookies = parseCookies(req.headers.cookie);
-  const token = cookies['session_token'];
+  const authHeader = req.headers.authorization;
+  const token = cookies['session_token'] || (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined);
 
   if (token) {
     const session = verifySessionToken(token);
@@ -192,45 +193,39 @@ export function sessionMiddleware(req: Request, res: Response, next: NextFunctio
     }
   }
 
-  // Fallback / Initialize an unauthenticated USER session
-  const defaultCsrf = crypto.randomBytes(32).toString('hex');
-  const defaultPayload: SessionPayload = {
-    userId: 'usr-default-001',
-    email: 'trader@appexquant.global',
-    role: 'USER',
-    isElevated: false,
-    elevatedUntil: null,
-    csrfToken: defaultCsrf,
-    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 Hour
-  };
-  const defaultToken = createSessionToken(defaultPayload);
-  
-  // Set Cookie & Headers for CSRF propagation
-  res.setHeader('Set-Cookie', `session_token=${defaultToken}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=3600`);
-  res.setHeader('X-CSRF-Token', defaultPayload.csrfToken);
-  req.sessionUser = defaultPayload;
-  req.sessionToken = defaultToken;
+  // Unauthenticated guest: Do NOT generate a fake session cookie
+  req.sessionUser = undefined;
+  req.sessionToken = undefined;
   next();
 }
 
 // CSRF Defense Middleware
 export function csrfMiddleware(req: Request, res: Response, next: NextFunction): void {
-  // Skip read-only requests
-  // Allow unauthenticated routes to bypass CSRF
-  const bypassPaths = ['/api/auth/login', '/api/auth/register'];
-  if (bypassPaths.includes(req.path)) {
-    return next();
-  }
-
+  // Read-only requests are safe
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     return next();
   }
 
-  const expectedCsrf = req.sessionUser?.csrfToken;
+  // Allow unauthenticated and auth entry routes to bypass CSRF
+  const isAuthOrPublicPath = 
+    req.path.startsWith('/api/auth/') || 
+    req.path.startsWith('/api/deriv/') ||
+    req.path === '/api/health';
+
+  if (isAuthOrPublicPath) {
+    return next();
+  }
+
+  // If user is not logged in, pass through
+  if (!req.sessionUser) {
+    return next();
+  }
+
+  const expectedCsrf = req.sessionUser.csrfToken;
   const actualCsrf = (req.headers['x-csrf-token'] || req.body?.csrfToken) as string;
 
   if (!expectedCsrf || expectedCsrf !== actualCsrf) {
-    logSecurityEvent(req, 'CSRF_VALIDATION_FAILED', 'CRITICAL', {
+    logSecurityEvent(req, 'CSRF_VALIDATION_FAILED', 'WARNING', {
       expected: expectedCsrf ? 'PRESENT' : 'MISSING',
       actual: actualCsrf ? 'PRESENT' : 'MISSING',
     });

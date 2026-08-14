@@ -16,6 +16,7 @@
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@prisma/client": "^7.9.1",
+    "@supabase/supabase-js": "^2.112.3",
     "@tailwindcss/vite": "^4.1.14",
     "@vercel/node": "^5.9.9",
     "@vitejs/plugin-react": "^5.0.4",

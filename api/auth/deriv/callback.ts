@@ -5,7 +5,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'crypto';
-import { handleDerivOAuthCallback } from '../../../src/services/deriv/oauthServerService';
+import { handleDerivOAuthCallback } from '../../../src/services/deriv/oauthServerService.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const isHttps =

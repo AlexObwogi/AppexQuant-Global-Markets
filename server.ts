@@ -7,7 +7,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
-import { loadAppConfig } from './src/config/appConfig';
+import { loadAppConfig } from './src/config/appConfig.js';
 import { createSuccessResponse, createErrorResponse } from './src/types/api';
 import { getAuditLogs, logAuditEvent } from './src/observability/audit';
 import { logger } from './src/observability/logger';

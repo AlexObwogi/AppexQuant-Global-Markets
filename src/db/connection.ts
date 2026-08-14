@@ -35,6 +35,9 @@ export function getDatabasePool(): pkg.Pool {
 }
 
 export async function testDatabaseConnection(): Promise<{ success: boolean; latencyMs?: number; error?: string }> {
+  if (!process.env.DATABASE_URL) {
+    return { success: false, error: 'DATABASE_URL environment variable is not defined. Operating in memory-fallback mode.' };
+  }
   const dbPool = getDatabasePool();
   const start = Date.now();
   try {

@@ -26,6 +26,7 @@ import {
   DollarSign,
   Brain,
   FlaskConical,
+  Trophy,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -52,6 +53,7 @@ export const navItems: NavItem[] = [
   { id: 'signals', label: 'Signals & Alerts', icon: <Zap className="w-4 h-4 text-accent-primary" />, group: 'resources' },
 
   // Group 3: Community & Account Settings
+  { id: 'leaderboard', label: 'Leaderboard & Hall of Fame', icon: <Trophy className="w-4 h-4 text-amber-400" />, group: 'system', badge: 'Live' },
   { id: 'p2p', label: 'P2P Marketplace', icon: <DollarSign className="w-4 h-4 text-color-success" />, group: 'system', badge: 'Escrow' },
   { id: 'community', label: 'Trader Community & Directory', icon: <Users className="w-4 h-4 text-color-info" />, group: 'system' },
   { id: 'account', label: 'Profile & OAuth Broker Connection', icon: <User className="w-4 h-4" />, group: 'system' },

@@ -9,6 +9,7 @@ import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { BottomNav } from './BottomNav';
 import { MoreDrawer } from './MoreDrawer';
+import { ProductionFooter } from './ProductionFooter';
 import { OfflineBanner } from '../common/OfflineBanner';
 import { SystemFailSafeBanner } from '../common/SystemFailSafeBanner';
 import { PWAInstallPrompt } from '../common/PWAInstallPrompt';
@@ -65,25 +66,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         </main>
       </div>
 
-      {/* Bottom Status Bar */}
-      <footer className="hidden md:flex h-8 bg-bg-nav border-t border-border-color px-4 lg:px-8 items-center justify-between text-[10px] text-text-secondary tracking-widest shrink-0 sticky bottom-0 z-20 w-full">
-        <div className="flex space-x-4 lg:space-x-8">
-          <div className="flex items-center space-x-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-color-success" />
-            <span className="uppercase text-[9px] sm:text-[10px] hidden lg:inline">PWA Service Worker: ACTIVE</span>
-            <span className="uppercase text-[9px] lg:hidden">PWA: ACTIVE</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-color-success" />
-            <span className="uppercase text-[9px] sm:text-[10px] hidden lg:inline">Environment: PRODUCTION-READY</span>
-            <span className="uppercase text-[9px] lg:hidden">ENV: PROD</span>
-          </div>
-        </div>
-        <div className="flex space-x-4 lg:space-x-6 font-mono text-[9px] sm:text-[10px]">
-          <span>UTC: {utcTime}</span>
-          <span className="text-text-muted">SESS-ID: APX-9941-XJ</span>
-        </div>
-      </footer>
+      {/* Dynamic Production Copyright Footer */}
+      <ProductionFooter />
 
       {/* Toast Notifications Overlay */}
       {state.notifications.length > 0 && (

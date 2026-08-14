@@ -110,3 +110,6 @@ export function isSessionElevated(isElevated: boolean, elevatedUntil: string | n
   const now = Date.now();
   return expiry > now;
 }
+
+export * from './auth/pkce';
+export * from './auth/useDerivAuth';

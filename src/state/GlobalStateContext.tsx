@@ -25,6 +25,7 @@ export type AppViewRoute =
   | 'calendar'
   | 'news'
   | 'community'
+  | 'leaderboard'
   | 'account'
   | 'legal'
   | 'admin'

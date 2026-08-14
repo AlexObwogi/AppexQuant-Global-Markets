@@ -18,8 +18,8 @@ export async function ensureCsrfToken(): Promise<string | null> {
     if (tokenHeader) {
       setGlobalCsrfToken(tokenHeader);
       return tokenHeader;
-    } else {
-      const authJson = await authMeRes.json();
+    } else if (authMeRes.ok) {
+      const authJson = await authMeRes.json().catch(() => null);
       if (authJson && authJson.data && authJson.data.csrfToken) {
         setGlobalCsrfToken(authJson.data.csrfToken);
         return authJson.data.csrfToken;
@@ -85,7 +85,20 @@ export async function apiFetch(
       newInit.headers = customHeaders;
     }
 
-    const res = await fetch(input, newInit);
+    let res: Response;
+    try {
+      res = await fetch(input, newInit);
+    } catch (networkErr: any) {
+      const errorResponseBody = JSON.stringify({
+        success: false,
+        error: `Network request to ${urlString} unavailable (${networkErr?.message || 'Failed to fetch'}).`,
+        code: 'NETWORK_FETCH_FAILED',
+      });
+      return new Response(errorResponseBody, {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
     // 1. Capture CSRF token from response headers if present
     const headerCsrf = res.headers.get('x-csrf-token');
@@ -125,7 +138,19 @@ export async function apiFetch(
     return res;
   }
 
-  return fetch(input, init);
+  try {
+    return await fetch(input, init);
+  } catch (networkErr: any) {
+    const errorResponseBody = JSON.stringify({
+      success: false,
+      error: `Network request failed (${networkErr?.message || 'Failed to fetch'}).`,
+      code: 'NETWORK_FETCH_FAILED',
+    });
+    return new Response(errorResponseBody, {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 }
 
 /**

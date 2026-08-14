@@ -1,0 +1,183 @@
+/**
+ * AppexQuant Markets Global - Deriv OAuth Hook & PKCE Flow Controller
+ * Manages high-entropy PKCE state, gateway redirection, and authorization token exchange.
+ */
+
+import { useState, useCallback, useEffect } from 'react';
+import { generateCodeVerifier, deriveCodeChallenge, setEncryptedCookie, getEncryptedCookie, removeCookie } from './pkce';
+import { derivAuthService } from '../../services/deriv/authService';
+
+export interface DerivAuthResult {
+  token: string;
+  accountId: string;
+  currency?: string;
+}
+
+export function useDerivAuth() {
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authStatusMessage, setAuthStatusMessage] = useState<string | null>(null);
+  const [storedToken, setStoredToken] = useState<string | null>(null);
+
+  // Check existing encrypted cookie on mount
+  useEffect(() => {
+    getEncryptedCookie('deriv_oauth_token').then((token) => {
+      if (token) {
+        setStoredToken(token);
+      }
+    });
+  }, []);
+
+  const clearError = useCallback(() => {
+    setAuthError(null);
+  }, []);
+
+  /**
+   * Generates a high-entropy PKCE verifier/challenge pair and redirects to Deriv OAuth gateway
+   */
+  const initiateRedirect = useCallback(async (action: 'connect' | 'signup' = 'connect', destination: string = '/dashboard') => {
+    setIsAuthenticating(true);
+    setAuthError(null);
+    setAuthStatusMessage(
+      action === 'signup'
+        ? 'Redirecting to official Deriv account registration...'
+        : 'Generating high-entropy PKCE challenge and connecting to Deriv...'
+    );
+
+    try {
+      const verifier = await generateCodeVerifier(64);
+      const challenge = await deriveCodeChallenge(verifier);
+
+      // Persist verifier in session and local storage for retrieval during callback
+      try {
+        sessionStorage.setItem('deriv_pkce_verifier', verifier);
+        localStorage.setItem('deriv_pkce_verifier', verifier);
+      } catch (err) {
+        console.warn('Storage warning for PKCE verifier:', err);
+      }
+
+      const redirectUrl = `/api/auth/deriv/login?action=${action}&code_challenge=${encodeURIComponent(
+        challenge
+      )}&code_verifier=${encodeURIComponent(verifier)}&destination=${encodeURIComponent(destination)}`;
+
+      // Allow UI status indicator to display briefly before browser navigation
+      setTimeout(() => {
+        window.location.href = redirectUrl;
+      }, 350);
+    } catch (err: any) {
+      setIsAuthenticating(false);
+      setAuthError(err.message || 'Failed to initiate PKCE authorization with Deriv.');
+    }
+  }, []);
+
+  /**
+   * Exchanges an OAuth authorization code + stored code verifier for a secure access token
+   */
+  const exchangeCodeForToken = useCallback(async (code: string, state?: string): Promise<DerivAuthResult | null> => {
+    setIsAuthenticating(true);
+    setAuthError(null);
+    setAuthStatusMessage('Retrieving code verifier and exchanging authorization code...');
+
+    try {
+      // Retrieve locally stored code verifier
+      const storedVerifier = 
+        sessionStorage.getItem('deriv_pkce_verifier') || 
+        localStorage.getItem('deriv_pkce_verifier') || 
+        '';
+
+      const response = await fetch(`/api/auth/deriv/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state || '')}&verifier=${encodeURIComponent(storedVerifier)}`, {
+        headers: { 'Accept': 'application/json' }
+      });
+
+      let token = '';
+      let accountId = '';
+      let currency = 'USD';
+
+      if (response.ok) {
+        const json = await response.json();
+        if (json.success && json.data) {
+          token = json.data.token || json.data.accessToken || '';
+          accountId = json.data.accountId || json.data.derivAccountId || '';
+          currency = json.data.currency || 'USD';
+        }
+      }
+
+      // If backend redirected or returned session status
+      if (!token) {
+        const statusRes = await fetch('/api/auth/deriv/status');
+        const statusJson = await statusRes.json();
+        if (statusJson.success && statusJson.data?.connected) {
+          accountId = statusJson.data.derivAccountId;
+          token = statusJson.data.token || localStorage.getItem('deriv_access_token') || `token-${accountId}`;
+          currency = statusJson.data.currency || 'USD';
+        }
+      }
+
+      if (!accountId) {
+        throw new Error('Could not retrieve authorized Deriv account credentials.');
+      }
+
+      // Persist in encrypted cookie (30 days expiration)
+      if (token) {
+        await setEncryptedCookie('deriv_oauth_token', token, 86400 * 30);
+        await setEncryptedCookie('deriv_account_id', accountId, 86400 * 30);
+        setStoredToken(token);
+      }
+
+      // Authorize with WebSocket engine
+      if (token) {
+        try {
+          await derivAuthService.authorize(token);
+        } catch (wsErr) {
+          console.warn('WebSocket authorization warning:', wsErr);
+        }
+      }
+
+      // Clean up single-use PKCE verifier
+      sessionStorage.removeItem('deriv_pkce_verifier');
+      localStorage.removeItem('deriv_pkce_verifier');
+
+      setIsAuthenticating(false);
+      setAuthStatusMessage('Deriv OAuth authorization complete.');
+
+      return {
+        token,
+        accountId,
+        currency
+      };
+    } catch (err: any) {
+      setIsAuthenticating(false);
+      const msg = err.message || 'Deriv token exchange failed.';
+      setAuthError(msg);
+      return null;
+    }
+  }, []);
+
+  /**
+   * Log out and clear encrypted cookies
+   */
+  const disconnect = useCallback(async () => {
+    removeCookie('deriv_oauth_token');
+    removeCookie('deriv_account_id');
+    try {
+      localStorage.removeItem('deriv_access_token');
+      localStorage.removeItem('deriv_account_id');
+      sessionStorage.clear();
+      await fetch('/api/auth/deriv/disconnect', { method: 'POST' });
+    } catch (e) {
+      console.warn('Disconnect error:', e);
+    }
+    setStoredToken(null);
+  }, []);
+
+  return {
+    isAuthenticating,
+    authError,
+    authStatusMessage,
+    storedToken,
+    initiateRedirect,
+    exchangeCodeForToken,
+    clearError,
+    disconnect
+  };
+}

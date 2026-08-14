@@ -360,20 +360,20 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
             <div className="p-3 rounded-xl bg-bg-main border border-border-color space-y-1.5">
               <div className="flex items-center gap-2 text-text-primary text-xs font-bold">
                 <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
-                <span>Sign in to Deriv</span>
+                <span>Broker Authentication</span>
               </div>
               <p className="text-xs text-text-secondary leading-relaxed">
-                Access your real or demo trading account securely with official Deriv authentication.
+                Access your real or demo trading account securely with official Deriv OAuth 2.0 PKCE authentication.
               </p>
             </div>
 
             <div className="space-y-2.5">
-              {/* PRIMARY LOGIN WITH DERIV */}
+              {/* PRIMARY LOGIN */}
               <button
                 onClick={() => handleInitiateOAuth('connect')}
                 className="w-full bg-accent-primary hover:opacity-95 text-bg-main py-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shadow-lg flex items-center justify-center gap-2"
               >
-                <span>Login to Deriv</span>
+                <span>LOGIN</span>
                 <ExternalLink className="w-4 h-4" />
               </button>
 

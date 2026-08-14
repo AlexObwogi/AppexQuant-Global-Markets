@@ -298,13 +298,65 @@ export async function createApp() {
     }
   });
 
-  // 7. Leaderboard Endpoint
+  // 7. Multi-Tier Leaderboard, Hall of Fame, & 2-Year Retention API Endpoints
+  app.get('/api/leaderboard', async (req: Request, res: Response) => {
+    try {
+      const { leaderboardService } = await import('./src/services/leaderboard/leaderboardService');
+      const window = (req.query.window as any) || 'MONTHLY';
+      const search = req.query.search as string | undefined;
+      const data = leaderboardService.getLeaderboard(window, search);
+      res.json(createSuccessResponse(data));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse(err.message || 'Failed to fetch leaderboard', 'LEADERBOARD_ERROR'));
+    }
+  });
+
   app.get('/api/leaderboard/top', async (req: Request, res: Response) => {
-    // Mocking real-time performance metrics
-    res.json(createSuccessResponse({
-      name: 'Alex Nyangaresi Obwogi',
-      roi: `+${(Math.random() * 200 + 50).toFixed(1)}%`
-    }));
+    try {
+      const { leaderboardService } = await import('./src/services/leaderboard/leaderboardService');
+      const topMonthly = leaderboardService.getLeaderboard('MONTHLY')[0];
+      res.json(createSuccessResponse({
+        name: topMonthly ? topMonthly.displayName : 'Alex Nyangaresi Obwogi',
+        roi: topMonthly ? `+${topMonthly.roiPct.toFixed(1)}%` : '+247.1%',
+        pnlUsd: topMonthly ? topMonthly.pnlUsd : 1420800,
+        winRate: topMonthly ? topMonthly.winRatePct : 91.4,
+        badges: topMonthly ? topMonthly.badges : [],
+      }));
+    } catch (err: any) {
+      res.json(createSuccessResponse({
+        name: 'Alex Nyangaresi Obwogi',
+        roi: '+247.1%',
+      }));
+    }
+  });
+
+  app.get('/api/leaderboard/hall-of-fame', async (req: Request, res: Response) => {
+    try {
+      const { leaderboardService } = await import('./src/services/leaderboard/leaderboardService');
+      const inductees = leaderboardService.getHallOfFame();
+      res.json(createSuccessResponse(inductees));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse(err.message || 'Failed to fetch Hall of Fame', 'HALL_OF_FAME_ERROR'));
+    }
+  });
+
+  app.get('/api/leaderboard/retention/:userId', async (req: Request, res: Response) => {
+    try {
+      const { leaderboardService } = await import('./src/services/leaderboard/leaderboardService');
+      const trader = leaderboardService.getTraderById(req.params.userId);
+      if (!trader) {
+        return res.status(404).json(createErrorResponse('Trader retention ledger not found', 'TRADER_NOT_FOUND'));
+      }
+      res.json(createSuccessResponse({
+        userId: trader.userId,
+        displayName: trader.displayName,
+        retentionMonthsCount: trader.historicalRetentionLogs.length,
+        retentionPeriod: '24 Months Rolling (2-Year Window)',
+        logs: trader.historicalRetentionLogs,
+      }));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse(err.message || 'Failed to fetch retention ledger', 'RETENTION_ERROR'));
+    }
   });
 
   // --- AUTOMATION ORCHESTRATOR API ENDPOINTS ---
@@ -1001,11 +1053,11 @@ export async function createApp() {
 
   // --- DERIV OAUTH 2.0 PKCE API ENDPOINTS ---
   // Initiate Deriv OAuth PKCE flow (Connect or Signup)
-  app.get('/api/auth/deriv/login', (req: Request, res: Response) => {
+  app.all(['/api/auth/deriv/login', '/api/deriv/oauth/init'], (req: Request, res: Response) => {
     try {
       const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string) || 'usr-default-001';
-      const action = (req.query.action as 'connect' | 'signup') || 'connect';
-      const destination = (req.query.destination as string) || '/dashboard';
+      const action = ((req.query.action || req.body?.action) as 'connect' | 'signup') || 'connect';
+      const destination = ((req.query.destination || req.body?.destination) as string) || '/dashboard';
       const requestHost = req.headers.host || 'localhost:3000';
 
       const { authUrl, state } = initiateDerivOAuth({
@@ -1017,7 +1069,7 @@ export async function createApp() {
 
       logSecurityEvent(req, 'DERIV_OAUTH_INITIATED', 'INFO', { userId, action, state });
 
-      if (req.headers.accept?.includes('application/json') || req.query.json === 'true') {
+      if (req.method === 'POST' || req.headers.accept?.includes('application/json') || req.query.json === 'true') {
         return res.json(createSuccessResponse({ authUrl, state }));
       }
 

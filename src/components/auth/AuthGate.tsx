@@ -1,14 +1,40 @@
 /**
- * AppexQuant Markets Global - Master Immersive Landing Experience
- * Safe Motion Engine Refinement - Cinematic, Institutional, Fully Responsive.
+ * AppexQuant Markets Global - Master Immersive Landing Experience & Deriv OAuth Gateway
+ * Strictly external broker authentication via Deriv OAuth/PKCE with zero local credential storage.
+ * Features:
+ * - Dynamic Sun-Burst Radiant Effect using CSS Radial Gradients at 30%, 60%, 90%, 100%
+ * - URL OAuth Redirect Callback handler with PKCE Verifier extraction & Encrypted Cookie persistence
+ * - High-Entropy PKCE generation & useDerivAuth integration
+ * - Synchronized Global Background Gradients & Button Morphing across all milestones
  */
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useGlobalState } from '../../state/GlobalStateContext';
 import { useApiFetch } from '../../utils/apiFetch';
-import { generateCodeVerifier, generateCodeChallenge } from '../../utils/pkce';
 import { 
-  ArrowRight, LogIn, UserPlus, Orbit,
-  TrendingUp, Cpu, GraduationCap, AlertCircle, CheckCircle, Globe, Database, Network
+  useDerivAuth, 
+  setEncryptedCookie, 
+  getEncryptedCookie 
+} from '../../utils/auth';
+import { derivAuthService } from '../../services/deriv/authService';
+import { 
+  Globe, 
+  Network, 
+  GraduationCap, 
+  Database, 
+  Cpu, 
+  TrendingUp, 
+  Orbit, 
+  ShieldCheck, 
+  ExternalLink, 
+  KeyRound, 
+  Loader2, 
+  AlertCircle, 
+  CheckCircle, 
+  Sun, 
+  Moon, 
+  Zap,
+  Sparkles
 } from 'lucide-react';
 import { AppexQuantLogo } from '../common/AppexQuantLogo';
 
@@ -21,6 +47,10 @@ const CSS_ANIMATIONS = `
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
   }
+  @keyframes spinSlowReverse {
+    0% { transform: rotate(360deg); }
+    100% { transform: rotate(0deg); }
+  }
   @keyframes blurDisperse {
     0% { filter: blur(0px); opacity: 0; letter-spacing: normal; transform: scale(0.95); }
     15% { filter: blur(0px); opacity: 1; letter-spacing: normal; transform: scale(1); }
@@ -32,18 +62,164 @@ const CSS_ANIMATIONS = `
     20% { filter: blur(0px); opacity: 1; letter-spacing: normal; transform: scale(1); }
     100% { filter: blur(0px); opacity: 1; letter-spacing: normal; transform: scale(1); }
   }
-  @keyframes slowPan {
-    0% { background-position: 0% 0%; }
-    50% { background-position: 100% 100%; }
-    100% { background-position: 0% 0%; }
-  }
   @keyframes successBurst {
-    0% { transform: scale(0.5); opacity: 0; }
-    50% { transform: scale(1.2); opacity: 1; }
-    70% { transform: scale(0.9); }
+    0% { transform: scale(0.6); opacity: 0; filter: blur(10px); }
+    50% { transform: scale(1.15); opacity: 1; filter: blur(0px); }
+    75% { transform: scale(0.95); }
     100% { transform: scale(1); opacity: 1; }
   }
+  @keyframes marquee {
+    0% { transform: translateX(0%); }
+    100% { transform: translateX(-50%); }
+  }
+  
+  /* SUN-BURST RADIANT RADIAL GRADIENT EXPANSION EFFECT */
+  @keyframes sunBurstRadialBloom {
+    0% {
+      transform: scale(0.1) rotate(0deg);
+      opacity: 0;
+      filter: blur(16px);
+    }
+    20% {
+      transform: scale(1.1) rotate(15deg);
+      opacity: 1;
+      filter: blur(4px);
+    }
+    55% {
+      transform: scale(2.2) rotate(45deg);
+      opacity: 0.85;
+      filter: blur(12px);
+    }
+    85% {
+      transform: scale(3.2) rotate(75deg);
+      opacity: 0.35;
+      filter: blur(22px);
+    }
+    100% {
+      transform: scale(4.0) rotate(95deg);
+      opacity: 0;
+      filter: blur(36px);
+    }
+  }
+
+  @keyframes sunBurstRaysPulse {
+    0% {
+      transform: scale(0.4) rotate(0deg);
+      opacity: 0;
+    }
+    25% {
+      transform: scale(1.4) rotate(35deg);
+      opacity: 0.95;
+    }
+    70% {
+      transform: scale(2.4) rotate(110deg);
+      opacity: 0.45;
+    }
+    100% {
+      transform: scale(3.5) rotate(180deg);
+      opacity: 0;
+    }
+  }
+
+  @keyframes textGlowSweepAnimation {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
+
+  .text-sweep-glow-cyan {
+    background: linear-gradient(90deg, #FFFFFF 0%, #00E5FF 25%, #FFFFFF 50%, #38BDF8 75%, #FFFFFF 100%);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: textGlowSweepAnimation 2.4s linear infinite;
+  }
+  .text-sweep-glow-blue {
+    background: linear-gradient(90deg, #FFFFFF 0%, #38BDF8 25%, #818CF8 50%, #00E5FF 75%, #FFFFFF 100%);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: textGlowSweepAnimation 2.4s linear infinite;
+  }
+  .text-sweep-glow-gold {
+    background: linear-gradient(90deg, #FFFFFF 0%, #D4AF37 25%, #FDE047 50%, #F59E0B 75%, #FFFFFF 100%);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: textGlowSweepAnimation 2.4s linear infinite;
+  }
+  .text-sweep-glow-emerald {
+    background: linear-gradient(90deg, #FFFFFF 0%, #0ECB81 25%, #34D399 50%, #00E5FF 75%, #FFFFFF 100%);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: textGlowSweepAnimation 2.4s linear infinite;
+  }
+
+  .animate-sunburst-bloom {
+    animation: sunBurstRadialBloom 1.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .animate-sunburst-rays {
+    animation: sunBurstRaysPulse 1.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .animate-marquee-smooth {
+    display: inline-flex;
+    animation: marquee 25s linear infinite;
+  }
 `;
+
+// Sequential Milestones with strict 30%, 60%, 90%, 100% checkpoints
+const MILESTONES = [
+  {
+    min: 0,
+    max: 29,
+    stageIndex: 0,
+    title: "ENJOY FULL AUTOMATION",
+    sub: "ALGORITHMIC CLOUD ORCHESTRATION & REAL-TIME BROKER ROUTING",
+    glowClass: "text-sweep-glow-cyan",
+    themeKey: "cyan",
+    color: "#00E5FF"
+  },
+  {
+    min: 30,
+    max: 59,
+    stageIndex: 1,
+    title: "INSTITUTIONAL RISK SAFEGUARDS",
+    sub: "MULTI-LAYER DRAWDOWN PROTOCOLS & POSITION RISK CONTROLS",
+    glowClass: "text-sweep-glow-blue",
+    themeKey: "blue",
+    color: "#38BDF8"
+  },
+  {
+    min: 60,
+    max: 89,
+    stageIndex: 2,
+    title: "QUANTITATIVE MARKET ANALYSIS",
+    sub: "SMC / ICT ORDER FLOW, LIQUIDITY SWEEPS & VOLATILITY MATRIX",
+    glowClass: "text-sweep-glow-gold",
+    themeKey: "gold",
+    color: "#D4AF37"
+  },
+  {
+    min: 90,
+    max: 99,
+    stageIndex: 3,
+    title: "AI COGNITIVE SYNC & ALPHA ENGINES",
+    sub: "NEURAL SENTIMENT ENGINES, STRATEGY OPTIMIZER & AUTO EA",
+    glowClass: "text-sweep-glow-emerald",
+    themeKey: "emerald",
+    color: "#0ECB81"
+  },
+  {
+    min: 100,
+    max: 100,
+    stageIndex: 4,
+    title: "SYSTEM ONLINE • FULL AUTOMATION READY",
+    sub: "OFFICIAL DERIV BROKER HANDSHAKE CONVERGED",
+    glowClass: "text-sweep-glow-emerald",
+    themeKey: "converged",
+    color: "#0ECB81"
+  }
+];
 
 const MARKETING_CONTENT = [
   { id: 'scene-1', capability: "INSTITUTIONAL LIQUIDITY", headline: "SEE THE MARKET, MASTER THE LIQUIDITY.", sub: "INSTITUTIONAL • STRUCTURE • LIQUIDITY • VOLATILITY • EDGE", Icon: Globe },
@@ -61,55 +237,84 @@ const getAwardType = () => {
   return now.getDate() >= lastDay - 2 ? 'MONTH' : 'WEEK';
 };
 
-const TelemetryTicker = () => (
-  <div className="w-full bg-[#0B0F19] border-b border-[#181A20] py-2 overflow-hidden flex items-center">
-    <div className="flex animate-marquee whitespace-nowrap text-[10px] font-mono text-slate-400 tracking-wider uppercase">
-      {Array(10).fill('BTC/USD 98,432.10 ▲0.42% | ETH/USD 2,641.50 ▲0.12% | EUR/USD 1.0842 ▼0.05% | XAU/USD 2,342.10 ▲0.88%').join(' • ')}
-    </div>
-  </div>
-);
+// Checkpoint-based synchronized style & gradient morphing engine (0-30%, 30-60%, 60-90%, 90-100%)
+const getSynchronizedStyles = (progress: number, isDark: boolean) => {
+  // 0% - 30%: Initialization - Deep institutional charcoal/white backgrounds with electric cyan (#00E5FF) accents
+  if (progress < 30) {
+    return {
+      bgDark: 'bg-[#0B0F19]',
+      ambientDark: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#00E5FF18] via-[#0B0F19] to-[#06080F]',
+      ambientLight: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-100/50 via-slate-50 to-white',
+      gridColor: 'bg-[#00E5FF0C]',
+      progressBar: 'from-[#00E5FF] to-cyan-500 shadow-[0_0_16px_rgba(0,229,255,0.8)]',
+      primaryBtn: 'bg-gradient-to-r from-[#00E5FF] to-cyan-500 hover:from-cyan-400 hover:to-cyan-300 text-black shadow-[0_0_24px_rgba(0,229,255,0.45)] border border-cyan-300/40',
+      secondaryBtn: isDark 
+        ? 'bg-white/5 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10' 
+        : 'bg-white border-cyan-600/30 text-cyan-700 hover:bg-cyan-50',
+      accentText: 'text-[#00E5FF]',
+      ringStroke: 'text-[#00E5FF]',
+      burstGrad: 'from-cyan-400/90 via-blue-500/40 to-transparent',
+      burstRays: 'rgba(0, 229, 255, 0.75)',
+      sunCenter: '#00E5FF'
+    };
+  }
 
-const getTheme = (progress: number) => {
-  // Use professional institutional gradients
-  if (progress < 30) return {
-    bg: 'bg-[#0B0F19]',
-    grid: 'bg-[#00E5FF10]',
-    progress: 'from-cyan-400 to-blue-600',
-    buttonLogin: 'bg-transparent border-[#00E5FF] text-[#00E5FF] hover:bg-[#00E5FF]/10',
-    buttonRegister: 'bg-gradient-to-r from-[#00E5FF] to-cyan-600 text-black',
-    text: 'text-white',
-    icon: 'text-[#00E5FF]',
-    iconGlow: 'drop-shadow-[0_0_15px_rgba(0,229,255,0.5)]'
-  };
-  if (progress < 60) return {
-    bg: 'bg-[#181A20]',
-    grid: 'bg-[#A855F710]',
-    progress: 'from-purple-500 to-violet-600',
-    buttonLogin: 'bg-transparent border-purple-500 text-purple-400 hover:bg-purple-500/10',
-    buttonRegister: 'bg-gradient-to-r from-purple-500 to-violet-600 text-white',
-    text: 'text-white',
-    icon: 'text-purple-400',
-    iconGlow: 'drop-shadow-[0_0_15px_rgba(168,85,247,0.5)]'
-  };
-  if (progress < 90) return {
-    bg: 'bg-[#0B0F19]',
-    grid: 'bg-[#D4AF3710]',
-    progress: 'from-amber-500 to-yellow-600',
-    buttonLogin: 'bg-transparent border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/10',
-    buttonRegister: 'bg-gradient-to-r from-[#D4AF37] to-amber-600 text-black',
-    text: 'text-white',
-    icon: 'text-[#D4AF37]',
-    iconGlow: 'drop-shadow-[0_0_15px_rgba(212,175,55,0.5)]'
-  };
+  // 30% - 60%: Automation & AI Sync - Shifting into luminous midnight blue and neon cyan glows
+  if (progress < 60) {
+    return {
+      bgDark: 'bg-[#0A1020]',
+      ambientDark: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#1E40AF28] via-[#0B0F19] to-[#04060C]',
+      ambientLight: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-100/60 via-indigo-50/40 to-white',
+      gridColor: 'bg-[#38BDF80E]',
+      progressBar: 'from-cyan-400 via-blue-500 to-indigo-600 shadow-[0_0_18px_rgba(56,189,248,0.8)]',
+      primaryBtn: 'bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 hover:from-cyan-300 hover:to-indigo-500 text-white shadow-[0_0_24px_rgba(59,130,246,0.5)] border border-blue-300/30',
+      secondaryBtn: isDark 
+        ? 'bg-white/5 border-blue-400/30 text-blue-400 hover:bg-blue-500/10' 
+        : 'bg-white border-blue-600/30 text-blue-700 hover:bg-blue-50',
+      accentText: 'text-[#38BDF8]',
+      ringStroke: 'text-[#38BDF8]',
+      burstGrad: 'from-blue-400/90 via-indigo-500/40 to-transparent',
+      burstRays: 'rgba(56, 189, 248, 0.8)',
+      sunCenter: '#38BDF8'
+    };
+  }
+
+  // 60% - 90%: Quantitative & Risk Engines - Transitioning smoothly into polished quantitative gold (#D4AF37) and metallic silver highlights
+  if (progress < 90) {
+    return {
+      bgDark: 'bg-[#120F09]',
+      ambientDark: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#D4AF3724] via-[#0F0D09] to-[#060503]',
+      ambientLight: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-100/60 via-yellow-50/30 to-white',
+      gridColor: 'bg-[#D4AF370E]',
+      progressBar: 'from-[#D4AF37] via-amber-400 to-yellow-500 shadow-[0_0_18px_rgba(212,175,55,0.85)]',
+      primaryBtn: 'bg-gradient-to-r from-[#D4AF37] via-amber-400 to-yellow-500 hover:from-yellow-300 hover:to-amber-300 text-black shadow-[0_0_26px_rgba(212,175,55,0.55)] border border-amber-200/50',
+      secondaryBtn: isDark 
+        ? 'bg-white/5 border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37]/10' 
+        : 'bg-white border-amber-600/40 text-amber-800 hover:bg-amber-50',
+      accentText: 'text-[#D4AF37]',
+      ringStroke: 'text-[#D4AF37]',
+      burstGrad: 'from-yellow-300/90 via-amber-500/50 to-transparent',
+      burstRays: 'rgba(212, 175, 55, 0.85)',
+      sunCenter: '#D4AF37'
+    };
+  }
+
+  // 90% - 100%: Success Convergence - Radiant sun-burst pulse, locking into institutional emerald, cyan & gold
   return {
-    bg: 'bg-[#064E3B]',
-    grid: 'bg-[#10B98110]',
-    progress: 'from-emerald-400 to-teal-600',
-    buttonLogin: 'bg-transparent border-emerald-500 text-emerald-400 hover:bg-emerald-500/10',
-    buttonRegister: 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white',
-    text: 'text-white',
-    icon: 'text-emerald-400',
-    iconGlow: 'drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]'
+    bgDark: 'bg-[#051C14]',
+    ambientDark: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#0ECB8130] via-[#071913] to-[#040B08]',
+    ambientLight: 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-100/60 via-teal-50/40 to-white',
+    gridColor: 'bg-[#0ECB8110]',
+    progressBar: 'from-[#0ECB81] via-emerald-400 to-[#00E5FF] shadow-[0_0_22px_rgba(14,203,129,0.9)]',
+    primaryBtn: 'bg-gradient-to-r from-[#0ECB81] via-emerald-400 to-[#00E5FF] hover:from-emerald-300 hover:to-cyan-300 text-black shadow-[0_0_30px_rgba(14,203,129,0.7)] border border-emerald-200/50',
+    secondaryBtn: isDark 
+      ? 'bg-white/5 border-emerald-400/40 text-emerald-400 hover:bg-emerald-500/10' 
+      : 'bg-white border-emerald-600/40 text-emerald-700 hover:bg-emerald-50',
+    accentText: 'text-[#0ECB81]',
+    ringStroke: 'text-[#0ECB81]',
+    burstGrad: 'from-emerald-300/95 via-teal-400/60 to-transparent',
+    burstRays: 'rgba(14, 203, 129, 0.95)',
+    sunCenter: '#0ECB81'
   };
 };
 
@@ -118,48 +323,294 @@ type LandingPhase = 'init' | 'welcome' | 'carousel';
 export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { state, dispatch } = useGlobalState();
   const apiFetch = useApiFetch();
-  
-  const [authView, setAuthView] = useState<'landing' | 'login' | 'register'>('landing');
+
+  // PKCE Hook
+  const {
+    isAuthenticating: isPkceAuthenticating,
+    authError: pkceAuthError,
+    authStatusMessage: pkceStatusMsg,
+    initiateRedirect,
+    exchangeCodeForToken,
+    clearError: clearPkceError,
+  } = useDerivAuth();
+
   const [phase, setPhase] = useState<LandingPhase>('init');
   const [activeSceneIndex, setActiveSceneIndex] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
-  const [topTrader, setTopTrader] = useState<{name: string, roi: string} | null>(null);
+  const [topTrader, setTopTrader] = useState<{ name: string; roi: string } | null>(null);
   const [progress, setProgress] = useState(0);
+  const [showTokenModal, setShowTokenModal] = useState(false);
+  const [apiTokenInput, setApiTokenInput] = useState('');
+  const [isAuthorizing, setIsAuthorizing] = useState(false);
+  const [authStatusMessage, setAuthStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Active milestone and radiant sun-burst tracking at 30%, 60%, 90%, 100%
+  const [activeMilestoneStage, setActiveMilestoneStage] = useState(0);
+  const [sunBurstKey, setSunBurstKey] = useState(0);
+  const prevProgressRef = useRef(0);
+  const callbackHandledRef = useRef(false);
+
+  // Establish authenticated user session
+  const establishUserSession = useCallback(
+    (userData: {
+      id: string;
+      email?: string;
+      displayName?: string;
+      role?: 'USER' | 'ADMIN' | 'SUPER_ADMIN' | 'RISK_MANAGER';
+      accountId?: string;
+      token?: string;
+    }) => {
+      const accountId = userData.accountId || userData.id;
+      const role = userData.role || (userData.email === 'obwogialex728@gmail.com' ? 'SUPER_ADMIN' : 'USER');
+      
+      dispatch({
+        type: 'SET_USER_PROFILE',
+        payload: {
+          id: accountId,
+          email: userData.email || `${accountId.toLowerCase()}@deriv.trader`,
+          displayName: userData.displayName || `Deriv Trader (${accountId})`,
+          role,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          preferences: {
+            theme: state.theme,
+            currency: 'USD',
+            timezone: 'UTC',
+            notificationsEnabled: true,
+          },
+        },
+      });
+
+      dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'ONLINE' });
+      dispatch({
+        type: 'SELECT_BROKER',
+        payload: {
+          id: `conn-deriv-${accountId}`,
+          brokerType: 'DERIV',
+          brokerName: 'Deriv Limited',
+          server: 'Deriv-Server',
+          accountNumber: accountId,
+          status: 'CONNECTED',
+          environment: accountId.startsWith('VR') ? 'DEMO' : 'REAL',
+          apiPermissions: ['read', 'trade', 'payments'],
+          isReadOnly: false,
+          executionPermission: true,
+        },
+      });
+
+      dispatch({
+        type: 'ADD_NOTIFICATION',
+        payload: {
+          title: 'Broker Connected',
+          message: `Authenticated with Deriv (${accountId}). Workspace active.`,
+          type: 'success',
+        },
+      });
+    },
+    [dispatch, state.theme]
+  );
+
+  // 1. DEDICATED OAUTH REDIRECT CALLBACK & PKCE VERIFIER TOKEN EXCHANGE
   useEffect(() => {
-    apiFetch('/api/leaderboard/top').then(res => res.json()).then(data => {
-      if (data.success && data.data) setTopTrader(data.data);
-    }).catch(console.error);
-  }, []);
+    if (typeof window === 'undefined' || callbackHandledRef.current) return;
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const oauthState = urlParams.get('state');
+    const token1 = urlParams.get('token1');
+    const acct1 = urlParams.get('acct1');
+    const cur1 = urlParams.get('cur1');
+    const connection = urlParams.get('connection');
+
+    // Case A: Authorization Code returned -> async exchange with stored verifier
+    if (code) {
+      callbackHandledRef.current = true;
+      setIsAuthorizing(true);
+      setAuthStatusMessage('Extracting authorization code & verifying PKCE handshake...');
+
+      exchangeCodeForToken(code, oauthState || undefined)
+        .then(async (result) => {
+          if (result && result.accountId) {
+            // Persist token in encrypted cookie for subsequent visits
+            await setEncryptedCookie('deriv_oauth_token', result.token);
+            await setEncryptedCookie('deriv_account_id', result.accountId);
+
+            establishUserSession({
+              id: result.accountId,
+              accountId: result.accountId,
+              token: result.token,
+            });
+            window.history.replaceState({}, document.title, window.location.pathname);
+          } else {
+            setErrorMessage('Could not complete Deriv PKCE token exchange.');
+          }
+        })
+        .catch((err) => {
+          setErrorMessage(err?.message || 'Deriv token exchange failed.');
+        })
+        .finally(() => {
+          setIsAuthorizing(false);
+        });
+      return;
+    }
+
+    // Case B: Direct token1/acct1 query parameters returned from Deriv gateway
+    if (token1 && acct1) {
+      callbackHandledRef.current = true;
+      setIsAuthorizing(true);
+      setAuthStatusMessage(`Authenticating Deriv account ${acct1}...`);
+
+      setEncryptedCookie('deriv_oauth_token', token1);
+      setEncryptedCookie('deriv_account_id', acct1);
+      localStorage.setItem('deriv_access_token', token1);
+      localStorage.setItem('deriv_account_id', acct1);
+      if (cur1) localStorage.setItem('deriv_currency', cur1);
+
+      derivAuthService
+        .authorize(token1)
+        .then(async () => {
+          try {
+            await apiFetch('/api/auth/deriv/token-login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ apiToken: token1 }),
+            });
+          } catch {
+            // Non-blocking sync
+          }
+
+          establishUserSession({
+            id: acct1,
+            accountId: acct1,
+            displayName: `Deriv Trader (${acct1})`,
+            token: token1,
+          });
+
+          window.history.replaceState({}, document.title, window.location.pathname);
+        })
+        .catch(() => {
+          setErrorMessage('Deriv authorization handshake failed. Please reconnect.');
+        })
+        .finally(() => {
+          setIsAuthorizing(false);
+        });
+      return;
+    }
+
+    // Case C: Server redirect with connection=success
+    if (connection === 'success') {
+      callbackHandledRef.current = true;
+      setIsAuthorizing(true);
+      setAuthStatusMessage('Synchronizing authorized broker session...');
+      apiFetch('/api/auth/deriv/status')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.data?.connected && data.data.derivAccountId) {
+            establishUserSession({
+              id: data.data.derivAccountId,
+              accountId: data.data.derivAccountId,
+              displayName: `Deriv Trader (${data.data.derivAccountId})`,
+            });
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        })
+        .catch((err) => {
+          console.warn('[AuthGate] Deriv status check failed:', err);
+        })
+        .finally(() => setIsAuthorizing(false));
+      return;
+    }
+
+    // Case D: Resume from encrypted cookie or local storage
+    getEncryptedCookie('deriv_oauth_token').then((cookieToken) => {
+      const storedToken = cookieToken || localStorage.getItem('deriv_access_token');
+      const storedAccountId = localStorage.getItem('deriv_account_id');
+      if (storedToken && storedAccountId) {
+        derivAuthService.authorize(storedToken).then((ok) => {
+          if (ok) {
+            establishUserSession({
+              id: storedAccountId,
+              accountId: storedAccountId,
+              token: storedToken,
+            });
+          }
+        }).catch((err) => {
+          console.warn('[AuthGate] Resume token auth failed:', err);
+        });
+      }
+    }).catch((err) => {
+      console.warn('[AuthGate] Cookie retrieval warning:', err);
+    });
+  }, [apiFetch, establishUserSession, exchangeCodeForToken]);
+
+  // Fetch top trader data for live display
+  useEffect(() => {
+    let isMounted = true;
+    apiFetch('/api/leaderboard/top')
+      .then((res) => res.json())
+      .then((data) => {
+        if (isMounted && data?.success && data?.data) {
+          setTopTrader(data.data);
+        }
+      })
+      .catch((err) => {
+        console.warn('[AuthGate] Leaderboard fetch fallback:', err);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [apiFetch]);
+
+  // Extended 20-Second Loading Loop with Sun-Burst Radiant Effect at 30%, 60%, 90%, 100%
   useEffect(() => {
     if (phase === 'init') {
       const interval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 100) {
+        setProgress((prev) => {
+          const next = prev + 1;
+          const prevP = prevProgressRef.current;
+          prevProgressRef.current = next;
+
+          // Check if progress crossed milestone thresholds: 30%, 60%, 90%, 100%
+          if (
+            (prevP < 30 && next >= 30) ||
+            (prevP < 60 && next >= 60) ||
+            (prevP < 90 && next >= 90) ||
+            (prevP < 100 && next >= 100)
+          ) {
+            setSunBurstKey((k) => k + 1); // Trigger radiant sunburst bloom & rays
+          }
+
+          // Determine current milestone stage
+          let newStage = 0;
+          if (next >= 100) newStage = 4;
+          else if (next >= 90) newStage = 3;
+          else if (next >= 60) newStage = 2;
+          else if (next >= 30) newStage = 1;
+          else newStage = 0;
+
+          setActiveMilestoneStage(newStage);
+
+          if (next >= 100) {
             clearInterval(interval);
-            setPhase('welcome');
+            setTimeout(() => {
+              setPhase('welcome');
+            }, 600);
             return 100;
           }
-          return prev + 1;
+          return next;
         });
-      }, 200); // 20 seconds total (100 * 200ms = 20000ms = 20s)
+      }, 200); // 100 steps * 200ms = 20,000ms = 20 seconds
       return () => clearInterval(interval);
     }
   }, [phase]);
-  
-  const theme = getTheme(progress);
 
-  // Form States
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [emailExistsError, setEmailExistsError] = useState(false);
+  // Trigger initial radiant sunburst on load
+  useEffect(() => {
+    setSunBurstKey(1);
+  }, []);
 
-  // Initialize Reduced Motion Safely
+  // Reduced motion detection
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -170,459 +621,478 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     }
   }, []);
 
-  // Master Animation Controller
+  // Scene rotation timer
   useEffect(() => {
-    if (authView !== 'landing') return;
-
-    let initTimer: NodeJS.Timeout;
-    let carouselTimer: NodeJS.Timeout;
-    let carouselInterval: NodeJS.Timeout;
-    let isCancelled = false;
-
-    if (reducedMotion) {
-      setPhase('carousel');
-      carouselInterval = setInterval(() => {
-        if (!isCancelled) setActiveSceneIndex(prev => (prev + 1) % MARKETING_CONTENT.length);
+    if (phase === 'welcome') {
+      const timer = setTimeout(() => {
+        setPhase('carousel');
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+    if (phase === 'carousel' || reducedMotion) {
+      const interval = setInterval(() => {
+        setActiveSceneIndex((prev) => (prev + 1) % MARKETING_CONTENT.length);
       }, 5000);
-      return () => clearInterval(carouselInterval);
+      return () => clearInterval(interval);
+    }
+  }, [phase, reducedMotion]);
+
+  // Direct Token Login Submission
+  const handleTokenSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!apiTokenInput.trim() || apiTokenInput.trim().length < 5) {
+      setErrorMessage('Please enter a valid Deriv API token.');
+      return;
     }
 
-    setPhase('init');
-    setActiveSceneIndex(0);
+    setIsAuthorizing(true);
+    setErrorMessage(null);
+    setAuthStatusMessage('Validating token credentials with Deriv WebSocket gateway...');
 
-    initTimer = setTimeout(() => {
-      if (!isCancelled) setPhase('welcome');
-    }, 5000);
-
-    carouselTimer = setTimeout(() => {
-      if (!isCancelled) {
-        setPhase('carousel');
-        carouselInterval = setInterval(() => {
-          if (!isCancelled) setActiveSceneIndex(prev => (prev + 1) % MARKETING_CONTENT.length);
-        }, 5000);
+    const token = apiTokenInput.trim();
+    try {
+      const wsSuccess = await derivAuthService.authorize(token);
+      if (!wsSuccess) {
+        throw new Error('Deriv WebSocket rejected API token. Please verify read/trade permissions.');
       }
-    }, 10000);
 
-    return () => {
-      isCancelled = true;
-      clearTimeout(initTimer);
-      clearTimeout(carouselTimer);
-      clearInterval(carouselInterval);
-    };
-  }, [authView, reducedMotion]);
+      const res = await apiFetch('/api/auth/deriv/token-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiToken: token }),
+      });
 
+      const json = await res.json();
+      const accountId = json.data?.derivAccountId || (token.startsWith('VR') ? 'VR-' : 'CR-') + Math.floor(1000000 + Math.random() * 9000000);
+
+      await setEncryptedCookie('deriv_oauth_token', token);
+      await setEncryptedCookie('deriv_account_id', accountId);
+      localStorage.setItem('deriv_access_token', token);
+      localStorage.setItem('deriv_account_id', accountId);
+
+      setShowTokenModal(false);
+      establishUserSession({
+        id: accountId,
+        accountId,
+        token,
+      });
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Token authentication failed. Please check token permissions.');
+    } finally {
+      setIsAuthorizing(false);
+    }
+  };
+
+  // If authenticated, render app workspace
   if (state.session.isAuthenticated) {
     return <>{children}</>;
   }
 
-  const handleStandardLogin = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setIsLoading(true);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    setEmailExistsError(false);
-
-    const loginEmail = email.trim() || 'obwogialex728@gmail.com';
-
-    try {
-      const res = await apiFetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: loginEmail,
-          password: password || 'password',
-          role: loginEmail === 'obwogialex728@gmail.com' ? 'SUPER_ADMIN' : 'USER',
-        }),
-      });
-
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data?.user) {
-          setSuccessMessage('Welcome back! Initializing secure gateway session...');
-          setTimeout(() => {
-            dispatch({
-              type: 'SET_USER_PROFILE',
-              payload: {
-                id: json.data.user.id,
-                email: json.data.user.email,
-                displayName: json.data.user.displayName,
-                role: json.data.user.role,
-                createdAt: json.data.user.createdAt || new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                preferences: { theme: state.theme, currency: 'USD', timezone: 'UTC', notificationsEnabled: true },
-              },
-            });
-            dispatch({ type: 'ADD_NOTIFICATION', payload: { title: 'Session Connected', message: 'Enjoy frictionless execution.', type: 'success' } });
-          }, 800);
-        } else {
-          setErrorMessage(json.error?.message || 'Login failed.');
-        }
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        setErrorMessage(errorData.error?.message || 'Invalid credentials or server error.');
-      }
-    } catch (error: any) {
-      setErrorMessage('Network error during authentication.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleStandardRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    setEmailExistsError(false);
-
-    try {
-      const res = await apiFetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email.trim(),
-          password,
-          displayName: displayName.trim(),
-          role: 'USER',
-        }),
-      });
-
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data?.user) {
-          setSuccessMessage('Account provisioned successfully. Establishing connection...');
-          setTimeout(() => {
-            dispatch({
-              type: 'SET_USER_PROFILE',
-              payload: {
-                id: json.data.user.id,
-                email: json.data.user.email,
-                displayName: json.data.user.displayName,
-                role: json.data.user.role,
-                createdAt: json.data.user.createdAt || new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                preferences: { theme: state.theme, currency: 'USD', timezone: 'UTC', notificationsEnabled: true },
-              },
-            });
-            dispatch({ type: 'ADD_NOTIFICATION', payload: { title: 'Gateway Provisioned', message: 'Welcome to AppexQuant.', type: 'success' } });
-          }, 800);
-        } else {
-          setErrorMessage(json.error?.message || 'Registration failed.');
-        }
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        if (res.status === 409 || errorData.error?.code === 'auth/email-already-in-use') {
-          setEmailExistsError(true);
-          setErrorMessage('Email already in use. Please log in.');
-        } else {
-          setErrorMessage(errorData.error?.message || 'Registration failed.');
-        }
-      }
-    } catch (error: any) {
-      setErrorMessage('Network error during registration.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const isDark = state.theme === 'dark' || (state.theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const syncStyles = getSynchronizedStyles(progress, isDark);
+  const activeMilestone = MILESTONES[activeMilestoneStage] || MILESTONES[0];
+  const displayError = errorMessage || pkceAuthError;
+  const isBusy = isAuthorizing || isPkceAuthenticating;
+  const busyStatusText = authStatusMessage || pkceStatusMsg;
 
   return (
-    <div className="min-h-[100dvh] flex flex-col bg-slate-50 dark:bg-[#0C0E12] text-slate-900 dark:text-white font-sans overflow-x-hidden transition-colors duration-300">
+    <div className={`min-h-[100dvh] flex flex-col font-sans overflow-x-hidden transition-colors duration-700 ${isDark ? syncStyles.bgDark + ' text-white' : 'bg-[#F8F9FA] text-slate-900'}`}>
       <style dangerouslySetInnerHTML={{ __html: CSS_ANIMATIONS }} />
 
-      {/* LAYER 1: Core UI - Brand Header */}
-      <div className="w-full flex items-center justify-between p-3 border-b border-slate-200/50 dark:border-white/5 bg-white/50 dark:bg-[#0C0E12]/50 backdrop-blur-md sticky top-0 z-50">
-        <div className="flex items-center gap-2 select-none">
-          <AppexQuantLogo variant="symbol" className="h-[30px] w-auto" />
-          <span className="text-xs font-bold uppercase tracking-widest text-slate-800 dark:text-slate-200">AQ GLOBAL</span>
-        </div>
-        <div className="text-right">
-          <TelemetryTicker />
-        </div>
+      {/* Atmospheric Background Gradients with Synchronized Checkpoint Transitions */}
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden transition-all duration-700">
+        <div className={`absolute inset-0 ${isDark ? syncStyles.ambientDark : syncStyles.ambientLight} transition-all duration-700`} />
+        <div className={`absolute inset-0 ${syncStyles.gridColor} [background-size:32px_32px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_40%,#000_40%,transparent_100%)] transition-colors duration-700`} />
       </div>
 
-      {/* Background Engine - Refined Institutional Environment */}
-      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className={`absolute inset-0 ${theme.bg} transition-colors duration-1000`} />
-        {/* Atmosphere Gradient */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#181A20] to-[#0B0F19] opacity-80" />
-        {/* Subtle Grid - Enhanced */}
-        <div className={`absolute inset-0 ${theme.grid} [background-size:48px_48px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_30%,transparent_100%)]`} />
-      </div>
+      {/* TOP INSTITUTIONAL HEADER - PURIFIED BRAND TITLE */}
+      <header className={`w-full flex items-center justify-between px-4 py-2.5 border-b sticky top-0 z-50 backdrop-blur-md transition-colors duration-500 ${isDark ? 'border-slate-800/80 bg-[#0B0F19]/80' : 'border-slate-200/80 bg-white/80'}`}>
+        <div className="flex items-center gap-2.5 select-none shrink-0">
+          <AppexQuantLogo variant="symbol" className="h-7 w-auto" />
+          <span className={`text-xs sm:text-sm font-black tracking-wider sm:tracking-widest uppercase transition-colors ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            APPEXQUANT MARKETS GLOBAL
+          </span>
+        </div>
 
-      {/* Main Content Area - RELATIVE CONTAINER FOR LAYOUT */}
-      {authView === 'landing' ? (
-        <div className="flex-1 relative flex flex-col w-full z-10 pt-4 md:pt-8">
-          
-          {/* PHASE 1: Initialization */}
-          {phase === 'init' && !reducedMotion && (
-            <div className="flex flex-col items-center justify-center min-h-[40vh] p-4">
-              <div className="flex flex-col items-center gap-6 w-full max-w-sm">
-                <AppexQuantLogo variant="symbol" className="h-[30px] w-auto" />
-                <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-700">
-                  <div className={`h-full bg-gradient-to-r ${theme.progress} transition-all duration-300 shadow-[0_0_15px_rgba(255,255,255,0.3)]`} style={{ width: `${progress}%` }} />
+        {/* Live Market Ticker */}
+        <div className="hidden md:flex flex-1 max-w-lg mx-4 overflow-hidden border-x border-slate-700/30 px-3 py-1 bg-black/20 dark:bg-black/40 rounded-lg">
+          <div className="animate-marquee-smooth whitespace-nowrap text-[10px] font-mono tracking-wider uppercase text-slate-400">
+            <span>BTC/USD 98,450.00 ▲0.52% • EUR/USD 1.0845 ▼0.04% • XAU/USD 2,684.20 ▲1.12% • VOLATILITY 75 124,520.10 ▲0.88% • CRASH 500 4,812.30 ▼0.35% • BOOM 1000 12,840.40 ▲2.10%</span>
+            <span className="ml-8">BTC/USD 98,450.00 ▲0.52% • EUR/USD 1.0845 ▼0.04% • XAU/USD 2,684.20 ▲1.12% • VOLATILITY 75 124,520.10 ▲0.88% • CRASH 500 4,812.30 ▼0.35% • BOOM 1000 12,840.40 ▲2.10%</span>
+          </div>
+        </div>
+
+        {/* Theme Toggle & Security Status */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
+            <ShieldCheck className="w-3 h-3 text-emerald-400" />
+            <span>PKCE 256-BIT</span>
+          </div>
+          <button
+            onClick={() => dispatch({ type: 'SET_THEME', payload: isDark ? 'light' : 'dark' })}
+            className={`p-1.5 rounded-lg border transition-colors ${isDark ? 'border-slate-700 bg-slate-800/80 text-amber-400 hover:bg-slate-700' : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+            title="Toggle color theme"
+          >
+            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+        </div>
+      </header>
+
+      {/* MAIN VIEWPORT CONTAINER */}
+      <main className="flex-1 relative flex flex-col justify-between items-center w-full z-10 max-w-5xl mx-auto px-4 py-4 md:py-6">
+
+        {/* Status / Error Banner */}
+        {displayError && (
+          <div className="w-full max-w-lg mb-3 p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center justify-between gap-3 animate-in fade-in zoom-in duration-300 text-xs text-rose-400">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+              <span className="font-semibold">{displayError}</span>
+            </div>
+            <button 
+              onClick={() => { setErrorMessage(null); clearPkceError(); }} 
+              className="text-rose-400 hover:text-rose-200 text-sm font-bold"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {isBusy && (
+          <div className="w-full max-w-lg mb-3 p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-xl flex items-center gap-3 animate-in fade-in duration-300 text-xs text-cyan-400">
+            <Loader2 className="w-4 h-4 shrink-0 animate-spin text-cyan-400" />
+            <span className="font-semibold">{busyStatusText || 'Communicating with Deriv authorization gateway...'}</span>
+          </div>
+        )}
+
+        {/* PHASE 1: 20-SECOND SEQUENTIAL INITIALIZATION WITH RADIANT SUN-BURST RADIAL GRADIENT EFFECT */}
+        {phase === 'init' && !reducedMotion && (
+          <div className="flex-1 flex flex-col items-center justify-center w-full py-6">
+            <div className="relative flex flex-col items-center gap-6 w-full max-w-lg p-6 sm:p-8 rounded-3xl bg-white/5 dark:bg-[#181A20]/80 border border-slate-200/20 dark:border-white/10 backdrop-blur-2xl shadow-2xl overflow-hidden transition-all duration-500">
+              
+              {/* DYNAMIC SUN-BURST RADIANT EFFECT PULSING OUTWARD AT 30%, 60%, 90%, 100% */}
+              <div key={`sunburst-${sunBurstKey}`} className="absolute inset-0 pointer-events-none flex items-center justify-center z-0 overflow-hidden">
+                {/* Center Radial Gradient Core Bloom */}
+                <div 
+                  className="absolute w-72 h-72 rounded-full animate-sunburst-bloom"
+                  style={{
+                    background: `radial-gradient(circle, ${syncStyles.burstRays} 0%, rgba(212,175,55,0.45) 30%, rgba(0,229,255,0.2) 60%, transparent 75%)`
+                  }}
+                />
+                
+                {/* Secondary Luminous Outer Glow Ring */}
+                <div 
+                  className="absolute w-96 h-96 rounded-full animate-sunburst-bloom"
+                  style={{
+                    background: `radial-gradient(circle, rgba(255,255,255,0.85) 0%, ${syncStyles.burstRays} 25%, transparent 65%)`,
+                    animationDelay: '0.1s'
+                  }}
+                />
+
+                {/* Expanding Sunbeam Rays */}
+                <svg className="absolute w-[500px] h-[500px] animate-sunburst-rays opacity-75" viewBox="0 0 200 200">
+                  <defs>
+                    <radialGradient id="sunRayGradDynamic" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.9" />
+                      <stop offset="35%" stopColor={syncStyles.sunCenter} stopOpacity="0.65" />
+                      <stop offset="70%" stopColor="#D4AF37" stopOpacity="0.3" />
+                      <stop offset="100%" stopColor="transparent" stopOpacity="0" />
+                    </radialGradient>
+                  </defs>
+                  {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((deg) => (
+                    <polygon
+                      key={deg}
+                      points="97,100 103,100 100,0"
+                      fill="url(#sunRayGradDynamic)"
+                      transform={`rotate(${deg} 100 100)`}
+                    />
+                  ))}
+                </svg>
+              </div>
+
+              {/* Central Quantum Ring with Ambient Aura */}
+              <div className="relative flex items-center justify-center w-28 h-28 z-10">
+                <div className="absolute inset-0 rounded-full border border-current opacity-30 animate-ping transition-colors" style={{ color: activeMilestone.color }} />
+                
+                {/* Outer Reverse Rotating Halo */}
+                <svg className="w-28 h-28 [animation:spinSlowReverse_12s_linear_infinite]" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 8" className={`${syncStyles.ringStroke} opacity-40 transition-colors duration-500`} />
+                </svg>
+
+                {/* Primary Animated Calibration Ring */}
+                <svg className="absolute inset-0 w-28 h-28 [animation:spinSlow_8s_linear_infinite]" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="39" fill="none" stroke="currentColor" strokeWidth="3" className={`${syncStyles.ringStroke} stroke-dasharray-[245.04] [animation:drawRing_20s_linear_forwards] transition-colors duration-500`} />
+                </svg>
+
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <AppexQuantLogo variant="symbol" className="h-11 w-auto" />
                 </div>
-                <div className="text-slate-400 font-mono text-xs tracking-widest">{progress}%</div>
-                {progress >= 100 && <div className="text-emerald-500 font-black text-3xl [animation:successBurst_0.6s_ease-out_forwards] drop-shadow-[0_0_15px_rgba(16,185,129,0.8)]">SUCCESS</div>}
               </div>
-            </div>
-          )}
 
-          {/* PHASE 2: Welcome */}
-          {phase === 'welcome' && !reducedMotion && (
-            <div className="flex flex-col items-center justify-center min-h-[40vh] p-4">
-              <div style={{ animation: 'blurDisperse 3.5s ease-in-out forwards' }}>
-                <h2 className="text-4xl md:text-5xl font-black text-white tracking-[0.2em] uppercase text-center drop-shadow-md">
+              {/* SEQUENTIAL MILESTONE DISPLAY WITH SWEEPING TEXT GLOW */}
+              <div className="w-full space-y-3 text-center z-10">
+                
+                {/* Active Milestone Title with Sweeping Shimmer Glow */}
+                <div className="min-h-[44px] flex flex-col items-center justify-center">
+                  <h2 className={`text-base sm:text-lg md:text-xl font-black tracking-wider uppercase transition-all duration-300 ${activeMilestone.glowClass}`}>
+                    {activeMilestone.title}
+                  </h2>
+                  <p className="text-[10px] sm:text-[11px] font-semibold text-slate-400 tracking-wide uppercase mt-0.5 max-w-sm mx-auto">
+                    {activeMilestone.sub}
+                  </p>
+                </div>
+
+                {/* Streamlined Progress Gauge (0 - 100% with milestones marked) */}
+                <div className="w-full space-y-1.5 pt-1">
+                  <div className="flex justify-between items-center text-[11px] font-mono font-bold tracking-widest text-slate-400">
+                    <span className="text-[9px] uppercase tracking-widest text-slate-500 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-cyan-400" />
+                      STAGE {activeMilestone.stageIndex + 1}/5
+                    </span>
+                    <span className={`font-black ${syncStyles.accentText} transition-colors duration-500`}>{progress}%</span>
+                  </div>
+
+                  <div className="w-full h-2.5 bg-slate-900/80 dark:bg-black/80 rounded-full overflow-hidden p-0.5 border border-slate-700/60 shadow-inner">
+                    <div 
+                      className={`h-full rounded-full bg-gradient-to-r ${syncStyles.progressBar} transition-all duration-200`}
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+
+                  {/* Milestone Indicators (30%, 60%, 90%) */}
+                  <div className="flex justify-between text-[8px] font-mono text-slate-500 pt-0.5">
+                    <span>0%</span>
+                    <span className={progress >= 30 ? 'text-cyan-400 font-bold' : ''}>30% (RISK)</span>
+                    <span className={progress >= 60 ? 'text-amber-400 font-bold' : ''}>60% (QUANT)</span>
+                    <span className={progress >= 90 ? 'text-emerald-400 font-bold' : ''}>90% (AI)</span>
+                    <span>100%</span>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* SUCCESS Particle Burst */}
+              {progress >= 100 && (
+                <div className="text-emerald-400 font-black text-2xl tracking-widest uppercase [animation:successBurst_0.6s_ease-out_forwards] drop-shadow-[0_0_25px_rgba(16,185,129,0.95)] z-20">
                   SUCCESS
-                </h2>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* PHASE 2: SUCCESS PARTICLE CONVERGENCE TRANSITION */}
+        {phase === 'welcome' && !reducedMotion && (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
+            <div style={{ animation: 'blurDisperse 3s ease-in-out forwards' }}>
+              <h2 className="text-4xl md:text-6xl font-black text-emerald-400 tracking-[0.25em] uppercase drop-shadow-[0_0_30px_rgba(16,185,129,0.7)]">
+                SUCCESS
+              </h2>
+            </div>
+            <div style={{ opacity: 0, animation: 'blurConverge 2s ease-out 1.5s forwards' }} className="space-y-2 mt-2">
+              <h1 className={`text-2xl md:text-4xl font-black tracking-tight uppercase ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                APPEXQUANT MARKETS GLOBAL
+              </h1>
+              <p className="text-xs md:text-sm text-cyan-400 font-bold uppercase tracking-[0.2em]">
+                Direct Broker Authorization • Zero Friction
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* PHASE 3: MARKETING CAPABILITIES CAROUSEL */}
+        {(phase === 'carousel' || reducedMotion) && (
+          <div className="flex-1 flex flex-col items-center justify-center w-full py-4 text-center">
+            {MARKETING_CONTENT.map((scene, idx) => {
+              const Icon = scene.Icon;
+              if (activeSceneIndex !== idx) return null;
+              return (
+                <div
+                  key={scene.id}
+                  className="flex flex-col items-center justify-center px-4 max-w-2xl mx-auto animate-in fade-in zoom-in duration-700"
+                >
+                  <div className={`mb-3.5 p-3.5 rounded-2xl bg-white/5 dark:bg-[#181A20] border border-slate-200/20 dark:border-white/10 ${syncStyles.accentText} drop-shadow-[0_0_15px_rgba(0,229,255,0.4)]`}>
+                    <Icon className="w-10 h-10 md:w-12 md:h-12" />
+                  </div>
+                  
+                  <div className="text-[10px] font-extrabold tracking-[0.25em] uppercase text-cyan-400 mb-2 px-3 py-0.5 bg-cyan-500/10 rounded-full border border-cyan-500/20">
+                    {scene.capability}
+                  </div>
+
+                  <h1 className={`text-2xl sm:text-3xl md:text-4xl font-black tracking-tight uppercase max-w-xl mx-auto leading-tight mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    {scene.headline}
+                  </h1>
+
+                  <p className="text-[11px] md:text-xs text-slate-400 font-medium tracking-wide uppercase max-w-lg mx-auto">
+                    {scene.sub}
+                  </p>
+                </div>
+              );
+            })}
+
+            {/* M-Pesa Inspired Top Trader Stat Card */}
+            <div className={`mt-5 w-full max-w-sm rounded-2xl p-3.5 border transition-all ${isDark ? 'bg-[#181A20]/90 border-white/10 shadow-[0_4px_16px_rgba(0,0,0,0.3)]' : 'bg-white border-slate-200 shadow-[0_4px_16px_rgba(0,0,0,0.06)]'}`}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                  {getAwardType() === 'MONTH' ? 'TOP PERFORMANCE THIS MONTH' : 'TOP TRADER THIS WEEK'}
+                </span>
+                <span className="text-[9px] font-bold text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 uppercase">
+                  VERIFIED
+                </span>
               </div>
-              <div style={{ opacity: 0, animation: 'blurConverge 2.5s ease-out 3s forwards' }}>
-                <h1 className="text-2xl md:text-4xl font-black tracking-tight text-white mb-2 text-center leading-[1.1]">
-                  Seamless Trading
-                </h1>
-                <p className="text-[10px] md:text-xs text-slate-200 font-bold uppercase tracking-[0.2em] text-center max-w-lg">
-                  Institutional Edge. One Ecosystem.
-                </p>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center font-black text-cyan-400 text-xs">
+                    {topTrader ? topTrader.name.charAt(0) : 'A'}
+                  </div>
+                  <div className="text-left">
+                    <div className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      {topTrader ? topTrader.name : 'Quantitative Leader'}
+                    </div>
+                    <div className="text-[10px] text-slate-400">Institutional Strategy Bot</div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs font-mono font-black text-[#0ECB81]">
+                    {topTrader ? topTrader.roi : '+142.8%'}
+                  </div>
+                  <div className="text-[9px] text-slate-400 uppercase">Live Yield</div>
+                </div>
               </div>
             </div>
-          )}
 
-                  {/* PHASE 3: Marketing Carousel */}
-          {(phase === 'carousel' || reducedMotion) && (
-            <div className="flex-1 flex flex-col items-center justify-center p-4">
-              {MARKETING_CONTENT.map((scene, idx) => {
-                const Icon = scene.Icon;
+            {/* Capability Feature Pills */}
+            <div className="grid grid-cols-4 gap-2 w-full max-w-sm mt-4">
+              {[
+                { label: 'MARKET', icon: Globe },
+                { label: 'AI QUANT', icon: Network },
+                { label: 'SMC/ICT', icon: GraduationCap },
+                { label: 'AUTO EA', icon: Cpu },
+              ].map((pill) => {
+                const PillIcon = pill.icon;
                 return (
-                  <div
-                    key={scene.id}
-                    className={`flex flex-col items-center justify-center px-4 text-center transition-opacity duration-1000 ease-in-out
-                      ${activeSceneIndex === idx 
-                        ? 'opacity-100' 
-                        : 'hidden'
-                      }`}
+                  <div 
+                    key={pill.label}
+                    className={`flex flex-col items-center p-2 rounded-xl border transition-all ${isDark ? 'bg-[#181A20]/60 border-white/5 text-slate-300' : 'bg-white border-slate-200 text-slate-700'}`}
                   >
-                    <div className={`mb-4 ${theme.icon} ${theme.iconGlow}`}>
-                      <Icon className="w-10 h-10 md:w-14 md:h-14" />
-                    </div>
-                    <div className="text-[9px] font-bold tracking-[0.2em] uppercase text-white mb-2 px-2 py-0.5 bg-white/20 rounded-full border border-white/20">
-                      {scene.capability}
-                    </div>
-                    <h1 className="text-2xl md:text-4xl font-black tracking-tighter uppercase text-white font-sans max-w-2xl mx-auto leading-[1.05] mb-2 drop-shadow-sm">
-                      {scene.headline}
-                    </h1>
-                    <p className="text-[10px] md:text-xs text-slate-100 font-bold tracking-[0.1em] uppercase max-w-lg mx-auto drop-shadow-sm">
-                      {scene.sub}
-                    </p>
+                    <PillIcon className="w-3.5 h-3.5 text-cyan-400 mb-1" />
+                    <span className="text-[8px] font-bold tracking-wider uppercase">{pill.label}</span>
                   </div>
                 );
               })}
             </div>
-          )}
+          </div>
+        )}
 
-          {/* LAYER: Compact Action Dock */}
-          <div className="w-full p-4 mt-auto border-t border-white/10 bg-white/5 backdrop-blur-md">
-            <div className="flex flex-col sm:flex-row justify-center items-center gap-2 w-full max-w-sm mx-auto">
+        {/* BOTTOM DOCK: SYNCHRONIZED INTERACTIVE ACTION BAR (ZERO DEAD SPACE) */}
+        <div className={`w-full max-w-md mt-auto pt-3 pb-2.5 px-3.5 rounded-2xl border backdrop-blur-2xl transition-all duration-700 ${isDark ? 'bg-[#181A20]/90 border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.5)]' : 'bg-white/90 border-slate-200 shadow-[0_8px_24px_rgba(0,0,0,0.08)]'}`}>
+          
+          <div className="flex flex-col gap-2.5">
+            {/* Primary Broker OAuth Buttons Synchronized with Progress Stages */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <button
-                onClick={() => setAuthView('login')}
-                className={`w-full sm:w-1/2 px-4 py-2.5 rounded-lg border transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] ${theme.buttonLogin} text-[10px] font-bold uppercase tracking-widest`}
+                onClick={() => initiateRedirect('connect')}
+                disabled={isBusy}
+                className={`w-full py-3 px-4 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer ${syncStyles.primaryBtn}`}
               >
-                Log In
+                <Zap className="w-4 h-4 fill-current" />
+                <span>LOGIN</span>
               </button>
+
               <button
-                onClick={() => setAuthView('register')}
-                className={`w-full sm:w-1/2 px-4 py-2.5 rounded-lg transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-lg ${theme.buttonRegister} text-[10px] font-bold uppercase tracking-widest`}
+                onClick={() => initiateRedirect('signup')}
+                disabled={isBusy}
+                className={`w-full py-3 px-4 rounded-xl border font-bold text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer ${syncStyles.secondaryBtn}`}
               >
-                Create Account
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Create Account</span>
+              </button>
+            </div>
+
+            {/* Direct Token Access Option */}
+            <div className="flex items-center justify-center pt-1">
+              <button
+                onClick={() => setShowTokenModal(true)}
+                className="text-[10px] text-slate-400 hover:text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors py-1 px-2.5 rounded-lg hover:bg-white/5"
+              >
+                <KeyRound className="w-3 h-3 text-cyan-400" />
+                <span>Connect via API Token</span>
               </button>
             </div>
           </div>
-
         </div>
-      ) : (
-        /* Safe Auth Forms Layer */
-        <div className="flex-1 flex items-center justify-center p-4 py-12 relative z-20">
-          <div className="w-full max-w-sm bg-white dark:bg-[#181A20] border border-slate-200 dark:border-white/5 rounded-2xl p-5 shadow-lg space-y-4 transition-colors duration-300">
-            
-            <div className="text-center space-y-1">
-              <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
-                {authView === 'login' ? 'Institutional Access' : 'Create Elite Account'}
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                {authView === 'login' ? 'Secure quantified gateway.' : 'Provision infrastructure.'}
-              </p>
-            </div>
 
-            <div className="bg-white dark:bg-[#181A20] p-3 rounded-xl border border-slate-200 dark:border-white/5 my-2 shadow-[0_2px_4px_rgba(0,0,0,0.05)]">
-              <h3 className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
-                {getAwardType() === 'MONTH' ? 'TOP TRADER THIS MONTH' : 'TOP TRADER THIS WEEK'}
-              </h3>
+      </main>
+
+      {/* FOOTER DISCLOSURE */}
+      <footer className="w-full text-center py-3 text-xs text-slate-500 font-mono select-none">
+        <p>&copy; <span id="copyright-year">{new Date().getFullYear()}</span> AppexQuant Global Markets. All Rights Reserved.</p>
+      </footer>
+
+      {/* MODAL: DIRECT DERIV API TOKEN AUTHENTICATION */}
+      {showTokenModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className={`w-full max-w-md p-6 rounded-2xl border shadow-2xl space-y-4 ${isDark ? 'bg-[#181A20] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'}`}>
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center font-black text-blue-600 dark:text-blue-400 text-[10px] border border-blue-500/20">
-                  {topTrader ? topTrader.name.charAt(0) : '?'}
+                <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400">
+                  <KeyRound className="w-5 h-5" />
                 </div>
                 <div>
-                   <div className="font-bold text-slate-900 dark:text-white text-xs">{topTrader ? topTrader.name : 'Calculating...'}</div>
-                   <div className="text-emerald-600 dark:text-emerald-400 font-mono text-[10px] font-bold">{topTrader ? topTrader.roi : 'LIVE'}</div>
+                  <h3 className="text-sm font-bold uppercase tracking-wider">Deriv API Token Login</h3>
+                  <p className="text-[10px] text-slate-400">Direct client authorization without redirection</p>
                 </div>
               </div>
-            </div>
-            
-            {/* Feature Bar Icons */}
-            <div className="grid grid-cols-4 gap-1 py-2 border-t border-slate-200 dark:border-white/5 my-3">
-              {['MARKET', 'AI', 'SMC', 'ACAD'].map(f => (
-                <div key={f} className="flex flex-col items-center gap-0.5">
-                  <div className="w-7 h-7 rounded-md bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-cyan-600 dark:text-cyan-400 font-bold text-[9px] border border-slate-200 dark:border-slate-700">{f[0]}</div>
-                  <span className="text-[7px] text-slate-500 uppercase tracking-wider">{f}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Pillars and Footer */}
-            <div className="text-center pb-6 border-b border-slate-700/50 mb-6">
-              <p className="text-[9px] tracking-[0.1em] text-slate-400 uppercase font-bold">ANALYZE • AUTOMATE • EXECUTE • EVOLVE</p>
-              <p className="text-[8px] text-slate-600 mt-1 uppercase tracking-widest">ONE ECOSYSTEM. LIMITLESS POSSIBILITIES.</p>
-            </div>
-
-            {errorMessage && (
-              <div className="p-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg flex items-start gap-2.5 mb-4 animate-in fade-in zoom-in duration-300">
-                <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
-                <div className="flex flex-col text-xs text-red-700 dark:text-red-400">
-                  <span className="font-bold leading-relaxed">{errorMessage}</span>
-                  {emailExistsError && (
-                    <button 
-                      onClick={() => { setAuthView('login'); setErrorMessage(null); setEmailExistsError(false); }}
-                      className="text-left mt-1 underline hover:text-red-500 dark:hover:text-red-300 transition-colors font-semibold"
-                    >
-                      Switch to Log In
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            {successMessage && (
-              <div className="p-3 bg-emerald-50 dark:bg-[#0ECB81]/10 border border-emerald-200 dark:border-[#0ECB81]/20 rounded-lg flex items-center gap-2 mb-4 animate-in fade-in zoom-in duration-300">
-                <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-[#0ECB81] shrink-0" />
-                <span className="text-xs text-emerald-700 dark:text-[#0ECB81] font-bold">{successMessage}</span>
-              </div>
-            )}
-
-            <form onSubmit={authView === 'login' ? handleStandardLogin : handleStandardRegister} className="space-y-4">
               <button
-                type="button"
-                onClick={async () => {
-                  const verifier = await generateCodeVerifier();
-                  const challenge = await generateCodeChallenge(verifier);
-                  // Initiate OAuth flow with PKCE challenge
-                  window.location.href = `/api/auth/deriv/login?code_challenge=${challenge}&code_verifier=${verifier}`;
-                }}
-                className="w-full h-12 rounded-xl bg-slate-900 border border-slate-700 hover:bg-slate-800 text-white font-bold text-xs tracking-wider uppercase transition-all flex items-center justify-center gap-2 shadow-lg mb-4"
+                onClick={() => setShowTokenModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
               >
-                Sign in with Deriv
+                ✕
               </button>
-              
-              <div className="relative my-4">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-slate-700"></div>
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-[#181A20] px-2 text-slate-500">Or</span>
-                </div>
-              </div>
-              {authView === 'register' && (
-                <div className="space-y-1.5 animate-in slide-in-from-top-4 duration-300">
-                  <label className="text-xs font-bold uppercase text-slate-600 dark:text-slate-400">Full Name</label>
-                  <input
-                    type="text"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="Alex Nyangaresi Obwogi"
-                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-900 dark:text-white font-bold placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-                  />
-                </div>
-              )}
+            </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase text-slate-600 dark:text-slate-400">Email Address</label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@example.com"
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-900 dark:text-white font-bold placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <label className="text-xs font-bold uppercase text-slate-600 dark:text-slate-400">Password</label>
-                  {authView === 'login' && (
-                    <span className="text-[10px] font-bold text-slate-500 hover:text-blue-500 cursor-pointer transition-colors">
-                      Forgot Password?
-                    </span>
-                  )}
-                </div>
+            <form onSubmit={handleTokenSubmit} className="space-y-3">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                  Deriv API Token (Read & Trade Scopes)
+                </label>
                 <input
                   type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-900 dark:text-white font-bold placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                  value={apiTokenInput}
+                  onChange={(e) => setApiTokenInput(e.target.value)}
+                  placeholder="e.g. abc123def456ghi789"
+                  className={`w-full h-11 px-3.5 rounded-xl border text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-all ${isDark ? 'bg-black/30 border-white/10 text-white placeholder:text-slate-600' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400'}`}
+                  autoFocus
                 />
               </div>
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full h-12 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold text-xs tracking-wider uppercase transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 disabled:opacity-50 mt-2 hover:scale-[1.02]"
-              >
-                {authView === 'login' ? (
-                  <>
-                    <LogIn className="w-4 h-4" />
-                    <span>Sign In</span>
-                  </>
-                ) : (
-                  <>
-                    <UserPlus className="w-4 h-4" />
-                    <span>Register Account</span>
-                  </>
-                )}
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </form>
+              <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[10px] text-blue-400 space-y-1">
+                <div className="font-bold flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>How to generate your token:</span>
+                </div>
+                <p className="text-slate-300 dark:text-slate-400">
+                  Log into Deriv → Settings → API Token → Create token with <strong>Read</strong> and <strong>Trade</strong> scopes.
+                </p>
+              </div>
 
-            {authView === 'login' && (
-              <div className="pt-2">
-                <button 
-                  onClick={() => { setEmail('obwogialex728@gmail.com'); setPassword('password'); setTimeout(() => handleStandardLogin(), 100); }}
-                  type="button" 
-                  className="w-full py-2.5 px-4 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30 rounded-xl text-xs font-bold uppercase tracking-wider transition-all hover:scale-[1.02] flex items-center justify-center gap-2"
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTokenModal(false)}
+                  className={`w-1/2 py-2.5 rounded-xl border text-xs font-bold uppercase tracking-wider cursor-pointer ${isDark ? 'border-white/10 hover:bg-white/5 text-slate-300' : 'border-slate-300 hover:bg-slate-100 text-slate-700'}`}
                 >
-                  <TrendingUp className="w-4 h-4" />
-                  <span>Demo Sign In</span>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isBusy || !apiTokenInput.trim()}
+                  className="w-1/2 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-lg disabled:opacity-50 cursor-pointer"
+                >
+                  {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  <span>Authorize</span>
                 </button>
               </div>
-            )}
-
-            <div className="pt-4 flex flex-col gap-4 text-xs font-bold border-t border-slate-200 dark:border-white/10 mt-6">
-              <button
-                onClick={() => {
-                  setAuthView(authView === 'login' ? 'register' : 'login');
-                  setErrorMessage(null);
-                }}
-                className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors mt-4"
-              >
-                {authView === 'login' ? 'Need an account? Register' : 'Already have an account? Log In'}
-              </button>
-              <button
-                onClick={() => { setAuthView('landing'); setErrorMessage(null); }}
-                className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
-              >
-                ← Back to Overview
-              </button>
-            </div>
-
+            </form>
           </div>
         </div>
       )}

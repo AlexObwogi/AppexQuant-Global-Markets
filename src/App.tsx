@@ -22,6 +22,7 @@ import { AnalyticsView } from './views/AnalyticsView';
 import { CalendarView } from './views/CalendarView';
 import { NewsView } from './views/NewsView';
 import { CommunityView } from './views/CommunityView';
+import { LeaderboardView } from './views/LeaderboardView';
 import { AccountView } from './views/AccountView';
 import { LegalView } from './views/LegalView';
 import { AdminBoundaryView } from './views/AdminBoundaryView';
@@ -93,6 +94,8 @@ function ActiveViewRenderer() {
       return <NewsView />;
     case 'community':
       return <CommunityView />;
+    case 'leaderboard':
+      return <LeaderboardView />;
     case 'account':
       return <AccountView />;
     case 'legal':

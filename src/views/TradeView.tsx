@@ -4,10 +4,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Card } from '../components/ui/Card';
-import { Badge } from '../components/ui/Badge';
-import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
+import { Card } from '../components/ui/Card.tsx';
+import { Badge } from '../components/ui/Badge.tsx';
+import { Button } from '../components/ui/Button.tsx';
+import { Input } from '../components/ui/Input.tsx';
 import {
   ShieldCheck,
   ShieldAlert,
@@ -29,9 +29,9 @@ import {
   Shield,
   Trash2
 } from 'lucide-react';
-import { OrderRequest, RiskPolicy, RiskDecision, MarketEnvironmentState, defaultMarketEnvironment, CheckResult } from '../services/ai/riskEngine';
-import { ExecutionCommandDesk } from '../components/eas/ExecutionCommandDesk';
-import { useApiFetch } from '../utils/apiFetch';
+import { OrderRequest, RiskPolicy, RiskDecision, MarketEnvironmentState, defaultMarketEnvironment, CheckResult } from '../services/ai/riskEngine.ts';
+import { ExecutionCommandDesk } from '../components/eas/ExecutionCommandDesk.tsx';
+import { useApiFetch } from '../utils/apiFetch.ts';
 import { ArrowRightLeft } from 'lucide-react';
 
 export const TradeView: React.FC = () => {

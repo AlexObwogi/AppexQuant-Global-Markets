@@ -3,7 +3,7 @@
  * Provides verified Expert Advisors (EAs), licensing rights, installation workflow, and performance records.
  */
 
-import { ExpertAdvisor, SuccessStory, DailyPerformanceRecord, EASubmissionPayload } from '../../types/ea';
+import { ExpertAdvisor, SuccessStory, DailyPerformanceRecord, EASubmissionPayload } from '../../types/ea.ts';
 
 export const INITIAL_EXPERT_ADVISORS: ExpertAdvisor[] = [
   {

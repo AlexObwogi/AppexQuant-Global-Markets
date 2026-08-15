@@ -4,16 +4,16 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useGlobalState } from '../state/GlobalStateContext';
-import { useApiFetch } from '../utils/apiFetch';
-import { TRADER_LEVELS, TRADING_GLOSSARY, getStoredProgress, saveStoredProgress } from '../services/education/educationEngine';
-import { Lesson, TraderLevel, UserEducationProgress, Module, Course } from '../types/education';
-import { InteractiveCandleExplorer } from '../components/education/InteractiveCandleExplorer';
-import { InteractiveRiskCalc } from '../components/education/InteractiveRiskCalc';
-import { MarketStructureLab } from '../components/education/MarketStructureLab';
-import { Card } from '../components/ui/Card';
-import { Badge } from '../components/ui/Badge';
-import { Button } from '../components/ui/Button';
+import { useGlobalState } from '../state/GlobalStateContext.tsx';
+import { useApiFetch } from '../utils/apiFetch.ts';
+import { TRADER_LEVELS, TRADING_GLOSSARY, getStoredProgress, saveStoredProgress } from '../services/education/educationEngine.ts';
+import { Lesson, TraderLevel, UserEducationProgress, Module, Course } from '../types/education.ts';
+import { InteractiveCandleExplorer } from '../components/education/InteractiveCandleExplorer.tsx';
+import { InteractiveRiskCalc } from '../components/education/InteractiveRiskCalc.tsx';
+import { MarketStructureLab } from '../components/education/MarketStructureLab.tsx';
+import { Card } from '../components/ui/Card.tsx';
+import { Badge } from '../components/ui/Badge.tsx';
+import { Button } from '../components/ui/Button.tsx';
 
 // Canonical Strategy architecture imports
 import {
@@ -35,7 +35,7 @@ import {
   AILearnerProfile,
   StrategyCombination,
   DetailedStreak
-} from '../types/canonicalStrategy';
+} from '../types/canonicalStrategy.ts';
 
 import {
   CANONICAL_STRATEGY_LIBRARY,
@@ -50,7 +50,7 @@ import {
   createStrategyCombination,
   EURUSD_SWEEP_EXAMPLE,
   GBPUSD_JUDAS_EXAMPLE
-} from '../services/education/strategyLibrary';
+} from '../services/education/strategyLibrary.ts';
 
 import {
   GraduationCap,

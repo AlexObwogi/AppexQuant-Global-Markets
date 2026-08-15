@@ -3,7 +3,7 @@
  * Implements BrokerAdapter interface to decouple UI from specific broker APIs.
  */
 
-import { BrokerAdapter, BrokerConnection, BrokerType, BrokerAccount, BrokerBalance, BrokerPosition, BrokerOrder, BrokerEnvironment, BrokerConnectionState } from '../types/broker';
+import { BrokerAdapter, BrokerConnection, BrokerType, BrokerAccount, BrokerBalance, BrokerPosition, BrokerOrder, BrokerEnvironment, BrokerConnectionState } from '../types/broker.ts';
 
 export class BaseBrokerAdapter implements BrokerAdapter {
   readonly brokerType: BrokerType;

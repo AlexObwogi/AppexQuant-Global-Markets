@@ -20,7 +20,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { TradeDecisionChain, DecisionChainStep } from '../../types/automationControl.js';
+import { TradeDecisionChain, DecisionChainStep } from '../../types/automationControl.ts';
 import {
   X,
   CheckCircle2,

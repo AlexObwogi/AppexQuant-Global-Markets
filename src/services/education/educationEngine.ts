@@ -3,7 +3,7 @@
  * 100% Original Structured Learning Curriculum & State Managers
  */
 
-import { TraderLevelCategory, GlossaryTerm, UserEducationProgress } from '../../types/education';
+import { TraderLevelCategory, GlossaryTerm, UserEducationProgress } from '../../types/education.ts';
 
 export const TRADER_LEVELS: TraderLevelCategory[] = [
   {

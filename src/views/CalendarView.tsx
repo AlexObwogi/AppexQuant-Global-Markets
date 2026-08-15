@@ -4,10 +4,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { EconomicEvent } from '../types/ai';
-import { fetchLiveNewsSentinel } from '../services/ai/newsSentinelEngine';
-import { useGlobalState } from '../state/GlobalStateContext';
-import { CollapsibleText } from '../components/common/CollapsibleText';
+import { EconomicEvent } from '../types/ai.ts';
+import { fetchLiveNewsSentinel } from '../services/ai/newsSentinelEngine.ts';
+import { useGlobalState } from '../state/GlobalStateContext.tsx';
+import { CollapsibleText } from '../components/common/CollapsibleText.tsx';
 import {
   Calendar as CalendarIcon,
   Filter,

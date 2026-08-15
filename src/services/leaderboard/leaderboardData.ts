@@ -3,7 +3,7 @@
  * Implements 2-Year Rolling Retention (24 Months), Real-time Performance Tracking & Badges
  */
 
-import { LeaderboardEntry, HallOfFameInductee, VerifiedBadge, MonthlyRecord, LeaderboardWindow } from '../../types/leaderboard';
+import { LeaderboardEntry, HallOfFameInductee, VerifiedBadge, MonthlyRecord, LeaderboardWindow } from '../../types/leaderboard.ts';
 
 // Verified Badges Definition
 export const BADGE_TRIPLE_LEADER_PURPLE: VerifiedBadge = {

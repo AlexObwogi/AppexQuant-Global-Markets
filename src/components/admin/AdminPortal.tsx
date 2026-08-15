@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useGlobalState } from '../../state/GlobalStateContext.js';
-import { useApiFetch } from '../../utils/apiFetch.js';
-import { SystemHealthView } from '../../views/SystemHealthView.js';
-import { DerivIntegrationsView } from '../../views/admin/DerivIntegrationsView.js';
+import { useGlobalState } from '../../state/GlobalStateContext.tsx';
+import { useApiFetch } from '../../utils/apiFetch.ts';
+import { SystemHealthView } from '../../views/SystemHealthView.tsx';
+import { DerivIntegrationsView } from '../../views/admin/DerivIntegrationsView.tsx';
 import { 
   ShieldAlert, 
   Activity, 
@@ -20,7 +20,7 @@ import {
   Wifi,
   ShieldCheck
 } from 'lucide-react';
-import { Button } from '../../components/ui/Button.js';
+import { Button } from '../../components/ui/Button.tsx';
 
 export const AdminPortal: React.FC = () => {
   const { state, dispatch } = useGlobalState();

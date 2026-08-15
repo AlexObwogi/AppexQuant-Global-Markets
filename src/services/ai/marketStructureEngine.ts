@@ -3,8 +3,8 @@
  * Analyzes market structure (Swing Highs/Lows, Trend, ATR Volatility) from real candle data.
  */
 
-import { NormalizedCandle } from '../deriv/derivTypes';
-import { MarketStructureType } from '../../types/ai';
+import { NormalizedCandle } from '../deriv/derivTypes.ts';
+import { MarketStructureType } from '../../types/ai.ts';
 
 export interface MarketStructureAnalysis {
   structure: MarketStructureType;

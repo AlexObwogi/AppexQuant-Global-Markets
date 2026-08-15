@@ -1,6 +1,6 @@
 import React from 'react';
-import { useGlobalState } from '../../state/GlobalStateContext.js';
-import { Card } from '../ui/Card.js';
+import { useGlobalState } from '../../state/GlobalStateContext.tsx';
+import { Card } from '../ui/Card.tsx';
 
 export const PositionsPanel: React.FC = () => {
   const { state } = useGlobalState();

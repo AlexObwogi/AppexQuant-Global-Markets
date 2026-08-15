@@ -5,7 +5,7 @@
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../observability/logger.ts';
 
 let supabaseClient: SupabaseClient | null = null;
 
@@ -14,7 +14,7 @@ export function getSupabaseClient(): SupabaseClient | null {
 
   const supabaseUrl = process.env.SUPABASE_URL;
   // Prefer service role key for backend operations if present, otherwise anon key
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
     return null;

@@ -7,8 +7,8 @@
  */
 
 import React, { ReactNode } from 'react';
-import { Card } from './Card.js';
-import { Button } from './Button.js';
+import { Card } from './Card.tsx';
+import { Button } from './Button.tsx';
 
 export interface EmptyStateProps {
   icon?: ReactNode;

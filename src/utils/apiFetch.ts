@@ -1,4 +1,4 @@
-import { useGlobalState } from '../state/GlobalStateContext';
+import { useGlobalState } from '../state/GlobalStateContext.tsx';
 
 let globalCsrfToken: string | null = null;
 

@@ -6,18 +6,18 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { automationControlService } from '../services/automationControlService';
+import { automationControlService } from '../services/automationControlService.ts';
 import {
   SystemAutomationStatus,
   ActiveStrategy,
   AutomationStreamEvent,
   TradeDecisionChain,
-} from '../types/automationControl';
-import { ActiveStrategiesTable } from '../components/automation/ActiveStrategiesTable';
-import { AutomationEventStream } from '../components/automation/AutomationEventStream';
-import { DecisionChainModal } from '../components/automation/DecisionChainModal';
-import { CollapsibleText } from '../components/common/CollapsibleText';
-import { StatusPill } from '../components/ui/StatusPill';
+} from '../types/automationControl.ts';
+import { ActiveStrategiesTable } from '../components/automation/ActiveStrategiesTable.tsx';
+import { AutomationEventStream } from '../components/automation/AutomationEventStream.tsx';
+import { DecisionChainModal } from '../components/automation/DecisionChainModal.tsx';
+import { CollapsibleText } from '../components/common/CollapsibleText.tsx';
+import { StatusPill } from '../components/ui/StatusPill.tsx';
 import {
   Bot,
   Play,

@@ -4,15 +4,15 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useGlobalState } from '../state/GlobalStateContext';
-import { useApiFetch } from '../utils/apiFetch';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Input, Select } from '../components/ui/Input';
-import { Badge } from '../components/ui/Badge';
-import { StatusIndicator } from '../components/ui/StatusIndicator';
-import { logAuditEvent } from '../observability/audit';
-import { getStoredProgress, TRADER_LEVELS } from '../services/education/educationEngine';
+import { useGlobalState } from '../state/GlobalStateContext.tsx';
+import { useApiFetch } from '../utils/apiFetch.ts';
+import { Card } from '../components/ui/Card.tsx';
+import { Button } from '../components/ui/Button.tsx';
+import { Input, Select } from '../components/ui/Input.tsx';
+import { Badge } from '../components/ui/Badge.tsx';
+import { StatusIndicator } from '../components/ui/StatusIndicator.tsx';
+import { logAuditEvent } from '../observability/audit.ts';
+import { getStoredProgress, TRADER_LEVELS } from '../services/education/educationEngine.ts';
 import { 
   User, 
   Shield, 

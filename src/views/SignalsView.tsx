@@ -5,17 +5,17 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { useGlobalState } from '../state/GlobalStateContext';
-import { useMarketData } from '../state/MarketDataContext';
-import { generateAISignal } from '../services/ai/signalEngine';
-import { fetchLiveNewsSentinel } from '../services/ai/newsSentinelEngine';
-import { getDXYContext } from '../services/ai/dxyEngine';
-import { DEFAULT_USER_STRATEGIES } from '../services/ai/strategyEngine';
-import { Signal, NewsItem } from '../types/ai';
-import { SignalCard } from '../components/ai/SignalCard';
-import { AICommandCenter } from '../components/ai/AICommandCenter';
-import { StrategyScannerModal } from '../components/strategy/StrategyScannerModal';
-import { PerformanceBadge, PerformanceDisclaimerBanner } from '../components/common/PerformanceDisclaimer';
+import { useGlobalState } from '../state/GlobalStateContext.tsx';
+import { useMarketData } from '../state/MarketDataContext.tsx';
+import { generateAISignal } from '../services/ai/signalEngine.ts';
+import { fetchLiveNewsSentinel } from '../services/ai/newsSentinelEngine.ts';
+import { getDXYContext } from '../services/ai/dxyEngine.ts';
+import { DEFAULT_USER_STRATEGIES } from '../services/ai/strategyEngine.ts';
+import { Signal, NewsItem } from '../types/ai.ts';
+import { SignalCard } from '../components/ai/SignalCard.tsx';
+import { AICommandCenter } from '../components/ai/AICommandCenter.tsx';
+import { StrategyScannerModal } from '../components/strategy/StrategyScannerModal.tsx';
+import { PerformanceBadge, PerformanceDisclaimerBanner } from '../components/common/PerformanceDisclaimer.tsx';
 import { Sparkles, Zap, ShieldAlert, RefreshCw, Filter, Layers, Info } from 'lucide-react';
 
 export const SignalsView: React.FC = () => {

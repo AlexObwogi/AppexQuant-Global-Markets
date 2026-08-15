@@ -5,8 +5,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useApiFetch } from '../../utils/apiFetch.js';
-import { DerivIntegrationService, DerivDiagnosticsResponse } from '../../services/deriv/DerivIntegrationService.js';
+import { useApiFetch } from '../../utils/apiFetch.ts';
+import { DerivIntegrationService, DerivDiagnosticsResponse } from '../../services/deriv/DerivIntegrationService.ts';
 import { 
   Globe, 
   RefreshCw, 
@@ -19,7 +19,7 @@ import {
   ShieldAlert,
   Server
 } from 'lucide-react';
-import { Button } from '../../components/ui/Button.js';
+import { Button } from '../../components/ui/Button.tsx';
 
 export const DerivIntegrationsView: React.FC = () => {
   const apiFetch = useApiFetch();

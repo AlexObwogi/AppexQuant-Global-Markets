@@ -4,15 +4,15 @@
  */
 
 import React from 'react';
-import { useGlobalState } from '../state/GlobalStateContext';
-import { useMarketData } from '../state/MarketDataContext';
-import { MetricCard } from '../components/ui/MetricCard';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
-import { AICommandCenter } from '../components/ai/AICommandCenter';
-import { PerformanceBadge, PerformanceDisclaimerBanner } from '../components/common/PerformanceDisclaimer';
-import { formatCurrencyValue, formatUserRiskStatus } from '../utils/userStatusPresentation';
+import { useGlobalState } from '../state/GlobalStateContext.tsx';
+import { useMarketData } from '../state/MarketDataContext.tsx';
+import { MetricCard } from '../components/ui/MetricCard.tsx';
+import { Card } from '../components/ui/Card.tsx';
+import { Button } from '../components/ui/Button.tsx';
+import { Badge } from '../components/ui/Badge.tsx';
+import { AICommandCenter } from '../components/ai/AICommandCenter.tsx';
+import { PerformanceBadge, PerformanceDisclaimerBanner } from '../components/common/PerformanceDisclaimer.tsx';
+import { formatCurrencyValue, formatUserRiskStatus } from '../utils/userStatusPresentation.ts';
 import {
   Wallet,
   Activity,

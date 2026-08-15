@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { ActiveStrategy, TradeDecisionChain } from '../../types/automationControl.js';
+import { ActiveStrategy, TradeDecisionChain } from '../../types/automationControl.ts';
 import {
   Play,
   Pause,

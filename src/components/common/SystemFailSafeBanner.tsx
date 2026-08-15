@@ -5,8 +5,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { failSafeEngineService } from '../../services/failSafeEngineService.js';
-import { FailSafeState } from '../../types/failSafe.js';
+import { failSafeEngineService } from '../../services/failSafeEngineService.ts';
+import { FailSafeState } from '../../types/failSafe.ts';
 import { ShieldAlert, AlertTriangle } from 'lucide-react';
 
 export const SystemFailSafeBanner: React.FC = () => {

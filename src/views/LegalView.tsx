@@ -4,12 +4,12 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useGlobalState } from '../state/GlobalStateContext';
-import { useApiFetch } from '../utils/apiFetch';
-import { Card } from '../components/ui/Card';
-import { OFFICIAL_LEGAL_DOCUMENTS } from '../data/legalDocuments';
-import { LegalDocument, LegalAcceptanceRecord, LegalAcceptanceSummary } from '../types/legal';
-import { PerformanceDisclaimerBanner } from '../components/common/PerformanceDisclaimer';
+import { useGlobalState } from '../state/GlobalStateContext.tsx';
+import { useApiFetch } from '../utils/apiFetch.ts';
+import { Card } from '../components/ui/Card.tsx';
+import { OFFICIAL_LEGAL_DOCUMENTS } from '../data/legalDocuments.ts';
+import { LegalDocument, LegalAcceptanceRecord, LegalAcceptanceSummary } from '../types/legal.ts';
+import { PerformanceDisclaimerBanner } from '../components/common/PerformanceDisclaimer.tsx';
 import {
   ShieldCheck,
   AlertTriangle,

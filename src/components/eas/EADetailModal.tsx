@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
-import { ExpertAdvisor } from '../../types/ea.js';
+import { ExpertAdvisor } from '../../types/ea.ts';
 import { Bot, ShieldCheck, Download, Star, CheckCircle, AlertTriangle, Cpu, BarChart2, FileText, ExternalLink } from 'lucide-react';
 
 interface EADetailModalProps {

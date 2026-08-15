@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { VerificationStatus } from '../../types/community.js';
+import { VerificationStatus } from '../../types/community.ts';
 import { ShieldCheck, Upload, FileText, CheckCircle2, X } from 'lucide-react';
 
 interface RequestVerificationModalProps {

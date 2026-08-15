@@ -3,8 +3,8 @@
  * Manages live ranking computation, 2-year retention filtering, and Hall of Fame queries
  */
 
-import { LeaderboardEntry, HallOfFameInductee, LeaderboardWindow, VerifiedBadge } from '../../types/leaderboard';
-import { LEADERBOARD_MASTER_DATA, HALL_OF_FAME_INDUCTEES, BADGE_TRIPLE_LEADER_PURPLE, BADGE_ALL_TIME_EARNER_GOLD } from './leaderboardData';
+import { LeaderboardEntry, HallOfFameInductee, LeaderboardWindow, VerifiedBadge } from '../../types/leaderboard.ts';
+import { LEADERBOARD_MASTER_DATA, HALL_OF_FAME_INDUCTEES, BADGE_TRIPLE_LEADER_PURPLE, BADGE_ALL_TIME_EARNER_GOLD } from './leaderboardData.ts';
 
 class LeaderboardService {
   private leaderboardData: Record<LeaderboardWindow, LeaderboardEntry[]> = { ...LEADERBOARD_MASTER_DATA };

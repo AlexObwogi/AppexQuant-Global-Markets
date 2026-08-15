@@ -9,8 +9,8 @@ import {
   MonitoredService,
   SystemHealthMetrics,
   HealthLogEntry,
-} from '../types/health';
-import { logger } from '../observability/logger';
+} from '../types/health.ts';
+import { logger } from '../observability/logger.ts';
 
 // Initial baseline setup for all 10 monitored services
 const INITIAL_SERVICES: Record<ServiceId, MonitoredService> = {

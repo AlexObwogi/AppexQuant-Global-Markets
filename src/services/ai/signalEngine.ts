@@ -4,15 +4,15 @@
  * Produces immutable, transparent Signal objects.
  */
 
-import { Signal, SignalStatus, NewsItem, DXYContext, UserStrategy } from '../../types/ai';
-import { MarketInstrument } from '../../types/market';
-import { NormalizedCandle } from '../deriv/derivTypes';
-import { analyzeMarketStructure } from './marketStructureEngine';
-import { detectHistoricalPatterns, evaluateHistoricalSimilarity } from './patternEngine';
-import { evaluateDXYAlignment } from './dxyEngine';
-import { evaluateSymbolNewsSentiment } from './newsSentinelEngine';
-import { calculateRiskReward } from './riskGuardrail';
-import { calculateDeterministicConfidence } from './confidenceModel';
+import { Signal, SignalStatus, NewsItem, DXYContext, UserStrategy } from '../../types/ai.ts';
+import { MarketInstrument } from '../../types/market.ts';
+import { NormalizedCandle } from '../deriv/derivTypes.ts';
+import { analyzeMarketStructure } from './marketStructureEngine.ts';
+import { detectHistoricalPatterns, evaluateHistoricalSimilarity } from './patternEngine.ts';
+import { evaluateDXYAlignment } from './dxyEngine.ts';
+import { evaluateSymbolNewsSentiment } from './newsSentinelEngine.ts';
+import { calculateRiskReward } from './riskGuardrail.ts';
+import { calculateDeterministicConfidence } from './confidenceModel.ts';
 
 // In-Memory Immutable Audit Trail for Signals
 const signalAuditRegistry: Signal[] = [];

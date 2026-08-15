@@ -4,8 +4,8 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import { generateCodeVerifier, deriveCodeChallenge, setEncryptedCookie, getEncryptedCookie, removeCookie } from './pkce';
-import { derivAuthService } from '../../services/deriv/authService';
+import { generateCodeVerifier, deriveCodeChallenge, setEncryptedCookie, getEncryptedCookie, removeCookie } from './pkce.ts';
+import { derivAuthService } from '../../services/deriv/authService.ts';
 
 export interface DerivAuthResult {
   token: string;

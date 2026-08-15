@@ -2,8 +2,8 @@
  * AppexQuant Markets Global - Central Alert Engine Service (Backend/Server Side)
  */
 
-import { Alert, AlertType, AlertSeverity, AlertChannel, UserAlertPreferences, UserAlertPreference } from '../types/alerts';
-import { logAuditEvent } from '../observability/audit';
+import { Alert, AlertType, AlertSeverity, AlertChannel, UserAlertPreferences, UserAlertPreference } from '../types/alerts.ts';
+import { logAuditEvent } from '../observability/audit.ts';
 
 // In-memory store for Alerts
 let alertsStore: Alert[] = [

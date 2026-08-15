@@ -7,7 +7,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { AutomationStreamEvent, TradeDecisionChain } from '../../types/automationControl.js';
+import { AutomationStreamEvent, TradeDecisionChain } from '../../types/automationControl.ts';
 import {
   Activity,
   Cpu,

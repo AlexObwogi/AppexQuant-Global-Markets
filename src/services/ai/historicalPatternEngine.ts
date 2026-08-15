@@ -3,8 +3,8 @@
  * Matches current price action against historical data samples and calculates conditional win frequencies.
  */
 
-import { NormalizedCandle } from '../deriv/derivTypes';
-import { HistoricalSimilarityResult } from '../../types/aiIntelligence';
+import { NormalizedCandle } from '../deriv/derivTypes.ts';
+import { HistoricalSimilarityResult } from '../../types/aiIntelligence.ts';
 
 export interface PatternMatchResult {
   patternName: string;

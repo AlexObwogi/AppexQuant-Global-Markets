@@ -4,10 +4,10 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useGlobalState } from '../../state/GlobalStateContext.js';
-import { useMarketData } from '../../state/MarketDataContext.js';
-import { MarketComparisonMatrix, MarketCompatibilityItem } from '../../types/ai.js';
-import { evaluateMarketCompatibility, DEFAULT_USER_STRATEGIES } from '../../services/ai/strategyEngine.js';
+import { useGlobalState } from '../../state/GlobalStateContext.tsx';
+import { useMarketData } from '../../state/MarketDataContext.tsx';
+import { MarketComparisonMatrix, MarketCompatibilityItem } from '../../types/ai.ts';
+import { evaluateMarketCompatibility, DEFAULT_USER_STRATEGIES } from '../../services/ai/strategyEngine.ts';
 import { Sparkles, Search, Code2, Globe2, Layers, Cpu, CheckCircle2, AlertTriangle, X, Play, RefreshCw } from 'lucide-react';
 
 interface AICommandCenterProps {

@@ -5,12 +5,12 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { LeaderboardWindow, LeaderboardEntry, HallOfFameInductee } from '../types/leaderboard';
-import { leaderboardService } from '../services/leaderboard/leaderboardService';
-import { VerifiedLeaderBadge } from '../components/leaderboard/VerifiedLeaderBadge';
-import { RetentionModal } from '../components/leaderboard/RetentionModal';
-import { HallOfFameSection } from '../components/leaderboard/HallOfFameSection';
-import { useGlobalState } from '../state/GlobalStateContext';
+import { LeaderboardWindow, LeaderboardEntry, HallOfFameInductee } from '../types/leaderboard.ts';
+import { leaderboardService } from '../services/leaderboard/leaderboardService.ts';
+import { VerifiedLeaderBadge } from '../components/leaderboard/VerifiedLeaderBadge.tsx';
+import { RetentionModal } from '../components/leaderboard/RetentionModal.tsx';
+import { HallOfFameSection } from '../components/leaderboard/HallOfFameSection.tsx';
+import { useGlobalState } from '../state/GlobalStateContext.tsx';
 import {
   Trophy,
   Crown,

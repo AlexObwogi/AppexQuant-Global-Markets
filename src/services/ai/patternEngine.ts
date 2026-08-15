@@ -3,7 +3,7 @@
  * Identifies price action patterns and evaluates historical conditional outcome frequencies.
  */
 
-import { NormalizedCandle } from '../deriv/derivTypes';
+import { NormalizedCandle } from '../deriv/derivTypes.ts';
 
 export interface PatternMatch {
   patternName: string;

@@ -9,14 +9,14 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useGlobalState } from '../../state/GlobalStateContext.js';
-import { useApiFetch } from '../../utils/apiFetch.js';
+import { useGlobalState } from '../../state/GlobalStateContext.tsx';
+import { useApiFetch } from '../../utils/apiFetch.ts';
 import { 
   useDerivAuth, 
   setEncryptedCookie, 
   getEncryptedCookie 
-} from '../../utils/auth.js';
-import { derivAuthService } from '../../services/deriv/authService.js';
+} from '../../utils/auth.ts';
+import { derivAuthService } from '../../services/deriv/authService.ts';
 import { 
   Globe, 
   Network, 
@@ -36,7 +36,7 @@ import {
   Zap,
   Sparkles
 } from 'lucide-react';
-import { AppexQuantLogo } from '../common/AppexQuantLogo.js';
+import { AppexQuantLogo } from '../common/AppexQuantLogo.tsx';
 
 const CSS_ANIMATIONS = `
   @keyframes drawRing {

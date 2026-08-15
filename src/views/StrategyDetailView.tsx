@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { UserStrategy } from '../types/ai';
+import { UserStrategy } from '../types/ai.ts';
 import { ArrowLeft, Play, BarChart2, Search, Target, Shield, Clock, BookOpen, GitCommit, Settings, CheckCircle2, History } from 'lucide-react';
-import { useGlobalState } from '../state/GlobalStateContext';
-import { StrategyScannerModal } from '../components/strategy/StrategyScannerModal';
+import { useGlobalState } from '../state/GlobalStateContext.tsx';
+import { StrategyScannerModal } from '../components/strategy/StrategyScannerModal.tsx';
 
 interface StrategyDetailViewProps {
   strategy: UserStrategy;

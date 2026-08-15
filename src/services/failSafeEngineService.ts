@@ -26,7 +26,7 @@ import {
   FailSafeSeverity,
   SubsystemHealth,
   FailSafeResetRequest,
-} from '../types/failSafe';
+} from '../types/failSafe.ts';
 
 
 type FailSafeListener = (state: FailSafeState) => void;

@@ -1,7 +1,7 @@
-import { analyzeMarketStructure } from "./marketStructureEngine";
-import { MarketInstrument } from '../../types/market';
-import { NormalizedCandle } from '../deriv/derivTypes';
-import { UserStrategy } from '../../types/ai';
+import { analyzeMarketStructure } from "./marketStructureEngine.ts";
+import { MarketInstrument } from '../../types/market.ts';
+import { NormalizedCandle } from '../deriv/derivTypes.ts';
+import { UserStrategy } from '../../types/ai.ts';
 
 export type ConfluenceGrade = 'STRONG CONFLUENCE' | 'MODERATE CONFLUENCE' | 'WEAK CONFLUENCE' | 'CONFLICTING CONDITIONS' | 'INSUFFICIENT DATA';
 

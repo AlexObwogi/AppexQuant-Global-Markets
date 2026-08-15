@@ -6,10 +6,10 @@
 
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { runBacktest } from '../services/ai/backtestEngine';
-import { DEFAULT_USER_STRATEGIES } from '../services/ai/strategyEngine';
-import { BacktestParams, BacktestResult, BacktestTrade } from '../types/backtest';
-import { PerformanceBadge, PerformanceDisclaimerBanner } from '../components/common/PerformanceDisclaimer';
+import { runBacktest } from '../services/ai/backtestEngine.ts';
+import { DEFAULT_USER_STRATEGIES } from '../services/ai/strategyEngine.ts';
+import { BacktestParams, BacktestResult, BacktestTrade } from '../types/backtest.ts';
+import { PerformanceBadge, PerformanceDisclaimerBanner } from '../components/common/PerformanceDisclaimer.tsx';
 import {
   Play,
   TrendingUp,

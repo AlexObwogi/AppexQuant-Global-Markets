@@ -4,9 +4,9 @@
  * into clean, user-friendly status representations.
  */
 
-import { ConnectionStatus } from '../types/market';
-import { RiskState } from '../types/risk';
-import { FailSafeState } from '../types/failSafe';
+import { ConnectionStatus } from '../types/market.ts';
+import { RiskState } from '../types/risk.ts';
+import { FailSafeState } from '../types/failSafe.ts';
 
 export interface UserFacingStatus {
   label: string;

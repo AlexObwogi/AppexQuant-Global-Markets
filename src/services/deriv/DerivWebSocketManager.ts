@@ -12,8 +12,8 @@ import {
   DerivContractCategory,
   NormalizedTick,
   NormalizedCandle,
-} from './derivTypes';
-import { FALLBACK_INSTRUMENTS } from './marketTaxonomy';
+} from './derivTypes.ts';
+import { FALLBACK_INSTRUMENTS } from './marketTaxonomy.ts';
 
 export type DerivConnectionState = 'CONNECTED' | 'CONNECTING' | 'RECONNECTING' | 'DISCONNECTED';
 

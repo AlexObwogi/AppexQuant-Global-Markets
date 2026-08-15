@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { ExpertAdvisor, EASubmissionPayload } from '../../types/ea.js';
+import { ExpertAdvisor, EASubmissionPayload } from '../../types/ea.ts';
 import { Upload, ShieldCheck, CheckCircle, AlertTriangle } from 'lucide-react';
 
 interface EASubmitModalProps {

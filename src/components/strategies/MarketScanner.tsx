@@ -3,8 +3,8 @@
  */
 
 import React from 'react';
-import { StrategyScannerModal as PrimaryStrategyScannerModal } from '../strategy/StrategyScannerModal.js';
-import { UserStrategy } from '../../types/ai.js';
+import { StrategyScannerModal as PrimaryStrategyScannerModal } from '../strategy/StrategyScannerModal.tsx';
+import { UserStrategy } from '../../types/ai.ts';
 
 interface MarketScannerProps {
   strategy: UserStrategy;

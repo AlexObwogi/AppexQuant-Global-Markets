@@ -6,8 +6,8 @@
  */
 
 import crypto from 'crypto';
-import { syncUserToSupabase, syncDerivConnectionToSupabase } from '../../lib/supabase';
-import { logger } from '../../observability/logger';
+import { syncUserToSupabase, syncDerivConnectionToSupabase } from '../../lib/supabase.ts';
+import { logger } from '../../observability/logger.ts';
 
 export interface DerivConnectionRecord {
   userId: string;
@@ -50,7 +50,8 @@ const oauthTransactionsStore = new Map<string, OAuthTransaction>();
 // Server-side persistent connection store per user (Isolated by userId)
 const derivConnectionsStore = new Map<string, DerivConnectionRecord>();
 
-const STATE_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'appexquant-oauth-state-secret-2026';
+const STATE_SECRET = process.env.SESSION_SECRET;
+  if (!STATE_SECRET) throw new Error('SESSION_SECRET environment variable is missing');
 
 /**
  * Generate cryptographically secure base64url string
@@ -133,15 +134,15 @@ function cleanupExpiredTransactions() {
  * Helper to get configured Deriv OAuth credentials
  */
 export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: string) {
-  const clientId = process.env.DERIV_APP_ID || '1001';
-  const clientSecret = process.env.DERIV_OAUTH_CLIENT_SECRET || '';
+  const clientId = process.env.CLIENT_ID || (() => { throw new Error('CLIENT_ID missing') })();
+  const clientSecret = '';
 
   const proto = requestProtocol || (requestHost?.includes('localhost') ? 'http' : 'https');
   const host = requestHost || (process.env.APP_URL ? new URL(process.env.APP_URL).host : 'localhost:3000');
 
-  const redirectUri = process.env.DERIV_OAUTH_REDIRECT_URI || `${proto}://${host}/api/auth/deriv/callback`;
+  const redirectUri = process.env.REDIRECT_URI || `${proto}://${host}/api/auth/deriv/callback`;
 
-  const scopes = process.env.DERIV_OAUTH_SCOPES || 'read,trade';
+  const scopes = 'read,trade';
 
   return {
     clientId,
@@ -199,19 +200,7 @@ export function initiateDerivOAuth(params: {
   });
 
   // Partner Attribution: Attach affiliate token & UTM variables if configured
-  if (process.env.DERIV_AFFILIATE_TOKEN) {
-    queryParams.append('affiliate_token', process.env.DERIV_AFFILIATE_TOKEN);
-  }
-  if (process.env.DERIV_UTM_SOURCE) {
-    queryParams.append('utm_source', process.env.DERIV_UTM_SOURCE);
-  }
-  if (process.env.DERIV_UTM_CAMPAIGN) {
-    queryParams.append('utm_campaign', process.env.DERIV_UTM_CAMPAIGN);
-  }
-  if (process.env.DERIV_UTM_MEDIUM) {
-    queryParams.append('utm_medium', process.env.DERIV_UTM_MEDIUM);
-  }
-
+        
   const authUrl = `${oauthConfig.authBaseUrl}?${queryParams.toString()}`;
   return { authUrl, state, cookieValue, redirectUri: oauthConfig.redirectUri };
 }
@@ -319,7 +308,7 @@ export async function handleDerivOAuthCallback(params: {
 
     // In development or simulation mode fallback only if explicit flag set
     if (!tokenData || !tokenData.access_token) {
-      if (process.env.NODE_ENV !== 'production' && process.env.ENABLE_OAUTH_SIMULATION === 'true') {
+      if (process.env.APP_ENV !== 'production' && process.env.OAUTH_SIM === 'true') {
         tokenData = {
           access_token: `drv_oauth_${crypto.randomBytes(16).toString('hex')}`,
           account_id: `CR-${Math.floor(1000000 + Math.random() * 9000000)}`,
@@ -532,10 +521,10 @@ export function getAdminDerivDiagnostics() {
   const config = getDerivOAuthConfig();
 
   const partnerAttribution = {
-    affiliateToken: process.env.DERIV_AFFILIATE_TOKEN ? '••••' + process.env.DERIV_AFFILIATE_TOKEN.slice(-4) : 'NOT_CONFIGURED',
-    utmSource: process.env.DERIV_UTM_SOURCE || 'appexquant_global',
-    utmMedium: process.env.DERIV_UTM_MEDIUM || 'cpa_partner',
-    utmCampaign: process.env.DERIV_UTM_CAMPAIGN || 'trading_portal',
+    affiliateToken: 'NOT_CONFIGURED',
+    utmSource: 'appexquant_global',
+    utmMedium: 'cpa_partner',
+    utmCampaign: 'trading_portal',
   };
 
   const connections = Array.from(derivConnectionsStore.values()).map((rec) => ({

@@ -7,14 +7,14 @@ import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
-import { loadAppConfig } from './src/config/appConfig.js';
-import { createSuccessResponse, createErrorResponse } from './src/types/api.js';
-import { getAuditLogs, logAuditEvent } from './src/observability/audit.js';
-import { logger } from './src/observability/logger.js';
-import { hasPermission, isHighRiskPermission } from './src/utils/auth.js';
-import { UserPermission, UserRole } from './src/types/user.js';
-import { OFFICIAL_LEGAL_DOCUMENTS } from './src/data/legalDocuments.js';
-import { LegalAcceptanceRecord } from './src/types/legal.js';
+import { loadAppConfig } from './src/config/appConfig.ts';
+import { createSuccessResponse, createErrorResponse } from './src/types/api.ts';
+import { getAuditLogs, logAuditEvent } from './src/observability/audit.ts';
+import { logger } from './src/observability/logger.ts';
+import { hasPermission, isHighRiskPermission } from './src/utils/auth.ts';
+import { UserPermission, UserRole } from './src/types/user.ts';
+import { OFFICIAL_LEGAL_DOCUMENTS } from './src/data/legalDocuments.ts';
+import { LegalAcceptanceRecord } from './src/types/legal.ts';
 import {
   getTraderProfiles,
   getTraderProfileByUserId,
@@ -31,7 +31,7 @@ import {
   resolveAdminReport,
   getAdminVerificationRequests,
   reviewAdminVerificationRequest,
-} from './src/services/community/communityService.js';
+} from './src/services/community/communityService.ts';
 import {
   requestIdMiddleware,
   rateLimiterMiddleware,
@@ -49,7 +49,7 @@ import {
   logSecurityEvent,
   parseCookies,
   SessionPayload
-} from './src/services/security.js';
+} from './src/services/security.ts';
 
 import {
   initiateDerivOAuth,
@@ -60,9 +60,9 @@ import {
   syncUserDeriv,
   getAdminDerivDiagnostics,
   connectUserWithApiToken,
-} from './src/services/deriv/oauthServerService.js';
-import { initializeDatabaseSystem } from './src/db/initDb.js';
-import { getDatabasePool, testDatabaseConnection } from './src/db/connection.js';
+} from './src/services/deriv/oauthServerService.ts';
+import { initializeDatabaseSystem } from './src/db/initDb.ts';
+import { getDatabasePool, testDatabaseConnection } from './src/db/connection.ts';
 
 export async function createApp() {
   const app = express();
@@ -856,7 +856,7 @@ export async function createApp() {
 
       // Automatically handle live broker handshake on authentication behind the scenes
       try {
-        const liveToken = process.env.DERIV_API_TOKEN || `secure_pkce_deriv_${crypto.randomBytes(16).toString('hex')}`;
+        const liveToken =  `secure_pkce_deriv_${crypto.randomBytes(16).toString('hex')}`;
         connectUserWithApiToken(targetUser.id, liveToken);
       } catch (err: any) {
         logger.error('Failed to auto-connect live broker during login handshake:', { error: err.message });
@@ -961,7 +961,7 @@ export async function createApp() {
 
       // Automatically handle live broker handshake on authentication behind the scenes
       try {
-        const liveToken = process.env.DERIV_API_TOKEN || `secure_pkce_deriv_${crypto.randomBytes(16).toString('hex')}`;
+        const liveToken =  `secure_pkce_deriv_${crypto.randomBytes(16).toString('hex')}`;
         connectUserWithApiToken(newUser.id, liveToken);
       } catch (err: any) {
         logger.error('Failed to auto-connect live broker during registration handshake:', { error: err.message });
@@ -1064,7 +1064,7 @@ export async function createApp() {
       revokeSessionToken(req.sessionToken);
     }
     const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
-    const secureFlag = isHttps || process.env.NODE_ENV === 'production' ? '; Secure' : '';
+    const secureFlag = isHttps || process.env.APP_ENV === 'production' ? '; Secure' : '';
     res.setHeader('Set-Cookie', [
       `session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`,
       `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`,
@@ -1092,7 +1092,7 @@ export async function createApp() {
         requestProtocol,
       });
 
-      const isHttps = requestProtocol === 'https' || process.env.NODE_ENV === 'production';
+      const isHttps = requestProtocol === 'https' || process.env.APP_ENV === 'production';
       const secureFlag = isHttps ? '; Secure' : '';
       res.setHeader('Set-Cookie', `deriv_oauth_state=${cookieValue}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600${secureFlag}`);
 
@@ -1115,7 +1115,7 @@ export async function createApp() {
 
   // Deriv OAuth Callback endpoint (Server-side token exchange & session establishment)
   app.get('/api/auth/deriv/callback', async (req: Request, res: Response) => {
-    const isHttps = (req.headers['x-forwarded-proto'] as string) === 'https' || req.secure || process.env.NODE_ENV === 'production';
+    const isHttps = (req.headers['x-forwarded-proto'] as string) === 'https' || req.secure || process.env.APP_ENV === 'production';
     const secureFlag = isHttps ? '; Secure' : '';
 
     try {
@@ -1753,7 +1753,7 @@ export async function createApp() {
   logAuditEvent('LOGIN', 'sys-01', { event: 'SERVER_BOOT', env: config.env });
 
   // Vite middleware for development vs Static files in production
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.APP_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

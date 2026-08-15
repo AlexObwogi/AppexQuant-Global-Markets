@@ -8,7 +8,7 @@ import {
   CommunityPost,
   CommunityReport,
   VerificationRequest,
-} from '../types/community';
+} from '../types/community.ts';
 import {
   getTraderProfiles,
   getTraderProfileByUserId,
@@ -25,16 +25,16 @@ import {
   resolveAdminReport,
   getAdminVerificationRequests,
   reviewAdminVerificationRequest,
-} from '../services/community/communityService';
-import { PostCard } from '../components/community/PostCard';
-import { TraderProfileCard } from '../components/community/TraderProfileCard';
-import { CreatePostModal } from '../components/community/CreatePostModal';
-import { EditProfileModal } from '../components/community/EditProfileModal';
-import { RequestVerificationModal } from '../components/community/RequestVerificationModal';
-import { AdminCommunityConsoleModal } from '../components/community/AdminCommunityConsoleModal';
-import { SuccessStoriesSection } from '../components/success/SuccessStoriesSection';
-import { VerificationBadge } from '../components/community/VerificationBadge';
-import { useGlobalState } from '../state/GlobalStateContext';
+} from '../services/community/communityService.ts';
+import { PostCard } from '../components/community/PostCard.tsx';
+import { TraderProfileCard } from '../components/community/TraderProfileCard.tsx';
+import { CreatePostModal } from '../components/community/CreatePostModal.tsx';
+import { EditProfileModal } from '../components/community/EditProfileModal.tsx';
+import { RequestVerificationModal } from '../components/community/RequestVerificationModal.tsx';
+import { AdminCommunityConsoleModal } from '../components/community/AdminCommunityConsoleModal.tsx';
+import { SuccessStoriesSection } from '../components/success/SuccessStoriesSection.tsx';
+import { VerificationBadge } from '../components/community/VerificationBadge.tsx';
+import { useGlobalState } from '../state/GlobalStateContext.tsx';
 import {
   Users,
   MessageSquare,

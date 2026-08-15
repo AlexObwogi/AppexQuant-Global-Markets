@@ -4,18 +4,18 @@
  */
 
 import React, { ReactNode, useState, useEffect } from 'react';
-import { useGlobalState } from '../../state/GlobalStateContext.js';
-import { Header } from './Header.js';
-import { Sidebar } from './Sidebar.js';
-import { BottomNav } from './BottomNav.js';
-import { MoreDrawer } from './MoreDrawer.js';
-import { ProductionFooter } from './ProductionFooter.js';
-import { OfflineBanner } from '../common/OfflineBanner.js';
-import { SystemFailSafeBanner } from '../common/SystemFailSafeBanner.js';
-import { PWAInstallPrompt } from '../common/PWAInstallPrompt.js';
-import { PWAInstallBanner } from '../common/PWAInstallBanner.js';
-import { CinematicBackground } from '../common/CinematicBackground.js';
-import { EnvironmentGlobalBanner } from '../common/EnvironmentSelector.js';
+import { useGlobalState } from '../../state/GlobalStateContext.tsx';
+import { Header } from './Header.tsx';
+import { Sidebar } from './Sidebar.tsx';
+import { BottomNav } from './BottomNav.tsx';
+import { MoreDrawer } from './MoreDrawer.tsx';
+import { ProductionFooter } from './ProductionFooter.tsx';
+import { OfflineBanner } from '../common/OfflineBanner.tsx';
+import { SystemFailSafeBanner } from '../common/SystemFailSafeBanner.tsx';
+import { PWAInstallPrompt } from '../common/PWAInstallPrompt.tsx';
+import { PWAInstallBanner } from '../common/PWAInstallBanner.tsx';
+import { CinematicBackground } from '../common/CinematicBackground.tsx';
+import { EnvironmentGlobalBanner } from '../common/EnvironmentSelector.tsx';
 import { X } from 'lucide-react';
 
 interface AppShellProps {

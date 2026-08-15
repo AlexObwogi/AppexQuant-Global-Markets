@@ -2,7 +2,7 @@
  * AppexQuant Markets Global - P2P Engine & Mock Data Repository
  */
 
-import { P2POffer, P2PMerchant, P2POrder, P2PChatMessage, P2PDispute } from '../../types/p2p';
+import { P2POffer, P2PMerchant, P2POrder, P2PChatMessage, P2PDispute } from '../../types/p2p.ts';
 
 export const INITIAL_MERCHANTS: P2PMerchant[] = [
   {

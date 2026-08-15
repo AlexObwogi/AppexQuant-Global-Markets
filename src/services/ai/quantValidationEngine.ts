@@ -3,8 +3,8 @@
  * Implements the 5-tier quantitative validation gates: Stationarity (ADF), Volatility, Momentum, Probability Edge, and Expectancy.
  */
 
-import { NormalizedCandle } from '../deriv/derivTypes';
-import { QuantValidationReport, QuantValidationGateResult } from '../../types/ea';
+import { NormalizedCandle } from '../deriv/derivTypes.ts';
+import { QuantValidationReport, QuantValidationGateResult } from '../../types/ea.ts';
 
 export function runQuantValidation(
   candles: NormalizedCandle[],

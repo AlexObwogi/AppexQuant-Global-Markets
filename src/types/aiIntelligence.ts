@@ -14,7 +14,7 @@ import {
   MarketCompatibilityItem,
   DXYContext,
   HistoricalSimilarityResult,
-} from './ai';
+} from './ai.ts';
 
 export type {
   Signal as SignalObject,

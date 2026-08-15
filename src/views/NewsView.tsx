@@ -5,12 +5,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { useGlobalState } from '../state/GlobalStateContext';
-import { useApiFetch } from '../utils/apiFetch';
-import { fetchLiveNewsSentinel } from '../services/ai/newsSentinelEngine';
-import { getDXYContext } from '../services/ai/dxyEngine';
-import { NewsItem, EconomicEvent, DXYContext } from '../types/ai';
-import { Alert, AlertType, AlertSeverity, AlertChannel, UserAlertPreferences } from '../types/alerts';
+import { useGlobalState } from '../state/GlobalStateContext.tsx';
+import { useApiFetch } from '../utils/apiFetch.ts';
+import { fetchLiveNewsSentinel } from '../services/ai/newsSentinelEngine.ts';
+import { getDXYContext } from '../services/ai/dxyEngine.ts';
+import { NewsItem, EconomicEvent, DXYContext } from '../types/ai.ts';
+import { Alert, AlertType, AlertSeverity, AlertChannel, UserAlertPreferences } from '../types/alerts.ts';
 import {
   Newspaper,
   Globe2,

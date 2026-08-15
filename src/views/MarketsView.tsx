@@ -4,10 +4,10 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { MarketIntelligencePanel } from '../components/market/MarketIntelligencePanel';
-import { useMarketData } from '../state/MarketDataContext';
-import { InteractiveCandleChart } from '../components/chart/InteractiveCandleChart';
-import { InstrumentCategory } from '../types/market';
+import { MarketIntelligencePanel } from '../components/market/MarketIntelligencePanel.tsx';
+import { useMarketData } from '../state/MarketDataContext.tsx';
+import { InteractiveCandleChart } from '../components/chart/InteractiveCandleChart.tsx';
+import { InstrumentCategory } from '../types/market.ts';
 import {
   Search,
   Star,

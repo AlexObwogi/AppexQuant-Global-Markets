@@ -1,2 +1,2 @@
-export * from './pkce.js';
-export * from './useDerivAuth.js';
+export * from './pkce.ts';
+export * from './useDerivAuth.ts';

@@ -4,13 +4,13 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useGlobalState } from '../state/GlobalStateContext';
+import { useGlobalState } from '../state/GlobalStateContext.tsx';
 import {
   getStoredP2PState,
   saveStoredP2PState,
   P2PStateStore
-} from '../services/p2p/p2pEngine';
-import { P2POffer, P2POrder, P2PChatMessage, P2PDispute } from '../types/p2p';
+} from '../services/p2p/p2pEngine.ts';
+import { P2POffer, P2POrder, P2PChatMessage, P2PDispute } from '../types/p2p.ts';
 import {
   ShieldCheck,
   Search,

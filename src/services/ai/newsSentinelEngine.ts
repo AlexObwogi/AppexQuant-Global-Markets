@@ -3,7 +3,7 @@
  * Aggregates market news, economic calendar events, and computes normalized sentiment scores.
  */
 
-import { NewsItem, EconomicEvent, NewsSentimentType, NewsImpactType } from '../../types/ai';
+import { NewsItem, EconomicEvent, NewsSentimentType, NewsImpactType } from '../../types/ai.ts';
 
 export const VERIFIED_NEWS_FEED: NewsItem[] = [
   {

@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { ExpertAdvisor } from '../../types/ea.js';
+import { ExpertAdvisor } from '../../types/ea.ts';
 import { Bot, CheckCircle, Shield, Sliders, Server, Download, ArrowRight, ArrowLeft } from 'lucide-react';
 
 interface EAInstallWizardProps {

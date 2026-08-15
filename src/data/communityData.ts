@@ -7,7 +7,7 @@ import {
   CommunityPost,
   CommunityReport,
   VerificationRequest,
-} from '../types/community.js';
+} from '../types/community.ts';
 
 export const INITIAL_TRADER_PROFILES: TraderProfile[] = [
   {

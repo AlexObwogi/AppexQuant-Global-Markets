@@ -3,7 +3,7 @@
  * Enforces strict state machine rules for strategy status transitions.
  */
 
-import { StrategyStatus } from '../types/ai';
+import { StrategyStatus } from '../types/ai.ts';
 
 export interface TransitionResult {
   allowed: boolean;

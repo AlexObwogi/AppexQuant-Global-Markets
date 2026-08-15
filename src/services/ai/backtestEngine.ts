@@ -5,8 +5,8 @@
  * and detects overfitting risks using mathematical diagnostics.
  */
 
-import { BacktestParams, BacktestResult, BacktestTrade, MetricBreakdown, OverfittingDiagnosis } from '../../types/backtest';
-import { UserStrategy } from '../../types/ai';
+import { BacktestParams, BacktestResult, BacktestTrade, MetricBreakdown, OverfittingDiagnosis } from '../../types/backtest.ts';
+import { UserStrategy } from '../../types/ai.ts';
 
 // Simple deterministic pseudo-random generator based on a seed string
 class SeededRandom {

@@ -36,8 +36,8 @@ import {
   StrategyUserApproval,
   StrategyActivationPipeline,
   StrategyExecutionMode,
-} from '../../types/automationControl.js';
-import { automationControlService } from '../../services/automationControlService.js';
+} from '../../types/automationControl.ts';
+import { automationControlService } from '../../services/automationControlService.ts';
 
 interface StrategyActivationWizardModalProps {
   isOpen: boolean;

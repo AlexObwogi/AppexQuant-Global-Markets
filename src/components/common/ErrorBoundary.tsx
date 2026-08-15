@@ -4,9 +4,9 @@
  */
 
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { ErrorState } from '../ui/ErrorState.js';
-import { createCorrelationId } from '../../types/api.js';
-import { logger } from '../../observability/logger.js';
+import { ErrorState } from '../ui/ErrorState.tsx';
+import { createCorrelationId } from '../../types/api.ts';
+import { logger } from '../../observability/logger.ts';
 
 interface Props {
   children: ReactNode;

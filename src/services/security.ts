@@ -1,13 +1,24 @@
 import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
-import { UserRole, UserPermission } from '../types/user';
-import { hasPermission } from '../utils/auth';
+import { UserRole, UserPermission } from '../types/user.ts';
+import { hasPermission } from '../utils/auth.ts';
 
 // 1. SECRET MANAGEMENT (With secure fallbacks)
-const JWT_SECRET = process.env.JWT_SECRET || 'jwt-appexquant-fallback-secure-key-2026';
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY 
-  ? crypto.createHash('sha256').update(process.env.ENCRYPTION_KEY).digest() 
-  : crypto.createHash('sha256').update('appexquant-default-encryption-key-2026').digest();
+export function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET || process.env.SESSION_SECRET;
+  if (!secret) throw new Error('JWT_SECRET or SESSION_SECRET environment variable is missing');
+  return secret;
+}
+
+export function getSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error('SESSION_SECRET environment variable is missing');
+  return secret;
+}
+
+export function getEncryptionKey(): Buffer {
+  return crypto.createHash('sha256').update(getSessionSecret()).digest();
+}
 
 // In-memory blacklist for revoked sessions (simulating session rotation / revoking)
 const revokedSessionTokens = new Set<string>();
@@ -16,7 +27,7 @@ const revokedSessionTokens = new Set<string>();
 export function encryptSensitiveData(text: string): string {
   if (!text) return '';
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+  const cipher = crypto.createCipheriv('aes-256-cbc', getEncryptionKey(), iv);
   let encrypted = cipher.update(text, 'utf8', 'hex');
   encrypted += cipher.final('hex');
   return `${iv.toString('hex')}:${encrypted}`;
@@ -28,7 +39,7 @@ export function decryptSensitiveData(encryptedHex: string): string {
   if (parts.length !== 2) throw new Error('Malformed cipher text');
   const iv = Buffer.from(parts[0], 'hex');
   const encryptedText = Buffer.from(parts[1], 'hex');
-  const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+  const decipher = crypto.createDecipheriv('aes-256-cbc', getEncryptionKey(), iv);
   let decrypted = decipher.update(encryptedText, undefined, 'utf8');
   decrypted += decipher.final('utf8');
   return decrypted;
@@ -49,7 +60,7 @@ export function createSessionToken(payload: SessionPayload): string {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const signature = crypto
-    .createHmac('sha256', JWT_SECRET)
+    .createHmac('sha256', getJwtSecret())
     .update(`${header}.${body}`)
     .digest('base64url');
   return `${header}.${body}.${signature}`;
@@ -59,20 +70,29 @@ export function verifySessionToken(token: string): SessionPayload | null {
   if (revokedSessionTokens.has(token)) return null;
   try {
     const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const [header, body, signature] = parts;
-    const expectedSignature = crypto
-      .createHmac('sha256', JWT_SECRET)
-      .update(`${header}.${body}`)
-      .digest('base64url');
-    if (signature !== expectedSignature) return null;
-    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as SessionPayload;
-    
-    // Validate session expiration
-    if (Date.now() > new Date(payload.expiresAt).getTime()) {
-      return null;
+    if (parts.length === 2) {
+      const [body, signature] = parts;
+      const jsonStr = Buffer.from(body, 'base64url').toString('utf8');
+      const expectedSignature = crypto
+        .createHmac('sha256', getSessionSecret())
+        .update(jsonStr)
+        .digest('base64url');
+      if (signature !== expectedSignature) return null;
+      const payload = JSON.parse(jsonStr) as SessionPayload;
+      if (Date.now() > new Date(payload.expiresAt).getTime()) return null;
+      return payload;
+    } else if (parts.length === 3) {
+      const [header, body, signature] = parts;
+      const expectedSignature = crypto
+        .createHmac('sha256', getJwtSecret())
+        .update(`${header}.${body}`)
+        .digest('base64url');
+      if (signature !== expectedSignature) return null;
+      const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as SessionPayload;
+      if (Date.now() > new Date(payload.expiresAt).getTime()) return null;
+      return payload;
     }
-    return payload;
+    return null;
   } catch {
     return null;
   }

@@ -3,8 +3,8 @@
  * Manages trader success stories, submissions, verification, and moderation.
  */
 
-import { SuccessStory } from '../../types/ea';
-import { INITIAL_SUCCESS_STORIES } from '../ea/eaEngine';
+import { SuccessStory } from '../../types/ea.ts';
+import { INITIAL_SUCCESS_STORIES } from '../ea/eaEngine.ts';
 
 let storiesStore: SuccessStory[] = [...INITIAL_SUCCESS_STORIES];
 

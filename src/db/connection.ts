@@ -6,7 +6,7 @@
 
 import pkg from 'pg';
 const { Pool } = pkg;
-import { logger } from '../observability/logger.js';
+import { logger } from '../observability/logger.ts';
 
 let pool: pkg.Pool | null = null;
 
@@ -20,7 +20,7 @@ export function getDatabasePool(): pkg.Pool {
 
     pool = new Pool({
       connectionString: connectionString || 'postgres://appexquant:appexquant_secure_pass@localhost:5432/appexquant_markets',
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
+      ssl: process.env.APP_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
       max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,

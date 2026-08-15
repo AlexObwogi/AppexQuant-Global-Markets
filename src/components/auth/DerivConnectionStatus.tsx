@@ -1,6 +1,6 @@
 import React from 'react';
-import { useMarketData } from '../../state/MarketDataContext.js';
-import { StatusPill } from '../ui/StatusPill.js';
+import { useMarketData } from '../../state/MarketDataContext.tsx';
+import { StatusPill } from '../ui/StatusPill.tsx';
 
 export const DerivConnectionStatus: React.FC = () => {
   const { connectionState, isSimulated } = useMarketData();

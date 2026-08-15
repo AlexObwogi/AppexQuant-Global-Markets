@@ -4,10 +4,10 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo } from 'react';
-import { MarketInstrument, InstrumentCategory } from '../types/market';
-import { derivWs, DerivConnectionState } from '../services/deriv/DerivWebSocketManager';
-import { normalizeDerivActiveSymbols, FALLBACK_INSTRUMENTS } from '../services/deriv/marketTaxonomy';
-import { NormalizedTick, NormalizedCandle, DerivContractCategory } from '../services/deriv/derivTypes';
+import { MarketInstrument, InstrumentCategory } from '../types/market.ts';
+import { derivWs, DerivConnectionState } from '../services/deriv/DerivWebSocketManager.ts';
+import { normalizeDerivActiveSymbols, FALLBACK_INSTRUMENTS } from '../services/deriv/marketTaxonomy.ts';
+import { NormalizedTick, NormalizedCandle, DerivContractCategory } from '../services/deriv/derivTypes.ts';
 
 export type DataFreshness = 'LIVE' | 'RECENT' | 'STALE' | 'DISCONNECTED' | 'UNAVAILABLE';
 

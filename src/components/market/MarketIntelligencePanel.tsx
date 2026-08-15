@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MarketInstrument } from '../../types/market.js';
-import { NormalizedCandle } from '../../services/deriv/derivTypes.js';
-import { DataFreshness } from '../../state/MarketDataContext.js';
-import { UserStrategy, Signal, MarketCompatibilityItem } from '../../types/ai.js';
-import { DEFAULT_USER_STRATEGIES, evaluateMarketCompatibility } from '../../services/ai/strategyEngine.js';
-import { generateAISignal } from '../../services/ai/signalEngine.js';
-import { evaluateConfluenceMatrix, ConfluenceMatrixResult } from '../../services/ai/confluenceEngine.js';
+import { MarketInstrument } from '../../types/market.ts';
+import { NormalizedCandle } from '../../services/deriv/derivTypes.ts';
+import { DataFreshness } from '../../state/MarketDataContext.tsx';
+import { UserStrategy, Signal, MarketCompatibilityItem } from '../../types/ai.ts';
+import { DEFAULT_USER_STRATEGIES, evaluateMarketCompatibility } from '../../services/ai/strategyEngine.ts';
+import { generateAISignal } from '../../services/ai/signalEngine.ts';
+import { evaluateConfluenceMatrix, ConfluenceMatrixResult } from '../../services/ai/confluenceEngine.ts';
 import { ShieldCheck, ShieldAlert, Zap, AlertTriangle, Play, Brain, Target, Info, CheckCircle2, XCircle, TrendingUp, TrendingDown, Layers, Activity, Sparkles } from 'lucide-react';
 
 interface MarketIntelligencePanelProps {

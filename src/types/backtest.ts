@@ -1,4 +1,4 @@
-import { UserStrategy, StrategyStatus } from './ai';
+import { UserStrategy, StrategyStatus } from './ai.ts';
 
 export interface BacktestParams {
   strategyId: string;

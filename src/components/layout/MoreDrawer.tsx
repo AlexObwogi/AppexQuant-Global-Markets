@@ -4,9 +4,9 @@
  */
 
 import React from 'react';
-import { useGlobalState, AppViewRoute } from '../../state/GlobalStateContext.js';
-import { Drawer } from '../ui/Modal.js';
-import { navItems, NavItem } from './Sidebar.js';
+import { useGlobalState, AppViewRoute } from '../../state/GlobalStateContext.tsx';
+import { Drawer } from '../ui/Modal.tsx';
+import { navItems, NavItem } from './Sidebar.tsx';
 
 interface MoreDrawerProps {
   isOpen: boolean;

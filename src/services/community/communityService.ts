@@ -10,13 +10,13 @@ import {
   CommunityReport,
   VerificationRequest,
   VerificationStatus,
-} from '../../types/community';
+} from '../../types/community.ts';
 import {
   INITIAL_TRADER_PROFILES,
   INITIAL_COMMUNITY_POSTS,
   INITIAL_COMMUNITY_REPORTS,
   INITIAL_VERIFICATION_REQUESTS,
-} from '../../data/communityData';
+} from '../../data/communityData.ts';
 
 let profilesStore: TraderProfile[] = [...INITIAL_TRADER_PROFILES];
 let postsStore: CommunityPost[] = [...INITIAL_COMMUNITY_POSTS];

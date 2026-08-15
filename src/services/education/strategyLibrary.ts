@@ -22,7 +22,7 @@ import {
   AILearnerProfile,
   StrategyCombination,
   DetailedStreak
-} from '../../types/canonicalStrategy';
+} from '../../types/canonicalStrategy.ts';
 
 // ============================================================================
 // CANONICAL DETERMINISTIC RULES
@@ -431,7 +431,7 @@ def detect_smc_sweep(df, swing_period=20):
     df['htf_high'] = df['high'].rolling(window=swing_period).max().shift(1)
     df['is_swept'] = (df['high'] > df['htf_high']) & (df['close'] < df['htf_high'])
     return df`,
-      typescript: `import { MarketOHLC } from '../types/canonicalStrategy';
+      typescript: `import { MarketOHLC } from '../../types/canonicalStrategy.ts';
 
 export function isSMCSweepDetected(candles: MarketOHLC[], index: number, period = 20): boolean {
   if (index < period) return false;

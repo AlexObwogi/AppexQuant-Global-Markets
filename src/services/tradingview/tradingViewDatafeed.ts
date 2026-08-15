@@ -3,9 +3,9 @@
  * Translates Deriv WebSocket market data into TradingView JS API Datafeed format.
  */
 
-import { derivWs } from '../deriv/DerivWebSocketManager';
-import { NormalizedCandle, NormalizedTick } from '../deriv/derivTypes';
-import { MarketInstrument } from '../../types/market';
+import { derivWs } from '../deriv/DerivWebSocketManager.ts';
+import { NormalizedCandle, NormalizedTick } from '../deriv/derivTypes.ts';
+import { MarketInstrument } from '../../types/market.ts';
 
 export interface DatafeedConfiguration {
   supports_search: boolean;

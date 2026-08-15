@@ -5,8 +5,8 @@
 
 import React from 'react';
 import { AlertOctagon, RefreshCw } from 'lucide-react';
-import { Card } from './Card.js';
-import { Button } from './Button.js';
+import { Card } from './Card.tsx';
+import { Button } from './Button.tsx';
 
 export interface ErrorStateProps {
   title?: string;

@@ -11,7 +11,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const isHttps =
     req.headers['x-forwarded-proto'] === 'https' ||
     Boolean((req as any).socket?.encrypted) ||
-    process.env.NODE_ENV === 'production';
+    process.env.APP_ENV === 'production';
   const secureFlag = isHttps ? '; Secure' : '';
 
   try {
@@ -85,7 +85,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Simple HMAC signature for session token
     const sessionPayloadJson = JSON.stringify(sessionPayload);
-    const sessionSecret = process.env.SESSION_SECRET || process.env.JWT_SECRET || 'appexquant-session-secret-2026';
+    const sessionSecret = process.env.SESSION_SECRET;
+    if (!sessionSecret) throw new Error('SESSION_SECRET environment variable is missing');
     const signature = crypto.createHmac('sha256', sessionSecret).update(sessionPayloadJson).digest('base64url');
     const sessionToken = `${Buffer.from(sessionPayloadJson).toString('base64url')}.${signature}`;
 

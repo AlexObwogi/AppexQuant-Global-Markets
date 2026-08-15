@@ -11,8 +11,8 @@ import {
   MarketStatusInfo,
   DataQualityState,
   MarketMessageMetadata,
-} from '../types/marketData';
-import { DerivWebSocketManager } from './deriv/DerivWebSocketManager';
+} from '../types/marketData.ts';
+import { DerivWebSocketManager } from './deriv/DerivWebSocketManager.ts';
 
 export class MarketDataEngine implements MarketDataProvider {
   readonly providerName = 'AppexQuant-MultiSource-Engine';

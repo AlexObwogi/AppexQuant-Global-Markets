@@ -1,5 +1,5 @@
 
-import { derivWs } from './DerivWebSocketManager';
+import { derivWs } from './DerivWebSocketManager.ts';
 
 export type DerivAuthStatus = 'NOT_CONNECTED' | 'AUTHORIZING' | 'CONNECTED' | 'ERROR';
 

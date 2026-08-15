@@ -4,9 +4,9 @@
  */
 
 import React, { useState } from 'react';
-import { CommunityPost, Comment } from '../../types/community.js';
-import { VerificationBadge } from './VerificationBadge.js';
-import { PerformanceBadge } from '../common/PerformanceDisclaimer.js';
+import { CommunityPost, Comment } from '../../types/community.ts';
+import { VerificationBadge } from './VerificationBadge.tsx';
+import { PerformanceBadge } from '../common/PerformanceDisclaimer.tsx';
 import {
   Heart,
   MessageSquare,

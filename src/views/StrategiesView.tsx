@@ -5,15 +5,15 @@
 
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { UserStrategy } from '../types/ai';
-import { DEFAULT_USER_STRATEGIES } from '../services/ai/strategyEngine';
-import { StrategyBuilderModal } from '../components/strategy/StrategyBuilderModal';
-import { StrategyDetailView } from "./StrategyDetailView";
-import { StrategyCombinerModal } from "../components/strategy/StrategyCombinerModal";
-import { StrategyScannerModal } from '../components/strategy/StrategyScannerModal';
-import { StrategyActivationWizardModal } from '../components/automation/StrategyActivationWizardModal';
-import { PerformanceBadge, PerformanceDisclaimerBanner } from '../components/common/PerformanceDisclaimer';
-import { automationControlService } from '../services/automationControlService';
+import { UserStrategy } from '../types/ai.ts';
+import { DEFAULT_USER_STRATEGIES } from '../services/ai/strategyEngine.ts';
+import { StrategyBuilderModal } from '../components/strategy/StrategyBuilderModal.tsx';
+import { StrategyDetailView } from "./StrategyDetailView.tsx";
+import { StrategyCombinerModal } from "../components/strategy/StrategyCombinerModal.tsx";
+import { StrategyScannerModal } from '../components/strategy/StrategyScannerModal.tsx';
+import { StrategyActivationWizardModal } from '../components/automation/StrategyActivationWizardModal.tsx';
+import { PerformanceBadge, PerformanceDisclaimerBanner } from '../components/common/PerformanceDisclaimer.tsx';
+import { automationControlService } from '../services/automationControlService.ts';
 import { Code2, Plus, GitMerge, Play, Copy, Edit3, Trash2, PauseCircle, PlayCircle, Search, Sparkles, CheckCircle2, ShieldCheck, Rocket } from 'lucide-react';
 
 export const StrategiesView: React.FC = () => {

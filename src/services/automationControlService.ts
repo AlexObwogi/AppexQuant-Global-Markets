@@ -11,8 +11,8 @@ import {
   TradeDecisionChain,
   DecisionChainStep,
   StrategyActivationPipeline,
-} from '../types/automationControl';
-import { failSafeEngineService } from './failSafeEngineService';
+} from '../types/automationControl.ts';
+import { failSafeEngineService } from './failSafeEngineService.ts';
 
 const INITIAL_STRATEGIES: ActiveStrategy[] = [
   {

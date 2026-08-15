@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { useGlobalState } from '../../state/GlobalStateContext.js';
+import { useGlobalState } from '../../state/GlobalStateContext.tsx';
 import { WifiOff, AlertTriangle } from 'lucide-react';
 
 export const OfflineBanner: React.FC = () => {

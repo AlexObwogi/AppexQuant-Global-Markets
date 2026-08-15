@@ -3,10 +3,10 @@
  * Proxies signal creation to the centralized Phase 3 signalEngine.ts
  */
 
-import { generateAISignal, getSignalAuditTrail } from './signalEngine';
-import { MarketInstrument } from '../../types/market';
-import { NormalizedCandle } from '../deriv/derivTypes';
-import { UserStrategy, Signal } from '../../types/ai';
+import { generateAISignal, getSignalAuditTrail } from './signalEngine.ts';
+import { MarketInstrument } from '../../types/market.ts';
+import { NormalizedCandle } from '../deriv/derivTypes.ts';
+import { UserStrategy, Signal } from '../../types/ai.ts';
 
 export interface GenerateSignalOptions {
   instrument: MarketInstrument;

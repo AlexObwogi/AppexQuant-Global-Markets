@@ -1,4 +1,4 @@
-import { ExecutionOrder, OrderExecutionState, OrderTimelineEvent } from '../../types/execution';
+import { ExecutionOrder, OrderExecutionState, OrderTimelineEvent } from '../../types/execution.ts';
 
 // In-memory list of execution orders
 let executionOrders: ExecutionOrder[] = [];

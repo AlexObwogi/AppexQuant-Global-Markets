@@ -3,7 +3,7 @@
  * Calculates explainable, itemized confidence score (0 - 100%) from multi-dimensional evidence inputs.
  */
 
-import { ConfidenceBreakdown, MarketStructureType, NewsSentimentType } from '../../types/ai';
+import { ConfidenceBreakdown, MarketStructureType, NewsSentimentType } from '../../types/ai.ts';
 
 export interface ConfidenceInput {
   marketStructure: MarketStructureType;

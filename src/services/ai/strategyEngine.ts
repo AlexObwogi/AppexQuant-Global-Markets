@@ -3,11 +3,11 @@
  * Converts natural language strategies into structured rules, checks syntax, and scans markets.
  */
 
-import { UserStrategy, StrategyValidationResult, MarketCompatibilityItem } from '../../types/ai';
-import { MarketInstrument } from '../../types/market';
-import { NormalizedCandle } from '../deriv/derivTypes';
-import { analyzeMarketStructure } from './marketStructureEngine';
-import { detectHistoricalPatterns } from './patternEngine';
+import { UserStrategy, StrategyValidationResult, MarketCompatibilityItem } from '../../types/ai.ts';
+import { MarketInstrument } from '../../types/market.ts';
+import { NormalizedCandle } from '../deriv/derivTypes.ts';
+import { analyzeMarketStructure } from './marketStructureEngine.ts';
+import { detectHistoricalPatterns } from './patternEngine.ts';
 
 export const DEFAULT_USER_STRATEGIES: UserStrategy[] = [
   {

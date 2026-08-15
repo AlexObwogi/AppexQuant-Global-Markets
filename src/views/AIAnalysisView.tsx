@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Brain, Search, Sparkles } from 'lucide-react';
-import { useMarketData } from '../state/MarketDataContext';
-import { InteractiveCandleChart } from '../components/chart/InteractiveCandleChart';
-import { MarketIntelligencePanel } from '../components/market/MarketIntelligencePanel';
+import { useMarketData } from '../state/MarketDataContext.tsx';
+import { InteractiveCandleChart } from '../components/chart/InteractiveCandleChart.tsx';
+import { MarketIntelligencePanel } from '../components/market/MarketIntelligencePanel.tsx';
 
 export const AIAnalysisView: React.FC = () => {
   const { 

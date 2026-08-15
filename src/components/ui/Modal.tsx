@@ -5,7 +5,7 @@
 import React, { ReactNode, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { modalVariants } from '../../design/motion.js';
+import { modalVariants } from '../../design/motion.ts';
 
 export interface ModalProps {
   isOpen: boolean;

@@ -1,4 +1,4 @@
-import { UserRole, UserPermission } from '../types/user';
+import { UserRole, UserPermission } from '../types/user.ts';
 
 /**
  * AppexQuant Markets Global - Role-Based Permission Matrix (Least Privilege)
@@ -111,5 +111,5 @@ export function isSessionElevated(isElevated: boolean, elevatedUntil: string | n
   return expiry > now;
 }
 
-export * from './auth/pkce';
-export * from './auth/useDerivAuth';
+export * from './auth/pkce.ts';
+export * from './auth/useDerivAuth.ts';

@@ -4,8 +4,8 @@
  */
 
 import React, { ReactNode } from 'react';
-import { Card } from '../ui/Card.js';
-import { Badge } from '../ui/Badge.js';
+import { Card } from '../ui/Card.tsx';
+import { Badge } from '../ui/Badge.tsx';
 import { ShieldAlert, Layers } from 'lucide-react';
 
 export interface ComingSoonPlaceholderProps {

@@ -4,14 +4,14 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { systemHealthService } from '../services/systemHealthService';
-import { MonitoredService, SystemHealthMetrics, HealthLogEntry, HealthStatus, ServiceId } from '../types/health';
-import { ServiceStatusBadge } from '../components/health/ServiceStatusBadge';
-import { ServiceCard } from '../components/health/ServiceCard';
-import { DependencyTopologyGraph } from '../components/health/DependencyTopologyGraph';
-import { CircuitBreakerPanel } from '../components/health/CircuitBreakerPanel';
-import { HealthAuditLogTable } from '../components/health/HealthAuditLogTable';
-import { useGlobalState } from '../state/GlobalStateContext';
+import { systemHealthService } from '../services/systemHealthService.ts';
+import { MonitoredService, SystemHealthMetrics, HealthLogEntry, HealthStatus, ServiceId } from '../types/health.ts';
+import { ServiceStatusBadge } from '../components/health/ServiceStatusBadge.tsx';
+import { ServiceCard } from '../components/health/ServiceCard.tsx';
+import { DependencyTopologyGraph } from '../components/health/DependencyTopologyGraph.tsx';
+import { CircuitBreakerPanel } from '../components/health/CircuitBreakerPanel.tsx';
+import { HealthAuditLogTable } from '../components/health/HealthAuditLogTable.tsx';
+import { useGlobalState } from '../state/GlobalStateContext.tsx';
 import {
   Activity,
   ShieldAlert,

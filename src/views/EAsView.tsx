@@ -5,15 +5,15 @@
 
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { ExpertAdvisor, EACategory } from '../types/ea';
-import { INITIAL_EXPERT_ADVISORS } from '../services/ea/eaEngine';
-import { EADetailModal } from '../components/eas/EADetailModal';
-import { EAInstallWizard } from '../components/eas/EAInstallWizard';
-import { EASubmitModal } from '../components/eas/EASubmitModal';
-import { EAPerformanceDashboard } from '../components/eas/EAPerformanceDashboard';
-import { AutomationOrchestrator } from '../components/eas/AutomationOrchestrator';
-import { AutomatedPositionMonitoring } from '../components/eas/AutomatedPositionMonitoring';
-import { AutomationControlCenterView } from './AutomationControlCenterView';
+import { ExpertAdvisor, EACategory } from '../types/ea.ts';
+import { INITIAL_EXPERT_ADVISORS } from '../services/ea/eaEngine.ts';
+import { EADetailModal } from '../components/eas/EADetailModal.tsx';
+import { EAInstallWizard } from '../components/eas/EAInstallWizard.tsx';
+import { EASubmitModal } from '../components/eas/EASubmitModal.tsx';
+import { EAPerformanceDashboard } from '../components/eas/EAPerformanceDashboard.tsx';
+import { AutomationOrchestrator } from '../components/eas/AutomationOrchestrator.tsx';
+import { AutomatedPositionMonitoring } from '../components/eas/AutomatedPositionMonitoring.tsx';
+import { AutomationControlCenterView } from './AutomationControlCenterView.tsx';
 import { Bot, Search, Filter, Plus, ShieldCheck, Download, Star, CheckCircle, BarChart2, Server, Sliders, ExternalLink, ShieldAlert, Cpu } from 'lucide-react';
 
 export const EAsView: React.FC = () => {

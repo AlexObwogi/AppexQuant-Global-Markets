@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { useMarketData } from '../../state/MarketDataContext.js';
-import { InstrumentCategory, MarketInstrument } from '../../types/market.js';
+import { useMarketData } from '../../state/MarketDataContext.tsx';
+import { InstrumentCategory, MarketInstrument } from '../../types/market.ts';
 import { Search, Star, ChevronDown, Check, TrendingUp, TrendingDown, X, Globe } from 'lucide-react';
 
 interface MarketSelectorModalProps {

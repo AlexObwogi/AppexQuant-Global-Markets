@@ -1,4 +1,4 @@
-import { TradeJournalRecord, AnalyticsSummary } from '../types/analytics';
+import { TradeJournalRecord, AnalyticsSummary } from '../types/analytics.ts';
 
 export function calculatePerformanceMetrics(trades: TradeJournalRecord[]): AnalyticsSummary {
   const count = trades.length;

@@ -1,13 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import { useMarketData } from '../state/MarketDataContext';
-import { InteractiveCandleChart } from '../components/chart/InteractiveCandleChart';
-import { MarketIntelligencePanel } from '../components/market/MarketIntelligencePanel';
-import { ConfluenceSummary } from '../components/analysis/ConfluenceSummary';
-import { ScenarioEngine } from '../components/analysis/ScenarioEngine';
-import { AiExplanationPanel } from '../components/analysis/AiExplanationPanel';
-import { ExecutionCommandDesk } from '../components/eas/ExecutionCommandDesk';
-import { PositionsPanel } from '../components/trading/PositionsPanel';
-import { MarketSelectorModal } from '../components/market/MarketSelectorModal';
+import { useMarketData } from '../state/MarketDataContext.tsx';
+import { InteractiveCandleChart } from '../components/chart/InteractiveCandleChart.tsx';
+import { MarketIntelligencePanel } from '../components/market/MarketIntelligencePanel.tsx';
+import { ConfluenceSummary } from '../components/analysis/ConfluenceSummary.tsx';
+import { ScenarioEngine } from '../components/analysis/ScenarioEngine.tsx';
+import { AiExplanationPanel } from '../components/analysis/AiExplanationPanel.tsx';
+import { ExecutionCommandDesk } from '../components/eas/ExecutionCommandDesk.tsx';
+import { PositionsPanel } from '../components/trading/PositionsPanel.tsx';
+import { MarketSelectorModal } from '../components/market/MarketSelectorModal.tsx';
 import { ChevronDown, TrendingUp, TrendingDown, Activity, Globe } from 'lucide-react';
 
 export const TradingWorkspaceView: React.FC = () => {

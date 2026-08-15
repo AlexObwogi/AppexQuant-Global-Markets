@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { useGlobalState, AppViewRoute } from '../../state/GlobalStateContext.js';
+import { useGlobalState, AppViewRoute } from '../../state/GlobalStateContext.tsx';
 import {
   LayoutDashboard,
   BarChart2,

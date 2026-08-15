@@ -3,8 +3,8 @@
  */
 
 import React from 'react';
-import { StrategyBuilderModal as PrimaryStrategyBuilderModal } from '../strategy/StrategyBuilderModal.js';
-import { UserStrategy } from '../../types/ai.js';
+import { StrategyBuilderModal as PrimaryStrategyBuilderModal } from '../strategy/StrategyBuilderModal.tsx';
+import { UserStrategy } from '../../types/ai.ts';
 
 interface StrategyBuilderModalProps {
   onSave: (strategy: UserStrategy) => void;

@@ -1,6 +1,6 @@
-import { logAuditEvent } from '../../observability/audit';
-import { submitExecutionOrder, progressOrderStage, getExecutionOrders } from './executionEngine';
-import { addTradeToJournal } from './analyticsEngine';
+import { logAuditEvent } from '../../observability/audit.ts';
+import { submitExecutionOrder, progressOrderStage, getExecutionOrders } from './executionEngine.ts';
+import { addTradeToJournal } from './analyticsEngine.ts';
 
 export interface OpenPosition {
   id: string;

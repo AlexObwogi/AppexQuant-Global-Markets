@@ -3,7 +3,7 @@
  * Measures US Dollar Index momentum and symbol correlation coefficients.
  */
 
-import { DXYContext } from '../../types/ai';
+import { DXYContext } from '../../types/ai.ts';
 
 const DEFAULT_CORRELATIONS: Record<string, number> = {
   frxEURUSD: -0.94,

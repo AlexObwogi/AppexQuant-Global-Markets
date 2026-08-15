@@ -5,8 +5,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { Download, X, Smartphone } from 'lucide-react';
-import { Card } from '../ui/Card.js';
-import { Button } from '../ui/Button.js';
+import { Card } from '../ui/Card.tsx';
+import { Button } from '../ui/Button.tsx';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;

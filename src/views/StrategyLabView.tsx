@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Brain, Sparkles, Target, BarChart2, Save, Play } from 'lucide-react';
-import { useMarketData } from '../state/MarketDataContext';
-import { Card } from '../components/ui/Card';
+import { useMarketData } from '../state/MarketDataContext.tsx';
+import { Card } from '../components/ui/Card.tsx';
 
 export const StrategyLabView: React.FC = () => {
   const [idea, setIdea] = useState('');

@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { MonitoredService } from '../../types/health.js';
+import { MonitoredService } from '../../types/health.ts';
 import {
   ShieldAlert,
   ShieldCheck,

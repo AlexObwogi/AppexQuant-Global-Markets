@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { Brain, Sparkles, Target, BarChart2, ShieldCheck, ChevronDown, RefreshCw } from 'lucide-react';
-import { useMarketData } from '../state/MarketDataContext';
-import { InteractiveCandleChart } from '../components/chart/InteractiveCandleChart';
-import { MarketIntelligencePanel } from '../components/market/MarketIntelligencePanel';
-import { ConfluenceSummary } from '../components/analysis/ConfluenceSummary';
-import { ScenarioEngine } from '../components/analysis/ScenarioEngine';
-import { AiExplanationPanel } from '../components/analysis/AiExplanationPanel';
-import { Card } from '../components/ui/Card';
+import { useMarketData } from '../state/MarketDataContext.tsx';
+import { InteractiveCandleChart } from '../components/chart/InteractiveCandleChart.tsx';
+import { MarketIntelligencePanel } from '../components/market/MarketIntelligencePanel.tsx';
+import { ConfluenceSummary } from '../components/analysis/ConfluenceSummary.tsx';
+import { ScenarioEngine } from '../components/analysis/ScenarioEngine.tsx';
+import { AiExplanationPanel } from '../components/analysis/AiExplanationPanel.tsx';
+import { Card } from '../components/ui/Card.tsx';
 
 export const MarketAnalysisView: React.FC = () => {
   const { 

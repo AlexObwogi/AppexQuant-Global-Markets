@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { PerformanceEnvironmentType } from '../../types/legal.js';
+import { PerformanceEnvironmentType } from '../../types/legal.ts';
 import { ShieldAlert, Info, Activity, Database, Flame, FileText } from 'lucide-react';
 
 interface PerformanceBadgeProps {

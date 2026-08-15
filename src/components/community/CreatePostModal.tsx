@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { PostCategory, AccountType, VerificationStatus } from '../../types/community.js';
+import { PostCategory, AccountType, VerificationStatus } from '../../types/community.ts';
 import { X, Send, Play, ShieldAlert, Award } from 'lucide-react';
 
 interface CreatePostModalProps {

@@ -3,8 +3,8 @@
  * Maps Deriv API active_symbols into normalized MarketInstrument records.
  */
 
-import { DerivActiveSymbol } from './derivTypes';
-import { MarketInstrument, InstrumentCategory } from '../../types/market';
+import { DerivActiveSymbol } from './derivTypes.ts';
+import { MarketInstrument, InstrumentCategory } from '../../types/market.ts';
 
 export const FALLBACK_INSTRUMENTS: MarketInstrument[] = [
   // Forex Majors & Minors

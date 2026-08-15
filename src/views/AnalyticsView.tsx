@@ -41,10 +41,10 @@ import {
   Legend
 } from 'recharts';
 
-import { TradeJournalRecord, AnalyticsSummary } from '../types/analytics';
-import { useApiFetch } from '../utils/apiFetch';
-import { calculatePerformanceMetrics } from '../utils/analyticsCalc';
-import { PerformanceBadge, PerformanceDisclaimerBanner } from '../components/common/PerformanceDisclaimer';
+import { TradeJournalRecord, AnalyticsSummary } from '../types/analytics.ts';
+import { useApiFetch } from '../utils/apiFetch.ts';
+import { calculatePerformanceMetrics } from '../utils/analyticsCalc.ts';
+import { PerformanceBadge, PerformanceDisclaimerBanner } from '../components/common/PerformanceDisclaimer.tsx';
 
 export const AnalyticsView: React.FC = () => {
   const apiFetch = useApiFetch();

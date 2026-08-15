@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { VerifiedBadge, VerifiedBadgeType } from '../../types/leaderboard.js';
+import { VerifiedBadge, VerifiedBadgeType } from '../../types/leaderboard.ts';
 import { Crown, CheckCircle2, ShieldCheck, Sparkles, Check } from 'lucide-react';
 
 interface VerifiedLeaderBadgeProps {

@@ -4,14 +4,14 @@
  */
 
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
-import { UserProfile, AuthSession } from '../types/user';
-import { TradingAccount } from '../types/account';
-import { ConnectionStatus, InstrumentCategory, MarketInstrument } from '../types/market';
-import { BrokerConnection } from '../types/broker';
-import { RiskState } from '../types/risk';
-import { FeatureFlags, defaultFeatureFlags } from '../types/featureFlags';
-import { ThemeMode, applyThemeToDocument } from '../design/theme';
-import { logAuditEvent } from '../observability/audit';
+import { UserProfile, AuthSession } from '../types/user.ts';
+import { TradingAccount } from '../types/account.ts';
+import { ConnectionStatus, InstrumentCategory, MarketInstrument } from '../types/market.ts';
+import { BrokerConnection } from '../types/broker.ts';
+import { RiskState } from '../types/risk.ts';
+import { FeatureFlags, defaultFeatureFlags } from '../types/featureFlags.ts';
+import { ThemeMode, applyThemeToDocument } from '../design/theme.ts';
+import { logAuditEvent } from '../observability/audit.ts';
 
 export type AppViewRoute =
   | 'dashboard'

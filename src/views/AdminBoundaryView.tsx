@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { AdminPortal } from '../components/admin/AdminPortal';
+import { AdminPortal } from '../components/admin/AdminPortal.tsx';
 
 export const AdminBoundaryView: React.FC = () => {
   return <AdminPortal />;

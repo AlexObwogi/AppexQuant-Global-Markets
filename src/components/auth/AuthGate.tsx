@@ -784,8 +784,8 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         </div>
 
         {/* Live Market Ticker */}
-        <div className="hidden md:flex flex-1 max-w-lg mx-4 overflow-hidden border-x border-slate-700/30 px-3 py-1 bg-black/20 dark:bg-black/40 rounded-lg">
-          <div className="animate-marquee-smooth whitespace-nowrap text-[10px] font-mono tracking-wider uppercase text-slate-400">
+        <div className="hidden lg:flex flex-1 max-w-sm xl:max-w-md mx-4 overflow-hidden border border-slate-700/30 px-3 py-1 bg-black/20 dark:bg-black/40 rounded-lg shrink min-w-0">
+          <div className="animate-marquee-smooth whitespace-nowrap text-[10px] font-mono tracking-wider uppercase text-slate-400 overflow-hidden">
             <span>BTC/USD 98,450.00 ▲0.52% • EUR/USD 1.0845 ▼0.04% • XAU/USD 2,684.20 ▲1.12% • VOLATILITY 75 124,520.10 ▲0.88% • CRASH 500 4,812.30 ▼0.35% • BOOM 1000 12,840.40 ▲2.10%</span>
             <span className="ml-8">BTC/USD 98,450.00 ▲0.52% • EUR/USD 1.0845 ▼0.04% • XAU/USD 2,684.20 ▲1.12% • VOLATILITY 75 124,520.10 ▲0.88% • CRASH 500 4,812.30 ▼0.35% • BOOM 1000 12,840.40 ▲2.10%</span>
           </div>

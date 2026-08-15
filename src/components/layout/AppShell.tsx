@@ -13,6 +13,7 @@ import { ProductionFooter } from './ProductionFooter.js';
 import { OfflineBanner } from '../common/OfflineBanner.js';
 import { SystemFailSafeBanner } from '../common/SystemFailSafeBanner.js';
 import { PWAInstallPrompt } from '../common/PWAInstallPrompt.js';
+import { PWAInstallBanner } from '../common/PWAInstallBanner.js';
 import { CinematicBackground } from '../common/CinematicBackground.js';
 import { EnvironmentGlobalBanner } from '../common/EnvironmentSelector.js';
 import { X } from 'lucide-react';
@@ -43,6 +44,9 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
       {/* Offline / Degraded Network Banner */}
       <OfflineBanner />
+
+      {/* Continue in App / Mobile PWA Banner */}
+      <PWAInstallBanner />
 
       {/* Adaptive Header */}
       <Header onToggleMobileDrawer={() => setIsMoreOpen(true)} />

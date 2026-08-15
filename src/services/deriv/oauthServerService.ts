@@ -133,24 +133,13 @@ function cleanupExpiredTransactions() {
  * Helper to get configured Deriv OAuth credentials
  */
 export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: string) {
-  const clientId =
-    process.env.DERIV_OAUTH_CLIENT_ID ||
-    process.env.DERIV_CLIENT_ID ||
-    process.env.DERIV_APP_ID ||
-    '1001';
-
-  const clientSecret =
-    process.env.DERIV_OAUTH_CLIENT_SECRET ||
-    process.env.DERIV_CLIENT_SECRET ||
-    '';
+  const clientId = process.env.DERIV_APP_ID || '1001';
+  const clientSecret = process.env.DERIV_OAUTH_CLIENT_SECRET || '';
 
   const proto = requestProtocol || (requestHost?.includes('localhost') ? 'http' : 'https');
   const host = requestHost || (process.env.APP_URL ? new URL(process.env.APP_URL).host : 'localhost:3000');
 
-  const redirectUri =
-    process.env.DERIV_OAUTH_REDIRECT_URI ||
-    process.env.DERIV_REDIRECT_URI ||
-    `${proto}://${host}/api/auth/deriv/callback`;
+  const redirectUri = process.env.DERIV_OAUTH_REDIRECT_URI || `${proto}://${host}/api/auth/deriv/callback`;
 
   const scopes = process.env.DERIV_OAUTH_SCOPES || 'read,trade';
 

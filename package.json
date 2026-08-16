@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "tsc --noEmit && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build": "tsc --noEmit && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && node -e \"const fs=require('fs');const c=fs.readFileSync('dist/server.cjs','utf8');if(/require\\(['\\\"].*\\.ts['\\\"]\\)/.test(c)){console.error('❌ Build failed: dangling .ts require found in dist/server.cjs');process.exit(1);}console.log('✅ Post-build artifact verification passed: zero .ts references in dist/server.cjs');\"",
     "start": "node env-schema-validator.js && node dist/server.cjs",
     "test": "vitest run",
     "lint": "tsc --noEmit",

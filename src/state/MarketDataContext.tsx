@@ -6,6 +6,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo } from 'react';
 import { MarketInstrument, InstrumentCategory } from '../types/market.ts';
 import { derivWs, DerivConnectionState } from '../services/deriv/DerivWebSocketManager.ts';
+import { derivAuthService } from '../services/deriv/authService.ts';
 import { normalizeDerivActiveSymbols, FALLBACK_INSTRUMENTS } from '../services/deriv/marketTaxonomy.ts';
 import { NormalizedTick, NormalizedCandle, DerivContractCategory } from '../services/deriv/derivTypes.ts';
 
@@ -28,6 +29,9 @@ export interface MarketDataContextType {
   dataFreshness: DataFreshness;
   contracts: Record<string, DerivContractCategory[]>;
   isLoadingSymbols: boolean;
+  balance: number;
+  currency: string;
+  loginid: string;
   
   // Actions
   setSelectedSymbol: (symbol: string) => void;
@@ -68,6 +72,98 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   const [connectionState, setConnectionState] = useState<DerivConnectionState>('DISCONNECTED');
   const [isSimulated, setIsSimulated] = useState<boolean>(false);
   const [isLoadingSymbols, setIsLoadingSymbols] = useState<boolean>(true);
+  const [balance, setBalance] = useState<number>(10000);
+  const [currency, setCurrency] = useState<string>('USD');
+  const [loginid, setLoginid] = useState<string>('CR-TRADER');
+
+  // WebSocket subscription service connecting to wss://ws.derivws.com/websockets/v3 for real-time balance
+  useEffect(() => {
+    let ws: WebSocket | null = null;
+    let isMounted = true;
+
+    const getToken = () => {
+      const authServiceToken = derivAuthService.getToken();
+      if (authServiceToken) return authServiceToken;
+
+      const localToken = localStorage.getItem('deriv_oauth_token');
+      if (localToken) return localToken;
+
+      try {
+        const cookies = document.cookie.split(';');
+        for (const cookie of cookies) {
+          const [name, value] = cookie.trim().split('=');
+          if (name === 'deriv_session') {
+            const parsed = JSON.parse(decodeURIComponent(value));
+            if (parsed.accessToken || parsed.token) return parsed.accessToken || parsed.token;
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+      return null;
+    };
+
+    const token = getToken();
+
+    try {
+      ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=1089');
+
+      ws.onopen = () => {
+        if (!isMounted) return;
+        if (token) {
+          ws?.send(JSON.stringify({ authorize: token }));
+        }
+      };
+
+      ws.onmessage = (event) => {
+        if (!isMounted) return;
+        try {
+          const data = JSON.parse(event.data);
+          
+          if (data.msg_type === 'authorize' && data.authorize) {
+            const auth = data.authorize;
+            if (auth.balance !== undefined) setBalance(Number(auth.balance));
+            if (auth.currency) setCurrency(auth.currency);
+            if (auth.loginid) setLoginid(auth.loginid);
+            
+            // Subscribe to real-time balance stream
+            ws?.send(JSON.stringify({ balance: 1, subscribe: 1 }));
+          }
+
+          if (data.msg_type === 'balance' && data.balance) {
+            const balObj = data.balance;
+            if (balObj.balance !== undefined) setBalance(Number(balObj.balance));
+            if (balObj.currency) setCurrency(balObj.currency);
+            if (balObj.loginid) setLoginid(balObj.loginid);
+          }
+        } catch (e) {
+          console.warn('[MarketDataContext] Balance WebSocket message parse error:', e);
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.warn('[MarketDataContext] Balance WebSocket error:', err);
+      };
+    } catch (err) {
+      console.warn('[MarketDataContext] Failed to establish balance WebSocket:', err);
+    }
+
+    const unsubAuth = derivAuthService.onBalanceChange((b) => {
+      if (isMounted) {
+        setBalance(b.balance);
+        if (b.currency) setCurrency(b.currency);
+        if (b.loginid) setLoginid(b.loginid);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubAuth();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    };
+  }, []);
 
   // Watchlist stored in localStorage
   const [watchlist, setWatchlist] = useState<string[]>(() => {
@@ -242,6 +338,9 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
         dataFreshness,
         contracts,
         isLoadingSymbols,
+        balance,
+        currency,
+        loginid,
         setSelectedSymbol,
         setSelectedCategory,
         setSelectedTimeframe,
@@ -265,6 +364,9 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
         dataFreshness,
         contracts,
         isLoadingSymbols,
+        balance,
+        currency,
+        loginid,
         setSelectedSymbol,
         setSelectedCategory,
         setSelectedTimeframe,

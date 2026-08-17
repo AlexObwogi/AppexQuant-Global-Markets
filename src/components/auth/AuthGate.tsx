@@ -374,6 +374,25 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       const email = userData.email || `${accountId.toLowerCase()}@deriv.trader`;
       const isDemo = userData.accountType === 'demo' || accountId.startsWith('VR');
 
+      // Persist in client-side sessionStorage
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        sessionStorage.setItem('deriv_user_loginid', accountId);
+        sessionStorage.setItem('deriv_user_email', email);
+        sessionStorage.setItem('deriv_user_currency', currency);
+        sessionStorage.setItem('deriv_user_balance', String(balanceAmount));
+        sessionStorage.setItem('deriv_session', JSON.stringify({
+          userId: accountId,
+          loginid: accountId,
+          email,
+          currency,
+          balance: balanceAmount,
+          accountType: isDemo ? 'demo' : 'real',
+          displayName,
+          fullName: userData.fullName,
+          role,
+        }));
+      }
+
       dispatch({
         type: 'SET_USER_PROFILE',
         payload: {
@@ -426,19 +445,20 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     [dispatch, state.theme]
   );
 
-  // Redirect to server-side Deriv OAuth PKCE login gateway
+  // Redirect to server-side Deriv OAuth PKCE login gateway or official Deriv signup
   const handleDerivLogin = useCallback(
     (action: 'connect' | 'signup' = 'connect') => {
+      if (action === 'signup') {
+        window.open('https://deriv.com/signup/', '_blank');
+        return;
+      }
+
       setIsAuthorizing(true);
       setErrorMessage(null);
-      setAuthStatusMessage(
-        action === 'signup'
-          ? 'Redirecting to official Deriv account registration...'
-          : 'Redirecting to secure Deriv OAuth 2.0 PKCE authentication gateway...'
-      );
+      setAuthStatusMessage('Redirecting to secure Deriv OAuth 2.0 PKCE authentication gateway...');
 
-      const destination = window.location.pathname || '/';
-      const loginEndpoint = buildLoginGatewayUrl(action, destination);
+      const destination = '/dashboard';
+      const loginEndpoint = buildLoginGatewayUrl('connect', destination);
 
       // Orchestrate browser redirect to server-side PKCE gateway
       setTimeout(() => {
@@ -536,6 +556,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
               role: result.role,
             });
             window.history.replaceState({}, document.title, window.location.pathname);
+            window.location.replace('/dashboard');
           } else {
             setErrorMessage('Could not complete Deriv PKCE token exchange.');
           }
@@ -592,6 +613,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           });
 
           window.history.replaceState({}, document.title, window.location.pathname);
+          window.location.replace('/dashboard');
         })
         .catch(() => {
           setErrorMessage('Deriv authorization handshake failed. Please reconnect.');
@@ -622,6 +644,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
               accountType: data.data.accountType,
             });
             window.history.replaceState({}, document.title, window.location.pathname);
+            window.location.replace('/dashboard');
           }
         })
         .catch((err) => {
@@ -1143,16 +1166,16 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
                 className={`w-full py-3 px-4 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer ${syncStyles.primaryBtn}`}
               >
                 <Zap className="w-4 h-4 fill-current" />
-                <span>LOGIN</span>
+                <span>Log in</span>
               </button>
 
               <button
                 onClick={() => handleDerivLogin('signup')}
                 disabled={isBusy}
-                className={`w-full py-3 px-4 rounded-xl border font-bold text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer ${syncStyles.secondaryBtn}`}
+                className="w-full py-3 px-4 rounded-xl font-bold text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer bg-[#FF444F] hover:bg-[#E03B44] text-white shadow-lg shadow-[#FF444F]/20"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
-                <span>Create Account</span>
+                <span>Open account</span>
               </button>
             </div>
 

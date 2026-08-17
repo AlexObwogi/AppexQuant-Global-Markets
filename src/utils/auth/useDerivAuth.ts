@@ -159,6 +159,25 @@ export function useDerivAuth() {
         }
       }
 
+      // Persist user profile attributes in sessionStorage
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        sessionStorage.setItem('deriv_user_loginid', accountId);
+        sessionStorage.setItem('deriv_user_email', email);
+        sessionStorage.setItem('deriv_user_currency', currency);
+        sessionStorage.setItem('deriv_user_balance', String(balance));
+        sessionStorage.setItem('deriv_session', JSON.stringify({
+          userId: accountId,
+          loginid: accountId,
+          email,
+          currency,
+          balance,
+          accountType,
+          displayName,
+          fullName,
+          role,
+        }));
+      }
+
       // Clean up single-use PKCE verifier
       sessionStorage.removeItem('deriv_pkce_verifier');
       localStorage.removeItem('deriv_pkce_verifier');

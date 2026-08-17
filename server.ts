@@ -1239,12 +1239,15 @@ export async function createApp() {
             role: sessionPayload.role,
           },
           csrfToken,
-          destination: result.destination || '/',
+          destination: (result.destination && result.destination.startsWith('/') && result.destination !== '/' && result.destination !== '/login') ? result.destination : '/dashboard',
           accountList: result.rawAccountDetails?.accountList,
         }));
       }
 
-      const safeDestination = result.destination.startsWith('/') ? result.destination : '/';
+      const rawDest = result.destination;
+      const safeDestination = (rawDest && rawDest.startsWith('/') && rawDest !== '/' && rawDest !== '/login' && rawDest !== '/auth')
+        ? rawDest
+        : '/dashboard';
       res.redirect(safeDestination);
     } catch (err: any) {
       const errMsg = err?.message || 'Unknown OAuth callback error';

@@ -91,9 +91,121 @@ export function buildLoginGatewayUrl(action: 'connect' | 'signup' = 'connect', d
   return `/api/auth/deriv/login?action=${action}&destination=${dest}`;
 }
 
+/**
+ * Exchanges an authorization code for an access token against Deriv OAuth endpoint.
+ */
+export async function exchangeCodeForToken(
+  code: string,
+  codeVerifier: string,
+  redirectUri: string,
+  clientId?: string
+): Promise<any> {
+  const appId = clientId || getDerivAppId();
+  const tokenEndpoint = DERIV_TOKEN_ENDPOINT;
+  const postBody: Record<string, string> = {
+    grant_type: 'authorization_code',
+    client_id: appId,
+    code,
+    code_verifier: codeVerifier,
+    redirect_uri: redirectUri,
+  };
+
+  const response = await fetch(tokenEndpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body: new URLSearchParams(postBody),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Token exchange failed (${response.status}): ${errText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetches user account profile from Deriv using an access token.
+ */
+export async function fetchUserProfile(accessToken: string, appId?: string): Promise<any> {
+  const safeAppId = appId || getDerivAppId();
+  try {
+    const WS = typeof WebSocket !== 'undefined' ? WebSocket : (globalThis as any).WebSocket;
+    if (!WS) return null;
+
+    return new Promise((resolve) => {
+      const wsUrl = `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(safeAppId)}&l=EN&brand=deriv`;
+      const ws = new WS(wsUrl);
+      let settled = false;
+
+      const finish = (result: any) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          try {
+            if (typeof ws.close === 'function') ws.close();
+          } catch {}
+          resolve(result);
+        }
+      };
+
+      const timer = setTimeout(() => finish(null), 7000);
+
+      const sendAuth = () => {
+        try {
+          ws.send(JSON.stringify({ authorize: accessToken.trim() }));
+        } catch {
+          finish(null);
+        }
+      };
+
+      if (typeof ws.on === 'function') {
+        ws.on('open', sendAuth);
+        ws.on('message', (data: any) => {
+          try {
+            const raw = typeof data === 'string' ? data : data?.toString() || '';
+            const parsed = JSON.parse(raw);
+            if (parsed.msg_type === 'authorize' && parsed.authorize) {
+              finish(parsed.authorize);
+            } else if (parsed.error) {
+              finish(null);
+            }
+          } catch {
+            finish(null);
+          }
+        });
+        ws.on('error', () => finish(null));
+      } else {
+        ws.onopen = sendAuth;
+        ws.onmessage = (event: any) => {
+          try {
+            const raw = typeof event.data === 'string' ? event.data : event.data?.toString() || '';
+            const parsed = JSON.parse(raw);
+            if (parsed.msg_type === 'authorize' && parsed.authorize) {
+              finish(parsed.authorize);
+            } else if (parsed.error) {
+              finish(null);
+            }
+          } catch {
+            finish(null);
+          }
+        };
+        ws.onerror = () => finish(null);
+      }
+    });
+  } catch {
+    return null;
+  }
+}
+
 export const oauthService = {
   buildAuthUrl,
   buildLoginGatewayUrl,
+  exchangeCodeForToken,
+  fetchUserProfile,
   getDerivAppId,
   DERIV_OAUTH_SCOPE,
   DERIV_AUTH_BASE_URL,

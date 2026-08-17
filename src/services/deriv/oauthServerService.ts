@@ -9,7 +9,7 @@ import crypto from 'crypto';
 import NodeWebSocket from 'ws';
 import { syncUserToSupabase, syncDerivConnectionToSupabase } from '../../lib/supabase.ts';
 import { logger } from '../../observability/logger.ts';
-import { buildAuthUrl, DERIV_OAUTH_SCOPE } from '../oauthService.ts';
+import { buildAuthUrl, DERIV_OAUTH_SCOPE, exchangeCodeForToken, fetchUserProfile as serviceFetchUserProfile } from '../oauthService.ts';
 
 export interface DerivAccountProfileData {
   email?: string;
@@ -512,120 +512,59 @@ export async function handleDerivOAuthCallback(params: {
   const tokenEndpoint = oauthConfig.tokenEndpoint;
 
   try {
-    const postBody: Record<string, string> = {
-      grant_type: 'authorization_code',
-      client_id: oauthConfig.clientId,
-      code,
-      code_verifier: transaction.codeVerifier,
-      redirect_uri: transaction.redirectUri,
-    };
-
-    if (oauthConfig.clientSecret) {
-      postBody.client_secret = oauthConfig.clientSecret;
-    }
-
-    console.log('[DERIV_OAUTH_TOKEN_EXCHANGE_REQUEST]', {
-      tokenEndpoint,
-      client_id: postBody.client_id,
-      redirect_uri: postBody.redirect_uri,
-      grant_type: postBody.grant_type,
-      has_code_verifier: Boolean(postBody.code_verifier),
-      code_length: postBody.code?.length,
-    });
-
-    // Execute real server-side HTTP token exchange against Deriv OAuth endpoint
-    const candidateEndpoints = Array.from(new Set([
-      'https://oauth.deriv.com/oauth2/token',
-      tokenEndpoint,
-      'https://auth.deriv.com/oauth2/token',
-    ]));
-
     let tokenData: any = null;
-    let rawErrorBody: any = null;
-    let lastStatus = 0;
-    let lastStatusText = '';
+    try {
+      tokenData = await exchangeCodeForToken(code, transaction.codeVerifier, transaction.redirectUri, oauthConfig.clientId);
+    } catch (exErr: any) {
+      console.warn('[DERIV_OAUTH_EXCHANGE_ERROR]', exErr?.message);
+      // Fallback candidate endpoints trial if centralized exchange threw
+      const candidateEndpoints = Array.from(new Set([
+        'https://oauth.deriv.com/oauth2/token',
+        oauthConfig.tokenEndpoint,
+        'https://auth.deriv.com/oauth2/token',
+      ]));
+      let lastStatus = 0;
+      let lastStatusText = '';
+      let rawErrorBody: any = null;
 
-    for (const endpoint of candidateEndpoints) {
-      try {
-        console.log('[DERIV_OAUTH_TOKEN_EXCHANGE_REQUEST]', {
-          endpoint,
-          client_id: postBody.client_id,
-          redirect_uri: postBody.redirect_uri,
-          grant_type: postBody.grant_type,
-          has_code_verifier: Boolean(postBody.code_verifier),
-          code_length: postBody.code?.length,
-        });
-
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            Accept: 'application/json',
-          },
-          body: new URLSearchParams(postBody),
-          redirect: 'follow',
-        });
-
-        lastStatus = response.status;
-        lastStatusText = response.statusText;
-
-        if (response.ok) {
-          tokenData = await response.json();
-          console.log('[DERIV_OAUTH_TOKEN_EXCHANGE_SUCCESS]', {
-            endpoint,
-            account_id: tokenData.account_id || tokenData.acct1 || tokenData.acct || tokenData.loginid,
-            has_access_token: Boolean(tokenData.access_token || tokenData.token1),
-            scopes: tokenData.scopes || tokenData.scope,
-          });
-          break;
-        } else {
-          rawErrorBody = await response.json().catch(async () => {
-            const text = await response.text().catch(() => '');
-            return { rawText: text };
-          });
-          console.warn('[DERIV_OAUTH_ENDPOINT_REJECTED]', {
-            endpoint,
-            status: response.status,
-            statusText: response.statusText,
-            error: rawErrorBody,
-            sentRedirectUri: postBody.redirect_uri,
-            sentClientId: postBody.client_id,
-          });
-        }
-      } catch (reqErr: any) {
-        console.warn('[DERIV_OAUTH_REQUEST_ERROR]', { endpoint, error: reqErr?.message });
+      const postBody: Record<string, string> = {
+        grant_type: 'authorization_code',
+        client_id: oauthConfig.clientId,
+        code,
+        code_verifier: transaction.codeVerifier,
+        redirect_uri: transaction.redirectUri,
+      };
+      if (oauthConfig.clientSecret) {
+        postBody.client_secret = oauthConfig.clientSecret;
       }
-    }
 
-    const accessToken = tokenData?.access_token || tokenData?.token1 || tokenData?.token;
+      for (const endpoint of candidateEndpoints) {
+        try {
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              Accept: 'application/json',
+            },
+            body: new URLSearchParams(postBody),
+            redirect: 'follow',
+          });
+          lastStatus = response.status;
+          lastStatusText = response.statusText;
+          if (response.ok) {
+            tokenData = await response.json();
+            break;
+          } else {
+            rawErrorBody = await response.json().catch(() => ({ rawText: response.statusText }));
+          }
+        } catch (e) {}
+      }
 
-    // In development or simulation mode fallback only if explicit flag set
-    if (!tokenData || !accessToken) {
-      if (process.env.APP_ENV !== 'production' && process.env.OAUTH_SIM === 'true') {
-        tokenData = {
-          access_token: `drv_oauth_${crypto.randomBytes(16).toString('hex')}`,
-          account_id: `CR-${Math.floor(1000000 + Math.random() * 9000000)}`,
-          currency: 'USD',
-          scopes: ['trade', 'account_manage'],
-          expires_in: 86400,
-        };
-      } else {
-        // Parse specific underlying reason from Deriv's OAuth response
+      if (!tokenData) {
         const errObj = rawErrorBody?.error || rawErrorBody || {};
-        const errCode = errObj.code || errObj.error || rawErrorBody?.error_code || 'TOKEN_EXCHANGE_FAILED';
-        const errMsg = errObj.message || rawErrorBody?.error_description || errObj.error_description || rawErrorBody?.rawText || `HTTP ${lastStatus} ${lastStatusText}`;
-
-        let specificReason = `Deriv Token Exchange Error [${errCode}]: ${errMsg}`;
-        const lowerMsg = errMsg.toLowerCase();
-
-        if (errCode === 'InvalidRedirectUri' || lowerMsg.includes('redirect_uri') || lowerMsg.includes('redirect uri')) {
-          specificReason = `Deriv OAuth Invalid Redirect URI: The registered redirect URI (${transaction.redirectUri}) does not match the URL configured for App ID (${oauthConfig.clientId}) in Deriv API Management.`;
-        } else if (errCode === 'InvalidAppId' || errCode === 'InvalidClientId' || lowerMsg.includes('client_id') || lowerMsg.includes('app_id')) {
-          specificReason = `Deriv OAuth Invalid Client ID: The client/app ID (${oauthConfig.clientId}) is invalid or not registered with Deriv.`;
-        } else if (errCode === 'InvalidGrant' || errCode === 'invalid_grant' || lowerMsg.includes('code_verifier') || lowerMsg.includes('pkce') || lowerMsg.includes('expired')) {
-          specificReason = `Deriv OAuth PKCE / Code Error: The authorization code is invalid, expired, already used, or PKCE code_verifier failed verification. (${errMsg})`;
-        }
-
+        const errCode = errObj.code || errObj.error || 'TOKEN_EXCHANGE_FAILED';
+        const errMsg = errObj.message || rawErrorBody?.error_description || `HTTP ${lastStatus} ${lastStatusText}`;
+        const specificReason = `Deriv Token Exchange Error [${errCode}]: ${errMsg}`;
         return {
           success: false,
           destination: `/?auth_error=token_failed&message=${encodeURIComponent(specificReason)}`,
@@ -634,10 +573,27 @@ export async function handleDerivOAuthCallback(params: {
       }
     }
 
-    const resolvedAccessToken = tokenData.access_token || tokenData.token1 || tokenData.token;
+    const accessToken = tokenData?.access_token || tokenData?.token1 || tokenData?.token;
+    if (!accessToken && process.env.APP_ENV !== 'production' && process.env.OAUTH_SIM === 'true') {
+      tokenData = {
+        access_token: `drv_oauth_${crypto.randomBytes(16).toString('hex')}`,
+        account_id: `CR-${Math.floor(1000000 + Math.random() * 9000000)}`,
+        currency: 'USD',
+        scopes: ['trade', 'account_manage'],
+      };
+    }
 
-    // Immediately fetch authentic Deriv account profile details via WebSocket authorize call
-    const profile = await fetchDerivAccountProfile(resolvedAccessToken, oauthConfig.clientId).catch(() => null);
+    const resolvedAccessToken = tokenData?.access_token || tokenData?.token1 || tokenData?.token;
+    if (!resolvedAccessToken) {
+      return {
+        success: false,
+        destination: '/?auth_error=token_failed&message=Missing%20access%20token%20in%20Deriv%20response',
+        errorMessage: 'Deriv OAuth Error: Access token was missing in token exchange response.',
+      };
+    }
+
+    // Immediately fetch authentic Deriv account profile details using serviceFetchUserProfile
+    const profile = await serviceFetchUserProfile(resolvedAccessToken, oauthConfig.clientId).catch(() => null);
 
     const rawAccountId = profile?.loginid || tokenData.account_id || tokenData.acct1 || tokenData.acct || tokenData.loginid || tokenData.accounts?.[0]?.loginid || `CR-${Math.floor(1000000 + Math.random() * 9000000)}`;
     const isVirtual = profile ? Boolean(profile.is_virtual) : rawAccountId.startsWith('VR');

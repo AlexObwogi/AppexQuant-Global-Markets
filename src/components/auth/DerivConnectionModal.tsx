@@ -75,15 +75,20 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
   }, []);
 
   const handleInitiateOAuth = (action: 'connect' | 'signup') => {
+    if (action === 'signup') {
+      window.open('https://deriv.com/signup/', '_blank');
+      onClose();
+      return;
+    }
     setErrorMessage(null);
-    setConnectStep(action === 'signup' ? 'Preparing Deriv registration...' : 'Connecting to Deriv...');
+    setConnectStep('Connecting to Deriv...');
 
     setTimeout(() => {
       setConnectStep('Authorizing account...');
       setTimeout(() => {
         setConnectStep('Securing connection...');
         setTimeout(() => {
-          window.location.href = `/api/auth/deriv/login?action=${action}&destination=${encodeURIComponent(window.location.pathname)}`;
+          window.location.href = `/api/auth/deriv/login?action=connect&destination=/dashboard`;
         }, 300);
       }, 300);
     }, 300);
@@ -373,26 +378,26 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
                 onClick={() => handleInitiateOAuth('connect')}
                 className="w-full bg-accent-primary hover:opacity-95 text-bg-main py-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shadow-lg flex items-center justify-center gap-2"
               >
-                <span>LOGIN</span>
+                <span>Log in</span>
                 <ExternalLink className="w-4 h-4" />
+              </button>
+
+              {/* OPEN ACCOUNT */}
+              <button
+                onClick={() => handleInitiateOAuth('signup')}
+                className="w-full bg-[#FF444F] hover:bg-[#E03B44] text-white py-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[#FF444F]/20"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Open account</span>
               </button>
 
               {/* USE API TOKEN OPTION */}
               <button
                 onClick={() => setAuthMode('token')}
-                className="w-full bg-bg-hover hover:bg-bg-elevated text-text-primary py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 border border-border-color"
+                className="w-full bg-bg-hover hover:bg-bg-elevated text-text-secondary hover:text-text-primary py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-2 border border-border-color/60"
               >
                 <KeyRound className="w-4 h-4 text-accent-primary" />
                 <span>Use API Token</span>
-              </button>
-
-              {/* CREATE DERIV ACCOUNT */}
-              <button
-                onClick={() => handleInitiateOAuth('signup')}
-                className="w-full bg-bg-hover hover:bg-bg-elevated text-text-secondary hover:text-text-primary py-2 rounded-xl text-[11px] font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-border-color/60"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>Create a Deriv account</span>
               </button>
             </div>
           </div>

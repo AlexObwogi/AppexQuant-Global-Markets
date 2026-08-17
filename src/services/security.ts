@@ -54,6 +54,11 @@ export interface SessionPayload {
   elevatedUntil: string | null;
   csrfToken: string;
   expiresAt: string;
+  derivAccountId?: string;
+  fullName?: string;
+  accountType?: 'demo' | 'real';
+  currency?: string;
+  balance?: number;
 }
 
 export function createSessionToken(payload: SessionPayload): string {

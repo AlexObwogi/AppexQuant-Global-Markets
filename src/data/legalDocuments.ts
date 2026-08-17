@@ -132,7 +132,7 @@ export const OFFICIAL_LEGAL_DOCUMENTS: LegalDocument[] = [
     requiresExplicitAcceptance: true,
     content: [
       '1. Third-Party Independence: Brokers connected through AppexQuant adapters (including Deriv, Exness, JustMarkets) are separate legal entities with independent regulatory licenses, terms of service, and clearing operations.',
-      '2. API Key Scope Security: Users are instructed to issue read/trade API tokens ONLY and restrict token permissions to prevent unauthorized withdrawal rights on broker accounts.',
+      '2. API Key Scope Security: Users are instructed to issue trade/account_manage API tokens ONLY and restrict token permissions to prevent unauthorized withdrawal rights on broker accounts.',
       '3. Execution Discrepancies & Desyncs: Price quotes, spreads, and order execution times inside AppexQuant depend entirely on feed data transmitted by connected broker gateways. Discrepancies may occur due to broker server maintenance or network latency.',
       '4. Fee Structures & Swaps: Users remain responsible for all spread costs, overnight rollover swaps, commission fees, and overnight margin requirements levied by their chosen broker.',
     ],

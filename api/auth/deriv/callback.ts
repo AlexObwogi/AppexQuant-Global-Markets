@@ -64,16 +64,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.redirect(`/?auth_error=1&message=${encodeURIComponent(errorMessage)}`);
     }
 
-    // Establish secure session token
+    // Establish secure session token with full authentic Deriv profile metadata
     const rawAcct = result.rawAccountDetails?.derivAccountId || result.userId || 'CR-TRADER';
     const accountType = result.rawAccountDetails?.accountType || (rawAcct.startsWith('VR') ? 'demo' : 'real');
     const currency = result.rawAccountDetails?.currency || 'USD';
+    const realEmail = result.rawAccountDetails?.email || result.connectionRecord?.email || `${rawAcct.toLowerCase()}@deriv.trader`;
+    const fullName = result.rawAccountDetails?.fullName || result.connectionRecord?.fullName;
+    const balance = result.rawAccountDetails?.balance ?? result.connectionRecord?.balance ?? 0;
     const csrfToken = crypto.randomBytes(32).toString('hex');
 
     const sessionPayload = {
       userId: rawAcct,
-      email: `${rawAcct.toLowerCase()}@deriv.trader`,
-      role: rawAcct.toLowerCase().includes('admin') ? 'ADMIN' : 'USER',
+      email: realEmail,
+      fullName,
+      balance,
+      role: (realEmail === 'obwogialex728@gmail.com' || rawAcct.toLowerCase().includes('admin')) ? 'ADMIN' : 'USER',
       isElevated: false,
       elevatedUntil: null,
       csrfToken,
@@ -103,14 +108,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           sessionToken,
           user: {
             userId: rawAcct,
+            loginid: rawAcct,
             derivAccountId: rawAcct,
             accountType,
             currency,
             email: sessionPayload.email,
+            fullName: sessionPayload.fullName,
+            balance: sessionPayload.balance,
+            displayName: fullName || `Deriv Trader (${rawAcct})`,
             role: sessionPayload.role,
           },
           csrfToken,
           destination: result.destination || '/dashboard',
+          accountList: result.rawAccountDetails?.accountList,
         },
       });
     }

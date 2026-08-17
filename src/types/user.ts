@@ -66,6 +66,11 @@ export interface UserProfile {
   avatarUrl?: string;
   createdAt: string;
   updatedAt: string;
+  loginid?: string;
+  currency?: string;
+  balance?: number;
+  accountType?: string;
+  fullName?: string;
   preferences: {
     theme: 'dark' | 'light' | 'system';
     currency: string;

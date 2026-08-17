@@ -59,6 +59,7 @@ import {
   syncUserDeriv,
   getAdminDerivDiagnostics,
   connectUserWithApiToken,
+  connectUserWithApiTokenAsync,
 } from './src/services/deriv/oauthServerService.ts';
 import { initializeDatabaseSystem } from './src/db/initDb.ts';
 import { getDatabasePool, testDatabaseConnection } from './src/db/connection.ts';
@@ -1035,7 +1036,8 @@ export async function createApp() {
         user: null,
       }));
     }
-    const derivAcct = (req.sessionUser as any).derivAccountId || req.sessionUser.userId;
+    const derivAcct = req.sessionUser.derivAccountId || (req.sessionUser as any).derivAccountId || req.sessionUser.userId;
+    const fullName = req.sessionUser.fullName || (req.sessionUser as any).fullName;
     res.json(createSuccessResponse({
       authenticated: true,
       user: {
@@ -1043,9 +1045,11 @@ export async function createApp() {
         email: req.sessionUser.email,
         role: req.sessionUser.role,
         derivAccountId: derivAcct,
-        displayName: `Deriv Trader (${derivAcct})`,
-        accountType: (req.sessionUser as any).accountType || (derivAcct.startsWith('VR') ? 'demo' : 'real'),
-        currency: (req.sessionUser as any).currency || 'USD',
+        displayName: fullName || `Deriv Trader (${derivAcct})`,
+        fullName: fullName || undefined,
+        balance: req.sessionUser.balance ?? (req.sessionUser as any).balance ?? 0,
+        accountType: req.sessionUser.accountType || (req.sessionUser as any).accountType || (derivAcct.startsWith('VR') ? 'demo' : 'real'),
+        currency: req.sessionUser.currency || (req.sessionUser as any).currency || 'USD',
       },
       csrfToken: req.sessionUser.csrfToken,
       isElevated: req.sessionUser.isElevated,
@@ -1150,6 +1154,10 @@ export async function createApp() {
     try {
       const code = req.query.code as string | undefined;
       const state = req.query.state as string | undefined;
+      const verifier = req.query.verifier as string | undefined;
+      const token1 = req.query.token1 as string | undefined;
+      const acct1 = req.query.acct1 as string | undefined;
+      const cur1 = req.query.cur1 as string | undefined;
       const error = req.query.error as string | undefined;
       const errorDescription = req.query.error_description as string | undefined;
       const cookies = parseCookies(req.headers.cookie);
@@ -1160,6 +1168,10 @@ export async function createApp() {
       const result = await handleDerivOAuthCallback({
         code,
         state,
+        verifier,
+        token1,
+        acct1,
+        cur1,
         cookieState,
         error,
         errorDescription,
@@ -1181,21 +1193,25 @@ export async function createApp() {
       const rawAcct = result.rawAccountDetails?.derivAccountId || result.userId || 'CR-TRADER';
       const accountType = result.rawAccountDetails?.accountType || (rawAcct.startsWith('VR') ? 'demo' : 'real');
       const currency = result.rawAccountDetails?.currency || 'USD';
+      const realEmail = result.rawAccountDetails?.email || `${rawAcct.toLowerCase()}@deriv.trader`;
+      const fullName = result.rawAccountDetails?.fullName;
+      const balance = result.rawAccountDetails?.balance ?? 0;
       const csrfToken = crypto.randomBytes(32).toString('hex');
 
       const sessionPayload: SessionPayload = {
         userId: rawAcct,
-        email: `${rawAcct.toLowerCase()}@deriv.trader`,
+        email: realEmail,
+        fullName,
+        balance,
+        derivAccountId: rawAcct,
+        accountType,
+        currency,
         role: rawAcct.toLowerCase().includes('admin') ? UserRole.ADMIN : UserRole.USER,
         isElevated: false,
         elevatedUntil: null,
         csrfToken,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 Days
       };
-
-      (sessionPayload as any).derivAccountId = rawAcct;
-      (sessionPayload as any).accountType = accountType;
-      (sessionPayload as any).currency = currency;
 
       const sessionToken = createSessionToken(sessionPayload);
 
@@ -1205,21 +1221,26 @@ export async function createApp() {
         `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`,
       ]);
 
-      logSecurityEvent(req, 'DERIV_OAUTH_SUCCESS', 'INFO', { userId: rawAcct, accountType });
+      logSecurityEvent(req, 'DERIV_OAUTH_SUCCESS', 'INFO', { userId: rawAcct, email: realEmail, accountType });
 
       if (req.headers.accept?.includes('application/json')) {
         return res.json(createSuccessResponse({
           sessionToken,
           user: {
             userId: rawAcct,
+            loginid: rawAcct,
             derivAccountId: rawAcct,
             accountType,
             currency,
             email: sessionPayload.email,
+            fullName: sessionPayload.fullName,
+            balance: sessionPayload.balance,
+            displayName: fullName || `Deriv Trader (${rawAcct})`,
             role: sessionPayload.role,
           },
           csrfToken,
           destination: result.destination || '/',
+          accountList: result.rawAccountDetails?.accountList,
         }));
       }
 
@@ -1271,14 +1292,14 @@ export async function createApp() {
   });
 
   // Login using Deriv API Token
-  app.post('/api/auth/deriv/token-login', (req: Request, res: Response) => {
+  app.post('/api/auth/deriv/token-login', async (req: Request, res: Response) => {
     try {
       const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string) || 'usr-default-001';
       const { apiToken } = req.body;
       if (!apiToken || typeof apiToken !== 'string' || apiToken.trim().length < 5) {
         return res.status(400).json(createErrorResponse('Invalid Deriv API token provided', 'INVALID_API_TOKEN'));
       }
-      const metadata = connectUserWithApiToken(userId, apiToken);
+      const metadata = await connectUserWithApiTokenAsync(userId, apiToken);
       logAuditEvent('ACCOUNT_CONNECTED', userId, { event: 'DERIV_API_TOKEN_CONNECTED' });
       res.json(createSuccessResponse(metadata));
     } catch (err: any) {

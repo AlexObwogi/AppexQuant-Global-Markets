@@ -6,11 +6,19 @@
 import { useState, useCallback, useEffect } from 'react';
 import { generateCodeVerifier, deriveCodeChallenge, setEncryptedCookie, getEncryptedCookie, removeCookie } from './pkce.ts';
 import { derivAuthService } from '../../services/deriv/authService.ts';
+import { buildAuthUrl, buildLoginGatewayUrl, DERIV_OAUTH_SCOPE } from '../../services/oauthService.ts';
 
 export interface DerivAuthResult {
   token: string;
   accountId: string;
+  loginid?: string;
   currency?: string;
+  email?: string;
+  displayName?: string;
+  fullName?: string;
+  balance?: number;
+  accountType?: string;
+  role?: 'USER' | 'ADMIN' | 'SUPER_ADMIN' | 'RISK_MANAGER';
 }
 
 export function useDerivAuth() {
@@ -92,14 +100,26 @@ export function useDerivAuth() {
       let token = '';
       let accountId = '';
       let currency = 'USD';
+      let email = '';
+      let displayName = '';
+      let fullName = '';
+      let balance = 0;
+      let accountType = 'real';
+      let role: 'USER' | 'ADMIN' | 'SUPER_ADMIN' | 'RISK_MANAGER' = 'USER';
 
       let backendErrorMessage = '';
       if (response.ok) {
         const json = await response.json();
         if (json.success && json.data) {
-          token = json.data.token || json.data.accessToken || '';
-          accountId = json.data.accountId || json.data.derivAccountId || '';
-          currency = json.data.currency || 'USD';
+          token = json.data.token || json.data.accessToken || json.data.sessionToken || '';
+          accountId = json.data.accountId || json.data.derivAccountId || json.data.user?.derivAccountId || json.data.user?.userId || '';
+          currency = json.data.currency || json.data.user?.currency || 'USD';
+          email = json.data.user?.email || json.data.email || '';
+          displayName = json.data.user?.displayName || json.data.displayName || '';
+          fullName = json.data.user?.fullName || json.data.fullName || '';
+          balance = json.data.user?.balance ?? json.data.balance ?? 0;
+          accountType = json.data.user?.accountType || json.data.accountType || (accountId.startsWith('VR') ? 'demo' : 'real');
+          role = json.data.user?.role || json.data.role || 'USER';
         }
       } else {
         const errJson = await response.json().catch(() => ({}));
@@ -114,6 +134,8 @@ export function useDerivAuth() {
           accountId = statusJson.data.derivAccountId;
           token = statusJson.data.token || localStorage.getItem('deriv_access_token') || `token-${accountId}`;
           currency = statusJson.data.currency || 'USD';
+          balance = statusJson.data.balance ?? 0;
+          accountType = statusJson.data.accountType || (accountId.startsWith('VR') ? 'demo' : 'real');
         }
       }
 
@@ -147,7 +169,14 @@ export function useDerivAuth() {
       return {
         token,
         accountId,
-        currency
+        loginid: accountId,
+        currency,
+        email,
+        displayName,
+        fullName,
+        balance,
+        accountType,
+        role,
       };
     } catch (err: any) {
       setIsAuthenticating(false);

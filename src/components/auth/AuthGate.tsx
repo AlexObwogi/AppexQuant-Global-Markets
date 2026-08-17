@@ -17,6 +17,7 @@ import {
   getEncryptedCookie 
 } from '../../utils/auth.ts';
 import { derivAuthService } from '../../services/deriv/authService.ts';
+import { buildAuthUrl, buildLoginGatewayUrl, DERIV_OAUTH_SCOPE } from '../../services/oauthService.ts';
 import { 
   Globe, 
   Network, 
@@ -357,25 +358,39 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       id: string;
       email?: string;
       displayName?: string;
+      fullName?: string;
       role?: 'USER' | 'ADMIN' | 'SUPER_ADMIN' | 'RISK_MANAGER';
       accountId?: string;
       token?: string;
+      currency?: string;
+      balance?: number;
+      accountType?: string;
     }) => {
       const accountId = userData.accountId || userData.id;
       const role = userData.role || (userData.email === 'obwogialex728@gmail.com' ? 'SUPER_ADMIN' : 'USER');
-      
+      const currency = userData.currency || 'USD';
+      const balanceAmount = typeof userData.balance === 'number' ? userData.balance : 0;
+      const displayName = userData.fullName || userData.displayName || `Deriv Trader (${accountId})`;
+      const email = userData.email || `${accountId.toLowerCase()}@deriv.trader`;
+      const isDemo = userData.accountType === 'demo' || accountId.startsWith('VR');
+
       dispatch({
         type: 'SET_USER_PROFILE',
         payload: {
           id: accountId,
-          email: userData.email || `${accountId.toLowerCase()}@deriv.trader`,
-          displayName: userData.displayName || `Deriv Trader (${accountId})`,
+          loginid: accountId,
+          email,
+          displayName,
+          fullName: userData.fullName,
           role,
+          currency,
+          balance: balanceAmount,
+          accountType: isDemo ? 'demo' : 'real',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           preferences: {
             theme: state.theme,
-            currency: 'USD',
+            currency,
             timezone: 'UTC',
             notificationsEnabled: true,
           },
@@ -389,10 +404,10 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           id: `conn-deriv-${accountId}`,
           brokerType: 'DERIV',
           brokerName: 'Deriv Limited',
-          server: 'Deriv-Server',
+          server: isDemo ? 'Deriv-Demo' : 'Deriv-Server',
           accountNumber: accountId,
           status: 'CONNECTED',
-          environment: accountId.startsWith('VR') ? 'DEMO' : 'REAL',
+          environment: isDemo ? 'DEMO' : 'REAL',
           apiPermissions: ['trade', 'account_manage', 'payments'],
           isReadOnly: false,
           executionPermission: true,
@@ -422,8 +437,8 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           : 'Redirecting to secure Deriv OAuth 2.0 PKCE authentication gateway...'
       );
 
-      const destination = encodeURIComponent(window.location.pathname || '/');
-      const loginEndpoint = `/api/auth/deriv/login?action=${action}&destination=${destination}`;
+      const destination = window.location.pathname || '/';
+      const loginEndpoint = buildLoginGatewayUrl(action, destination);
 
       // Orchestrate browser redirect to server-side PKCE gateway
       setTimeout(() => {
@@ -512,6 +527,13 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
               id: result.accountId,
               accountId: result.accountId,
               token: result.token,
+              email: result.email,
+              displayName: result.displayName,
+              fullName: result.fullName,
+              balance: result.balance,
+              currency: result.currency,
+              accountType: result.accountType,
+              role: result.role,
             });
             window.history.replaceState({}, document.title, window.location.pathname);
           } else {
@@ -542,12 +564,17 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       derivAuthService
         .authorize(token1)
         .then(async () => {
+          let realProfile: any = null;
           try {
-            await apiFetch('/api/auth/deriv/token-login', {
+            const syncRes = await apiFetch('/api/auth/deriv/token-login', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ apiToken: token1 }),
             });
+            const syncJson = await syncRes.json();
+            if (syncJson.success && syncJson.data) {
+              realProfile = syncJson.data;
+            }
           } catch {
             // Non-blocking sync
           }
@@ -555,7 +582,12 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           establishUserSession({
             id: acct1,
             accountId: acct1,
-            displayName: `Deriv Trader (${acct1})`,
+            displayName: realProfile?.fullName || `Deriv Trader (${acct1})`,
+            fullName: realProfile?.fullName,
+            email: realProfile?.email,
+            balance: realProfile?.balance,
+            currency: cur1 || realProfile?.currency || 'USD',
+            accountType: realProfile?.accountType || (acct1.startsWith('VR') ? 'demo' : 'real'),
             token: token1,
           });
 
@@ -582,7 +614,12 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
             establishUserSession({
               id: data.data.derivAccountId,
               accountId: data.data.derivAccountId,
-              displayName: `Deriv Trader (${data.data.derivAccountId})`,
+              displayName: data.data.fullName || `Deriv Trader (${data.data.derivAccountId})`,
+              fullName: data.data.fullName,
+              email: data.data.email,
+              balance: data.data.balance,
+              currency: data.data.currency,
+              accountType: data.data.accountType,
             });
             window.history.replaceState({}, document.title, window.location.pathname);
           }
@@ -605,6 +642,10 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
             accountId: user.derivAccountId || user.userId,
             email: user.email,
             displayName: user.displayName,
+            fullName: user.fullName,
+            balance: user.balance,
+            currency: user.currency,
+            accountType: user.accountType,
             role: user.role,
           });
           return;
@@ -760,7 +801,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     try {
       const wsSuccess = await derivAuthService.authorize(token);
       if (!wsSuccess) {
-        throw new Error('Deriv WebSocket rejected API token. Please verify read/trade permissions.');
+        throw new Error('Deriv WebSocket rejected API token. Please verify trade and account_manage permissions.');
       }
 
       const res = await apiFetch('/api/auth/deriv/token-login', {

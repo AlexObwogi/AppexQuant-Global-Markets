@@ -165,16 +165,62 @@ export type GlobalAction =
 
 function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
   switch (action.type) {
-    case 'SET_USER_PROFILE':
+    case 'SET_USER_PROFILE': {
+      if (!action.payload) {
+        return {
+          ...state,
+          user: null,
+          session: {
+            ...state.session,
+            userId: 'usr-default-001',
+            isAuthenticated: false,
+          },
+        };
+      }
+
+      const p = action.payload;
+      const accountId = p.loginid || p.id;
+      const isDemo = p.accountType === 'demo' || accountId.startsWith('VR');
+      const currency = p.currency || p.preferences?.currency || 'USD';
+      const balanceNum = typeof p.balance === 'number' ? p.balance : 0;
+
+      const updatedAccount: TradingAccount = {
+        id: `acc-${accountId}`,
+        userId: accountId,
+        brokerId: 'deriv-01',
+        accountNumber: accountId,
+        accountName: p.displayName || `Deriv ${isDemo ? 'Demo' : 'Real'} Account`,
+        type: isDemo ? 'DEMO' : 'REAL',
+        currency,
+        server: isDemo ? 'Deriv-Demo' : 'Deriv-Server',
+        isPrimary: true,
+        isConnected: true,
+        balance: {
+          currency,
+          balance: balanceNum,
+          equity: balanceNum,
+          margin: 0,
+          freeMargin: balanceNum,
+          marginLevel: 0,
+          unrealizedPl: 0,
+        },
+        createdAt: p.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
       return {
         ...state,
-        user: action.payload,
+        user: p,
+        accounts: [updatedAccount],
+        selectedAccountId: updatedAccount.id,
+        executionEnvironment: isDemo ? 'DEMO' : 'LIVE',
         session: {
           ...state.session,
-          userId: action.payload ? action.payload.id : 'usr-default-001',
-          isAuthenticated: !!action.payload,
+          userId: accountId,
+          isAuthenticated: true,
         },
       };
+    }
 
     case 'SET_SESSION_ELEVATION':
       return {

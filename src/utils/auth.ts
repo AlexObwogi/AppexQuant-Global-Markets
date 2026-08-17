@@ -113,3 +113,4 @@ export function isSessionElevated(isElevated: boolean, elevatedUntil: string | n
 
 export * from './auth/pkce.ts';
 export * from './auth/useDerivAuth.ts';
+export * from '../services/oauthService.ts';

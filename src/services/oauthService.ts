@@ -68,6 +68,13 @@ export function buildAuthUrl(options: BuildAuthUrlOptions = {}): string {
     params.code_challenge_method = options.codeChallengeMethod || 'S256';
   }
 
+  if (options.action) {
+    params.action = options.action;
+    if (options.action === 'signup') {
+      params.ac = 'signup';
+    }
+  }
+
   if (options.extraParams) {
     Object.assign(params, options.extraParams);
   }

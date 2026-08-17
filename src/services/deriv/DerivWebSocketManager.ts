@@ -31,6 +31,12 @@ export class DerivWebSocketManager {
   
   private connectionState: DerivConnectionState = 'DISCONNECTED';
   private statusListeners = new Set<StatusCallback>();
+  private balanceCallbacks = new Set<(balanceObj: any) => void>();
+
+  public onBalance(cb: (balanceObj: any) => void): () => void {
+    this.balanceCallbacks.add(cb);
+    return () => this.balanceCallbacks.delete(cb);
+  }
   
   private pingInterval: NodeJS.Timeout | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
@@ -258,9 +264,13 @@ export class DerivWebSocketManager {
         }
       }
 
-      // Handle stream events (e.g. tick streams)
+      // Handle stream events (e.g. tick streams or balance streams)
       if (data.msg_type === 'tick' && data.tick) {
         this.processIncomingTick(data.tick, data.subscription?.id);
+      }
+      const rawData = data as any;
+      if (rawData.msg_type === 'balance' && rawData.balance) {
+        this.balanceCallbacks.forEach((cb) => cb(rawData.balance));
       }
     } catch (err) {
       console.error('[DerivWS] Failed to parse WebSocket message:', err);

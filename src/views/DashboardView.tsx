@@ -43,7 +43,10 @@ export const DashboardView: React.FC = () => {
   const isBalanceHidden = state.isBalanceHidden;
 
   const balanceNum = selectedAccount ? selectedAccount.balance.balance : 0;
-  const equityNum = selectedAccount ? selectedAccount.balance.equity : 0;
+  const equityNum = selectedAccount ? (selectedAccount.balance.equity ?? balanceNum) : balanceNum;
+  const marginNum = selectedAccount ? (selectedAccount.balance.margin ?? 0) : 0;
+  const marginLevelNum = marginNum > 0 ? (equityNum / marginNum) * 100 : (equityNum > 0 ? 100 : 0);
+  const marginLevelSubtext = marginNum > 0 ? `Margin level: ${marginLevelNum.toFixed(0)}%` : 'Margin level: 100% (No open margin)';
 
   const balanceFormatted = formatCurrencyValue(balanceNum, isBalanceHidden);
   const equityFormatted = formatCurrencyValue(equityNum, isBalanceHidden);
@@ -115,7 +118,7 @@ export const DashboardView: React.FC = () => {
           value={equityFormatted}
           type="neutral"
           statusLabel={pnlStatusLabel}
-          subtext="Margin level: 100%"
+          subtext={marginLevelSubtext}
           icon={<Activity className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />}
         />
         <MetricCard

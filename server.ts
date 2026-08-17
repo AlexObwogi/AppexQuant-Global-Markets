@@ -1144,7 +1144,7 @@ export async function createApp() {
   };
 
   app.all(['/api/auth/deriv/login', '/api/auth/deriv/signin', '/api/deriv/oauth/init'], derivAuthInitHandler);
-  app.all(['/api/auth/deriv/register', '/api/auth/deriv/signup'], derivAuthInitHandler);
+  app.all(['/api/auth/deriv/register', '/api/auth/deriv/signup', '/api/auth/deriv/open_account'], derivAuthInitHandler);
 
   // Deriv OAuth Callback endpoint (Server-side token exchange & session establishment)
   app.get(['/api/auth/deriv/callback', '/auth/deriv/callback'], async (req: Request, res: Response) => {

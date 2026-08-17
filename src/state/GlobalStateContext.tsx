@@ -12,6 +12,7 @@ import { RiskState } from '../types/risk.ts';
 import { FeatureFlags, defaultFeatureFlags } from '../types/featureFlags.ts';
 import { ThemeMode, applyThemeToDocument } from '../design/theme.ts';
 import { logAuditEvent } from '../observability/audit.ts';
+import { derivAuthService } from '../services/deriv/authService.ts';
 
 export type AppViewRoute =
   | 'dashboard'
@@ -161,10 +162,39 @@ export type GlobalAction =
   | { type: 'ADD_NOTIFICATION'; payload: Omit<ToastNotification, 'id' | 'timestamp'> }
   | { type: 'DISMISS_NOTIFICATION'; payload: string }
   | { type: 'SET_USER_PROFILE'; payload: UserProfile | null }
-  | { type: 'SET_SESSION_ELEVATION'; payload: { isElevated: boolean; elevatedUntil: string | null } };
+  | { type: 'SET_SESSION_ELEVATION'; payload: { isElevated: boolean; elevatedUntil: string | null } }
+  | { type: 'UPDATE_ACCOUNT_BALANCE'; payload: { balance: number; currency?: string; loginid?: string } };
 
 function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
   switch (action.type) {
+    case 'UPDATE_ACCOUNT_BALANCE': {
+      const { balance, currency, loginid } = action.payload;
+      const updatedAccounts = state.accounts.map((acc) => {
+        if (!loginid || acc.accountNumber === loginid || acc.id === state.selectedAccountId) {
+          const cur = currency || acc.currency;
+          const unrealizedPl = acc.balance.unrealizedPl || 0;
+          const equity = balance + unrealizedPl;
+          const margin = acc.balance.margin || 0;
+          const marginLevel = margin > 0 ? (equity / margin) * 100 : 0;
+          return {
+            ...acc,
+            balance: {
+              ...acc.balance,
+              balance,
+              equity,
+              freeMargin: Math.max(0, equity - margin),
+              marginLevel,
+              ...(currency ? { currency } : {}),
+            },
+          };
+        }
+        return acc;
+      });
+      return {
+        ...state,
+        accounts: updatedAccounts,
+      };
+    }
     case 'SET_USER_PROFILE': {
       if (!action.payload) {
         return {
@@ -357,6 +387,14 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
+  }, []);
+
+  // Listen to Deriv WebSocket real-time balance stream
+  useEffect(() => {
+    const unsubscribe = derivAuthService.onBalanceChange((balanceData) => {
+      dispatch({ type: 'UPDATE_ACCOUNT_BALANCE', payload: balanceData });
+    });
+    return unsubscribe;
   }, []);
 
   const selectedAccount =

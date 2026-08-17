@@ -93,6 +93,7 @@ export function useDerivAuth() {
       let accountId = '';
       let currency = 'USD';
 
+      let backendErrorMessage = '';
       if (response.ok) {
         const json = await response.json();
         if (json.success && json.data) {
@@ -100,10 +101,13 @@ export function useDerivAuth() {
           accountId = json.data.accountId || json.data.derivAccountId || '';
           currency = json.data.currency || 'USD';
         }
+      } else {
+        const errJson = await response.json().catch(() => ({}));
+        backendErrorMessage = errJson.error?.message || errJson.message || `Deriv Token Exchange HTTP Error ${response.status}`;
       }
 
       // If backend redirected or returned session status
-      if (!token) {
+      if (!token && !backendErrorMessage) {
         const statusRes = await fetch('/api/auth/deriv/status');
         const statusJson = await statusRes.json();
         if (statusJson.success && statusJson.data?.connected) {
@@ -114,7 +118,7 @@ export function useDerivAuth() {
       }
 
       if (!accountId) {
-        throw new Error('Could not retrieve authorized Deriv account credentials.');
+        throw new Error(backendErrorMessage || 'Could not retrieve authorized Deriv account credentials.');
       }
 
       // Persist in encrypted cookie (30 days expiration)

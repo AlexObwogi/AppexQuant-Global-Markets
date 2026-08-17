@@ -437,22 +437,60 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
   useEffect(() => {
     if (typeof window === 'undefined' || callbackHandledRef.current) return;
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    const oauthState = urlParams.get('state');
-    const token1 = urlParams.get('token1');
-    const acct1 = urlParams.get('acct1');
-    const cur1 = urlParams.get('cur1');
-    const connection = urlParams.get('connection');
-    const authError = urlParams.get('auth_error') || urlParams.get('error') || urlParams.get('error_description');
+    // Parse search parameters and URL hash parameters (if OAuth fragment response)
+    const searchParams = new URLSearchParams(window.location.search);
+    const hashString = window.location.hash.startsWith('#') ? window.location.hash.substring(1) : window.location.hash;
+    const hashParams = new URLSearchParams(hashString.includes('?') ? hashString.split('?')[1] : hashString);
+
+    const getParam = (key: string) => searchParams.get(key) || hashParams.get(key);
+
+    const code = getParam('code');
+    const oauthState = getParam('state');
+    const token1 = getParam('token1');
+    const acct1 = getParam('acct1');
+    const cur1 = getParam('cur1');
+    const connection = getParam('connection');
+    const authError = getParam('auth_error');
+    const rawError = getParam('error');
+    const rawErrorDesc = getParam('error_description');
+    const rawMessage = getParam('message') || getParam('reason') || getParam('msg');
 
     // Case 0: Handle Auth Error returned in query params
-    if (authError) {
+    if (authError || rawError || rawErrorDesc || (rawMessage && !connection)) {
       callbackHandledRef.current = true;
-      setErrorMessage(
-        urlParams.get('error_description') || 
-        'Deriv authorization was cancelled or encountered an error. Please try logging in again.'
-      );
+      
+      let computedErrorMessage = '';
+      if (rawMessage) {
+        computedErrorMessage = rawMessage;
+      } else if (rawErrorDesc) {
+        computedErrorMessage = `Deriv OAuth Error: ${rawErrorDesc}${rawError ? ` (${rawError})` : ''}`;
+      } else if (rawError) {
+        computedErrorMessage = `Deriv OAuth Error: ${rawError}`;
+      } else if (authError) {
+        switch (authError) {
+          case 'invalid_state':
+            computedErrorMessage = 'Deriv OAuth State Error: State mismatch or expired authorization transaction. Please try logging in again.';
+            break;
+          case 'token_failed':
+            computedErrorMessage = 'Deriv Token Error: Deriv server rejected authorization code exchange.';
+            break;
+          case 'network_failure':
+            computedErrorMessage = 'Deriv Network Error: Server was unable to communicate with Deriv OAuth token endpoint.';
+            break;
+          case 'missing_code':
+            computedErrorMessage = 'Deriv OAuth Error: Authorization code was missing in callback response.';
+            break;
+          case 'cancelled':
+            computedErrorMessage = 'Deriv Authorization was cancelled by the user.';
+            break;
+          default:
+            computedErrorMessage = `Deriv Authorization Error: ${authError}`;
+        }
+      } else {
+        computedErrorMessage = 'Deriv authorization encountered an error. Please try logging in again.';
+      }
+
+      setErrorMessage(computedErrorMessage);
       window.history.replaceState({}, document.title, window.location.pathname);
       return;
     }

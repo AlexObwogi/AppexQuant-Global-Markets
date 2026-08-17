@@ -1173,7 +1173,8 @@ export async function createApp() {
         if (req.headers.accept?.includes('application/json')) {
           return res.status(400).json(createErrorResponse(result.errorMessage || 'Unable to complete authentication. Please try again.', 'AUTH_FAILED'));
         }
-        return res.redirect('/?auth_error=1');
+        const errorDest = result.destination && result.destination.startsWith('/') ? result.destination : `/?auth_error=1&message=${encodeURIComponent(result.errorMessage || 'Authentication failed')}`;
+        return res.redirect(errorDest);
       }
 
       // Successful exchange: Create authenticated AppExQuant user session
@@ -1225,12 +1226,13 @@ export async function createApp() {
       const safeDestination = result.destination.startsWith('/') ? result.destination : '/';
       res.redirect(safeDestination);
     } catch (err: any) {
-      logger.error('Deriv OAuth callback server error:', { error: err.message });
+      const errMsg = err?.message || 'Unknown OAuth callback error';
+      logger.error('Deriv OAuth callback server error:', { error: errMsg, stack: err?.stack });
       res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`);
       if (req.headers.accept?.includes('application/json')) {
-        return res.status(500).json(createErrorResponse('Something went wrong. Please try again.', 'SERVER_ERROR'));
+        return res.status(500).json(createErrorResponse(`Deriv OAuth Callback Error: ${errMsg}`, 'SERVER_ERROR'));
       }
-      res.redirect('/?auth_error=1');
+      res.redirect(`/?auth_error=1&message=${encodeURIComponent(`Deriv OAuth Callback Error: ${errMsg}`)}`);
     }
   });
 

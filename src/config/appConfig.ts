@@ -40,7 +40,7 @@ export function loadAppConfig(): AppConfig {
     rawEnv === 'staging' ? 'staging' :
     rawEnv === 'test' ? 'test' : 'development';
 
-  const appVersion = getEnvVariable('VITE_APP_VERSION', '0.1.0');
+  const appVersion = getEnvVariable('APP_VERSION', '0.1.0');
   const appName = 'AppexQuant Markets Global';
   const appUrl = getEnvVariable('APP_URL', 'http://localhost:3000');
 

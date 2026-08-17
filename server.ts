@@ -1,12 +1,11 @@
 /**
  * AppexQuant Markets Global - Backend Application Server Entry Point
- * Serves API routes & Vite middleware in development or static assets in production.
+ * Serves API routes & dynamic development middleware in development or static assets in production.
  */
 
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import crypto from 'crypto';
-import { createServer as createViteServer } from 'vite';
 import { loadAppConfig } from './src/config/appConfig.ts';
 import { createSuccessResponse, createErrorResponse } from './src/types/api.ts';
 import { getAuditLogs, logAuditEvent } from './src/observability/audit.ts';
@@ -1753,7 +1752,8 @@ export async function createApp() {
   logAuditEvent('LOGIN', 'sys-01', { event: 'SERVER_BOOT', env: config.env });
 
   // Vite middleware for development vs Static files in production
-  if (process.env.APP_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -1784,7 +1784,13 @@ export async function startServer() {
   });
 }
 
-// Auto-start standalone server when executed directly (non-serverless environment)
-if (!process.env.VERCEL) {
+// Auto-start standalone server when run directly as CLI entry point (not when imported as module)
+const isDirectCliRun =
+  typeof process !== 'undefined' &&
+  process.argv &&
+  process.argv[1] &&
+  (process.argv[1].endsWith('server.ts') || process.argv[1].endsWith('server.cjs'));
+
+if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME && isDirectCliRun) {
   startServer();
 }

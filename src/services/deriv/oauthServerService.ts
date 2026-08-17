@@ -50,8 +50,11 @@ const oauthTransactionsStore = new Map<string, OAuthTransaction>();
 // Server-side persistent connection store per user (Isolated by userId)
 const derivConnectionsStore = new Map<string, DerivConnectionRecord>();
 
-const STATE_SECRET = process.env.SESSION_SECRET;
-  if (!STATE_SECRET) throw new Error('SESSION_SECRET environment variable is missing');
+function getStateSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error('SESSION_SECRET environment variable is missing');
+  return secret;
+}
 
 /**
  * Generate cryptographically secure base64url string
@@ -88,7 +91,7 @@ export function generateState(): string {
 export function encodeOAuthStateCookie(tx: OAuthTransaction): string {
   const payload = Buffer.from(JSON.stringify(tx)).toString('base64url');
   const signature = crypto
-    .createHmac('sha256', STATE_SECRET)
+    .createHmac('sha256', getStateSecret())
     .update(payload)
     .digest('base64url');
   return `${payload}.${signature}`;
@@ -104,7 +107,7 @@ export function decodeOAuthStateCookie(cookieVal?: string): OAuthTransaction | n
     if (parts.length !== 2) return null;
     const [payload, signature] = parts;
     const expectedSig = crypto
-      .createHmac('sha256', STATE_SECRET)
+      .createHmac('sha256', getStateSecret())
       .update(payload)
       .digest('base64url');
     if (signature !== expectedSig) return null;

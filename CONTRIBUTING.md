@@ -46,6 +46,7 @@ By participating in this project, you agree to abide by our [Code of Conduct](CO
 
 ## Architectural Principles
 
+- **Frontend / Backend Tooling Isolation**: Vite is frontend development and build tooling only. Never import `vite`, `@vitejs/*`, `rollup`, or `@rollup/*` into production backend/API code (`server.ts`, `api/*`, `src/services/*`, etc.). The production server must never start or depend on the Vite development server.
 - **Broker Agnosticism**: Strategies and quantitative signals must never be tightly coupled to a single broker. Use broker adapters.
 - **Risk Isolation**: Risk management rules must execute independently of individual trading strategies.
 - **Environment Separation**: Backtesting, paper trading, and live execution must remain strictly isolated.

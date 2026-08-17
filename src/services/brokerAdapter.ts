@@ -20,7 +20,7 @@ export class BaseBrokerAdapter implements BrokerAdapter {
       accountNumber: 'DEMO-994821',
       status: 'DISCONNECTED',
       environment: 'DEMO',
-      apiPermissions: ['read', 'trade'],
+      apiPermissions: ['trade', 'account_manage'],
       isReadOnly: false,
       executionPermission: true,
       lastHeartbeat: new Date().toISOString(),

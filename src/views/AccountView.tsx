@@ -118,7 +118,7 @@ export const AccountView: React.FC = () => {
                 accountNumber: json.data.derivAccountId || '',
                 status: 'CONNECTED',
                 environment: json.data.accountType === 'real' ? 'REAL' : 'DEMO',
-                apiPermissions: json.data.scopes || ['read', 'trade'],
+                apiPermissions: json.data.scopes || ['trade', 'account_manage'],
                 isReadOnly: false,
                 executionPermission: true,
               }

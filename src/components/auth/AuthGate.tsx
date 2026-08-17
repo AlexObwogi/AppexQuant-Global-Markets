@@ -393,7 +393,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           accountNumber: accountId,
           status: 'CONNECTED',
           environment: accountId.startsWith('VR') ? 'DEMO' : 'REAL',
-          apiPermissions: ['read', 'trade', 'payments'],
+          apiPermissions: ['trade', 'account_manage', 'payments'],
           isReadOnly: false,
           executionPermission: true,
         },
@@ -1160,7 +1160,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
             <form onSubmit={handleTokenSubmit} className="space-y-3">
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                  Deriv API Token (Read & Trade Scopes)
+                  Deriv API Token (Trade & Account Management Scopes)
                 </label>
                 <input
                   type="password"
@@ -1178,7 +1178,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
                   <span>How to generate your token:</span>
                 </div>
                 <p className="text-slate-300 dark:text-slate-400">
-                  Log into Deriv → Settings → API Token → Create token with <strong>Read</strong> and <strong>Trade</strong> scopes.
+                  Log into Deriv → Settings → API Token → Create token with <strong>Trade</strong> and <strong>Account Management</strong> scopes.
                 </p>
               </div>
 

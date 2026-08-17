@@ -155,7 +155,7 @@ export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: stri
 
   const redirectUri = process.env.REDIRECT_URI || `${proto}://${host}/api/auth/deriv/callback`;
 
-  const scopes = 'read,trade';
+  const scopes = process.env.DERIV_SCOPES || 'trade account_manage';
 
   return {
     clientId,
@@ -356,7 +356,7 @@ export async function handleDerivOAuthCallback(params: {
           access_token: `drv_oauth_${crypto.randomBytes(16).toString('hex')}`,
           account_id: `CR-${Math.floor(1000000 + Math.random() * 9000000)}`,
           currency: 'USD',
-          scopes: ['read', 'trade'],
+          scopes: ['trade', 'account_manage'],
           expires_in: 86400,
         };
       } else {
@@ -399,8 +399,8 @@ export async function handleDerivOAuthCallback(params: {
       scopes: Array.isArray(tokenData.scopes)
         ? tokenData.scopes
         : tokenData.scopes
-        ? tokenData.scopes.split(',')
-        : ['read', 'trade'],
+        ? tokenData.scopes.split(/[\s,]+/)
+        : ['trade', 'account_manage'],
       accessToken: tokenData.access_token, // SERVER-SIDE ONLY - Never returned to frontend URL
       refreshToken: tokenData.refresh_token,
       tokenExpiry: tokenData.expires_in
@@ -547,7 +547,7 @@ export function connectUserWithApiToken(userId: string, apiToken: string): SafeD
     accountType,
     currency: 'USD',
     connectionStatus: 'CONNECTED',
-    scopes: ['read', 'trade', 'payments'],
+    scopes: ['trade', 'account_manage', 'payments'],
     accessToken: trimmed,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -621,7 +621,7 @@ export function getAdminDerivDiagnostics() {
       redirectUri: config.redirectUri,
       authEndpoint: config.authBaseUrl,
       tokenEndpoint: config.tokenEndpoint,
-      scopesAllowed: config.scopes.split(','),
+      scopesAllowed: config.scopes.split(/[\s,]+/),
       partnerAttribution,
     },
     activeConnectionsCount: connections.filter((c) => c.connectionStatus === 'CONNECTED').length,

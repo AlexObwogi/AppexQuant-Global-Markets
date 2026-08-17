@@ -118,17 +118,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const safeDestination = result.destination && result.destination.startsWith('/') ? result.destination : '/dashboard';
     return res.redirect(safeDestination);
   } catch (err: any) {
+    const errorMsg = err?.message || 'Authentication processing error';
+    console.error('[DERIV_OAUTH_SERVERLESS_CALLBACK_ERROR]', {
+      message: errorMsg,
+      name: err?.name,
+      stack: err?.stack,
+      code: err?.code,
+      details: err,
+      timestamp: new Date().toISOString(),
+    });
+
     res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`);
-    const genericMessage = 'Authentication failed';
+    const specificMessage = `Deriv Authentication Error: ${errorMsg}`;
+
     if (req.headers.accept?.includes('application/json')) {
       return res.status(500).json({
         success: false,
         error: {
-          message: genericMessage,
+          message: specificMessage,
           code: 'AUTH_FAILED',
+          details: {
+            underlyingError: errorMsg,
+            type: err?.name || 'OAuthCallbackError',
+          },
         },
       });
     }
-    return res.redirect(`/?auth_error=1&message=${encodeURIComponent(genericMessage)}`);
+    return res.redirect(`/?auth_error=1&message=${encodeURIComponent(specificMessage)}`);
   }
 }

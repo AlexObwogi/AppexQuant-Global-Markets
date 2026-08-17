@@ -1104,8 +1104,38 @@ export async function createApp() {
       // Redirect user directly to Deriv OAuth 2.0 authorization server
       res.redirect(authUrl);
     } catch (err: any) {
-      logger.error('Failed to initiate Deriv OAuth:', { error: err.message });
-      res.status(500).json(createErrorResponse('Something went wrong. Please try again.', 'DERIV_OAUTH_ERROR'));
+      const errorMsg = err?.message || 'Unknown OAuth initiation error';
+      console.error('[DERIV_OAUTH_INIT_ERROR_FULL_LOG]', {
+        message: errorMsg,
+        name: err?.name,
+        stack: err?.stack,
+        code: err?.code,
+        details: err,
+        timestamp: new Date().toISOString(),
+      });
+      logger.error('Failed to initiate Deriv OAuth:', { error: errorMsg, stack: err?.stack });
+
+      let specificMessage = `Deriv OAuth Initiation Error: ${errorMsg}`;
+      let specificCode = 'DERIV_OAUTH_INIT_ERROR';
+
+      if (errorMsg.includes('CLIENT_ID') || errorMsg.includes('DERIV_APP_ID')) {
+        specificMessage = 'Deriv OAuth Configuration Error: Missing CLIENT_ID or DERIV_APP_ID environment variable in deployment settings.';
+        specificCode = 'MISSING_CLIENT_ID';
+      } else if (errorMsg.includes('SESSION_SECRET')) {
+        specificMessage = 'Deriv OAuth Configuration Error: Missing SESSION_SECRET environment variable for cryptographic state signing.';
+        specificCode = 'MISSING_SESSION_SECRET';
+      } else if (errorMsg.includes('REDIRECT_URI')) {
+        specificMessage = 'Deriv OAuth Configuration Error: Invalid REDIRECT_URI configuration.';
+        specificCode = 'INVALID_REDIRECT_URI';
+      }
+
+      res.status(500).json(
+        createErrorResponse(specificMessage, 'DERIV_OAUTH_ERROR', {
+          errorCode: specificCode,
+          underlyingError: errorMsg,
+          errorType: err?.name || 'Error',
+        })
+      );
     }
   };
 
@@ -1113,7 +1143,7 @@ export async function createApp() {
   app.all(['/api/auth/deriv/register', '/api/auth/deriv/signup'], derivAuthInitHandler);
 
   // Deriv OAuth Callback endpoint (Server-side token exchange & session establishment)
-  app.get('/api/auth/deriv/callback', async (req: Request, res: Response) => {
+  app.get(['/api/auth/deriv/callback', '/auth/deriv/callback'], async (req: Request, res: Response) => {
     const isHttps = (req.headers['x-forwarded-proto'] as string) === 'https' || req.secure || process.env.APP_ENV === 'production';
     const secureFlag = isHttps ? '; Secure' : '';
 

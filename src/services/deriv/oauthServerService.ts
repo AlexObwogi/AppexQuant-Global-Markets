@@ -137,8 +137,18 @@ function cleanupExpiredTransactions() {
  * Helper to get configured Deriv OAuth credentials
  */
 export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: string) {
-  const clientId = process.env.CLIENT_ID || (() => { throw new Error('CLIENT_ID missing') })();
-  const clientSecret = '';
+  const clientId =
+    process.env.CLIENT_ID ||
+    process.env.DERIV_CLIENT_ID ||
+    process.env.DERIV_APP_ID ||
+    process.env.VITE_DERIV_APP_ID ||
+    '';
+
+  if (!clientId) {
+    throw new Error('Deriv OAuth configuration error: Missing CLIENT_ID or DERIV_APP_ID environment variable.');
+  }
+
+  const clientSecret = process.env.CLIENT_SECRET || process.env.DERIV_CLIENT_SECRET || '';
 
   const proto = requestProtocol || (requestHost?.includes('localhost') ? 'http' : 'https');
   const host = requestHost || (process.env.APP_URL ? new URL(process.env.APP_URL).host : 'localhost:3000');
@@ -237,11 +247,13 @@ export async function handleDerivOAuthCallback(params: {
   const { code, state, cookieState, error, errorDescription } = params;
 
   if (error || !state) {
-    logger.warn('[DerivOAuth] Callback received error or missing state from Deriv', { error, errorDescription });
+    const detailMsg = errorDescription || error || 'Deriv returned an authorization error or state parameter was missing.';
+    console.error('[DERIV_OAUTH_CALLBACK_ERROR]', { error, errorDescription, state, timestamp: new Date().toISOString() });
+    logger.warn('[DerivOAuth] Callback received error or missing state from Deriv', { error, errorDescription, state });
     return {
       success: false,
-      destination: '/?auth_error=cancelled',
-      errorMessage: 'Unable to complete authentication. Please try again.',
+      destination: `/?auth_error=deriv_error&message=${encodeURIComponent(detailMsg)}`,
+      errorMessage: `Deriv OAuth Authorization Error: ${detailMsg} (${error || 'MISSING_STATE'})`,
     };
   }
 
@@ -255,11 +267,13 @@ export async function handleDerivOAuthCallback(params: {
   }
 
   if (!transaction) {
-    logger.warn('[DerivOAuth] State mismatch or expired transaction', { stateReceived: state });
+    const errDetail = 'OAuth transaction state expired or could not be verified from cookie/memory.';
+    console.error('[DERIV_OAUTH_STATE_MISMATCH]', { stateReceived: state, hasCookieState: Boolean(cookieState), timestamp: new Date().toISOString() });
+    logger.warn('[DerivOAuth] State mismatch or expired transaction', { stateReceived: state, hasCookieState: Boolean(cookieState) });
     return {
       success: false,
-      destination: '/?auth_error=invalid_state',
-      errorMessage: 'Unable to complete authentication. Please try again.',
+      destination: '/?auth_error=invalid_state&message=OAuth%20session%20expired%20or%20state%20mismatch',
+      errorMessage: `Deriv OAuth State Error: ${errDetail} Please initiate login again from the application.`,
     };
   }
 
@@ -267,10 +281,11 @@ export async function handleDerivOAuthCallback(params: {
   oauthTransactionsStore.delete(state);
 
   if (!code) {
+    console.error('[DERIV_OAUTH_MISSING_CODE]', { state, destination: transaction.destination });
     return {
       success: false,
       destination: transaction.destination || '/?auth_error=missing_code',
-      errorMessage: 'Unable to complete authentication. Please try again.',
+      errorMessage: 'Deriv OAuth Error: Authorization code was missing in callback query parameters.',
     };
   }
 
@@ -290,6 +305,15 @@ export async function handleDerivOAuthCallback(params: {
       postBody.client_secret = oauthConfig.clientSecret;
     }
 
+    console.log('[DERIV_OAUTH_TOKEN_EXCHANGE_REQUEST]', {
+      tokenEndpoint,
+      client_id: postBody.client_id,
+      redirect_uri: postBody.redirect_uri,
+      grant_type: postBody.grant_type,
+      has_code_verifier: Boolean(postBody.code_verifier),
+      code_length: postBody.code?.length,
+    });
+
     // Execute real server-side HTTP token exchange against Deriv OAuth endpoint
     const response = await fetch(tokenEndpoint, {
       method: 'POST',
@@ -298,14 +322,30 @@ export async function handleDerivOAuthCallback(params: {
     });
 
     let tokenData: any = null;
+    let rawErrorBody: any = null;
 
     if (response.ok) {
       tokenData = await response.json();
+      console.log('[DERIV_OAUTH_TOKEN_EXCHANGE_SUCCESS]', {
+        account_id: tokenData.account_id || tokenData.acct1 || tokenData.acct,
+        has_access_token: Boolean(tokenData.access_token),
+        scopes: tokenData.scopes,
+      });
     } else {
-      const errJson = await response.json().catch(() => ({}));
+      rawErrorBody = await response.json().catch(async () => {
+        const text = await response.text().catch(() => '');
+        return { rawText: text };
+      });
+      console.error('[DERIV_OAUTH_TOKEN_EXCHANGE_REJECTED]', {
+        status: response.status,
+        statusText: response.statusText,
+        error: rawErrorBody,
+        sentRedirectUri: postBody.redirect_uri,
+        sentClientId: postBody.client_id,
+      });
       logger.warn('[DerivOAuth] Token exchange rejected by Deriv endpoint:', {
         status: response.status,
-        error: errJson,
+        error: rawErrorBody,
       });
     }
 
@@ -320,10 +360,26 @@ export async function handleDerivOAuthCallback(params: {
           expires_in: 86400,
         };
       } else {
+        // Parse specific underlying reason from Deriv's OAuth response
+        const errObj = rawErrorBody?.error || rawErrorBody || {};
+        const errCode = errObj.code || errObj.error || rawErrorBody?.error_code || 'TOKEN_EXCHANGE_FAILED';
+        const errMsg = errObj.message || rawErrorBody?.error_description || errObj.error_description || rawErrorBody?.rawText || `HTTP ${response.status} ${response.statusText}`;
+
+        let specificReason = `Deriv Token Exchange Error [${errCode}]: ${errMsg}`;
+        const lowerMsg = errMsg.toLowerCase();
+
+        if (errCode === 'InvalidRedirectUri' || lowerMsg.includes('redirect_uri') || lowerMsg.includes('redirect uri')) {
+          specificReason = `Deriv OAuth Invalid Redirect URI: The registered redirect URI (${transaction.redirectUri}) does not match the URL configured for App ID (${oauthConfig.clientId}) in Deriv API Management.`;
+        } else if (errCode === 'InvalidAppId' || errCode === 'InvalidClientId' || lowerMsg.includes('client_id') || lowerMsg.includes('app_id')) {
+          specificReason = `Deriv OAuth Invalid Client ID: The client/app ID (${oauthConfig.clientId}) is invalid or not registered with Deriv.`;
+        } else if (errCode === 'InvalidGrant' || errCode === 'invalid_grant' || lowerMsg.includes('code_verifier') || lowerMsg.includes('pkce') || lowerMsg.includes('expired')) {
+          specificReason = `Deriv OAuth PKCE / Code Error: The authorization code is invalid, expired, already used, or PKCE code_verifier failed verification. (${errMsg})`;
+        }
+
         return {
           success: false,
-          destination: '/?auth_error=token_failed',
-          errorMessage: 'Unable to complete authentication. Please try again.',
+          destination: `/?auth_error=token_failed&message=${encodeURIComponent(specificReason)}`,
+          errorMessage: specificReason,
         };
       }
     }
@@ -403,11 +459,26 @@ export async function handleDerivOAuthCallback(params: {
       },
     };
   } catch (err: any) {
-    logger.error('[DerivOAuth] Token exchange network failure:', { error: err.message });
+    const errorMsg = err?.message || 'Network communication error';
+    console.error('[DERIV_OAUTH_TOKEN_NETWORK_FAILURE]', {
+      message: errorMsg,
+      name: err?.name,
+      stack: err?.stack,
+      code: err?.code,
+      cause: err?.cause,
+      tokenEndpoint,
+      timestamp: new Date().toISOString(),
+    });
+    logger.error('[DerivOAuth] Token exchange network failure reaching Deriv:', {
+      error: errorMsg,
+      stack: err?.stack,
+      tokenEndpoint,
+    });
+    const specificReason = `Deriv Token Exchange Network Failure: Unable to reach Deriv endpoint (${tokenEndpoint}). Network error: ${errorMsg}`;
     return {
       success: false,
-      destination: '/?auth_error=server_error',
-      errorMessage: 'Something went wrong. Please try again.',
+      destination: `/?auth_error=network_failure&message=${encodeURIComponent(specificReason)}`,
+      errorMessage: specificReason,
     };
   }
 }

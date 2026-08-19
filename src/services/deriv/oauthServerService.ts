@@ -432,8 +432,10 @@ export async function handleDerivOAuthCallback(params: {
     const currency = profile?.currency || cur1 || 'USD';
     const balance = typeof profile?.balance === 'number' ? profile.balance : 0;
     const email = profile?.email || '';
-    const fullName = profile?.fullname || `Deriv Trader (${rawAccountId})`;
+    const fullName = profile?.fullname || '';
     const nowIso = new Date().toISOString();
+
+    console.log('[DERIV_OAUTH_PROFILE_FETCHED]', { rawAccountId, email, fullName, balance, accountType });
 
     const connectionRecord: DerivConnectionRecord = {
       userId: rawAccountId,
@@ -622,9 +624,11 @@ export async function handleDerivOAuthCallback(params: {
     const currency = profile?.currency || tokenData.currency || tokenData.cur1 || tokenData.accounts?.[0]?.currency || 'USD';
     const balance = typeof profile?.balance === 'number' ? profile.balance : 0;
     const email = profile?.email || '';
-    const fullName = profile?.fullname || `Deriv Trader (${rawAccountId})`;
+    const fullName = profile?.fullname || '';
     const nowIso = new Date().toISOString();
     const effectiveUserId = rawAccountId;
+
+    console.log('[DERIV_OAUTH_PROFILE_FETCHED]', { rawAccountId, email, fullName, balance, accountType });
 
     const connectionRecord: DerivConnectionRecord = {
       userId: effectiveUserId,
@@ -798,7 +802,7 @@ export async function connectUserWithApiTokenAsync(userId: string, apiToken: str
   const currency = profile?.currency || 'USD';
   const balance = typeof profile?.balance === 'number' ? profile.balance : 0;
   const email = profile?.email || '';
-  const fullName = profile?.fullname || `Deriv Trader (${accountId})`;
+  const fullName = profile?.fullname || '';
   const nowIso = new Date().toISOString();
 
   const record: DerivConnectionRecord = {

@@ -373,7 +373,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       const role = userData.role || (userData.email === 'obwogialex728@gmail.com' ? 'SUPER_ADMIN' : 'USER');
       const currency = userData.currency || 'USD';
       const balanceAmount = typeof userData.balance === 'number' ? userData.balance : 0;
-      const displayName = userData.fullName || userData.displayName || `Deriv Trader (${accountId})`;
+      const displayName = userData.fullName || userData.displayName || accountId;
       const email = userData.email || '';
       const isDemo = userData.accountType === 'demo' || accountId.startsWith('VR');
 

@@ -1,0 +1,2 @@
+sed -i '/const handleNavigate = (route: AppViewRoute) => {/i \  const [authProfile, setAuthProfile] = useState(derivAuthService.getProfile());\n  useEffect(() => {\n    const interval = setInterval(() => setAuthProfile(derivAuthService.getProfile()), 2000);\n    return () => clearInterval(interval);\n  }, []);' src/components/layout/Header.tsx
+sed -i 's/{state.user?.displayName || (state.user?.derivAccountId ? `Deriv (${state.user.derivAccountId})` : '"'"'Trader Profile'"'"')}/{authProfile?.loginid || '"'"'Trader Profile'"'"'}/' src/components/layout/Header.tsx

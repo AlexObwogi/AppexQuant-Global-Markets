@@ -5,12 +5,14 @@
 
 import React, { useState } from 'react';
 import { useGlobalState, AppViewRoute } from '../../state/GlobalStateContext.tsx';
+import { derivAuthService } from '../../services/deriv/authService.ts';
+import { useEffect } from 'react';
 import { useMarketData } from '../../state/MarketDataContext.tsx';
 import { EnvironmentSelector } from '../common/EnvironmentSelector.tsx';
 import { ThemeSelector } from '../common/ThemeSelector.tsx';
 import { Menu, User, Eye, EyeOff } from 'lucide-react';
-import { DerivConnectionStatus } from '../auth/DerivConnectionStatus.tsx';
-import { DerivConnectionModal } from '../auth/DerivConnectionModal.tsx';
+
+
 import { formatCurrencyValue } from '../../utils/userStatusPresentation.ts';
 
 interface HeaderProps {
@@ -19,8 +21,12 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
   const { state, dispatch, selectedAccount } = useGlobalState();
-  const [showDerivModal, setShowDerivModal] = useState(false);
 
+  const [authProfile, setAuthProfile] = useState(derivAuthService.getProfile());
+  useEffect(() => {
+    const interval = setInterval(() => setAuthProfile(derivAuthService.getProfile()), 2000);
+    return () => clearInterval(interval);
+  }, []);
   const handleNavigate = (route: AppViewRoute) => {
     dispatch({ type: 'SET_ROUTE', payload: route });
   };
@@ -60,9 +66,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
       {/* Right Controls: Environment, Balance Privacy, Connection, Theme, Profile */}
       <div className="flex items-center space-x-1 sm:space-x-2.5 shrink-0">
         {/* DERIV CONNECTION STATUS */}
-        <div onClick={() => setShowDerivModal(true)} className="cursor-pointer shrink-0">
-          <DerivConnectionStatus />
-        </div>
 
         {/* SINGLE CONSOLIDATED ENVIRONMENT SELECTOR ([ DEMO ▾ ]) */}
         <div className="shrink-0">
@@ -101,12 +104,11 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
         >
           <User className="w-4 h-4 shrink-0" />
           <span className="text-[10px] sm:text-xs font-bold text-text-primary whitespace-normal break-words max-w-[120px] sm:max-w-none text-left leading-tight">
-            {state.user?.displayName || (state.user?.derivAccountId ? `Deriv (${state.user.derivAccountId})` : 'Trader Profile')}
+            {authProfile?.loginid || 'Trader Profile'}
           </span>
         </button>
       </div>
 
-      {showDerivModal && <DerivConnectionModal onClose={() => setShowDerivModal(false)} />}
     </header>
   );
 };

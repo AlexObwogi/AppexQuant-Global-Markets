@@ -16,6 +16,7 @@ import { PWAInstallPrompt } from '../common/PWAInstallPrompt.tsx';
 import { PWAInstallBanner } from '../common/PWAInstallBanner.tsx';
 import { CinematicBackground } from '../common/CinematicBackground.tsx';
 import { EnvironmentGlobalBanner } from '../common/EnvironmentSelector.tsx';
+import { ConnectionStatus } from '../common/ConnectionStatus.tsx';
 import { X } from 'lucide-react';
 
 interface AppShellProps {
@@ -111,6 +112,9 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
       {/* PWA Installation Prompt Banner */}
       <PWAInstallPrompt />
+
+      {/* Connection Status Indicator */}
+      <ConnectionStatus />
 
       {/* Mobile Adaptive Bottom Navigation */}
       <BottomNav onOpenMore={() => setIsMoreOpen(true)} />

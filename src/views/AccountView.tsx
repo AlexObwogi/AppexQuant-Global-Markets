@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useGlobalState } from '../state/GlobalStateContext.tsx';
+import { derivAuthService, DerivAccountProfile } from '../services/deriv/authService.ts';
 import { useApiFetch } from '../utils/apiFetch.ts';
 import { Card } from '../components/ui/Card.tsx';
 import { setEncryptedCookie } from "../utils/auth/pkce.ts";
@@ -58,6 +59,14 @@ export const AccountView: React.FC = () => {
   const isAdminOrOwner = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN' || userRole === 'RISK_MANAGER';
 
   const [meta, setMeta] = useState<ConnectionMeta | null>(null);
+  const [authProfile, setAuthProfile] = useState<DerivAccountProfile | null>(derivAuthService.getProfile());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setAuthProfile(derivAuthService.getProfile());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -334,16 +343,18 @@ export const AccountView: React.FC = () => {
             <div className="space-y-3.5 text-xs">
               <div>
                 <span className="text-text-secondary block text-[9px] uppercase font-mono font-bold">Display Name</span>
-                <span className="font-bold text-text-primary text-sm whitespace-normal break-words block">{state.user?.displayName}</span>
+                <span className="font-bold text-text-primary text-sm whitespace-normal break-words block">
+                  {authProfile?.fullname || authProfile?.email || 'Authorized Trader'}
+                </span>
               </div>
               <div>
                 <span className="text-text-secondary block text-[9px] uppercase font-mono font-bold">Email Address</span>
-                <span className="text-text-primary font-mono font-bold">{state.user?.email}</span>
+                <span className="text-text-primary font-mono font-bold">{authProfile?.email || 'N/A'}</span>
               </div>
               <div>
-                <span className="text-text-secondary block text-[9px] uppercase font-mono font-bold">Assigned Role</span>
+                <span className="text-text-secondary block text-[9px] uppercase font-mono font-bold">Active Account</span>
                 <Badge variant="accent" size="sm" className="mt-1 font-bold">
-                  {state.user?.role}
+                  {authProfile?.loginid || 'NOT CONNECTED'}
                 </Badge>
               </div>
             </div>

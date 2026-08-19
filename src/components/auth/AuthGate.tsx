@@ -374,13 +374,9 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       const email = userData.email || '';
       const isDemo = userData.accountType === 'demo' || accountId.startsWith('VR');
 
-      // Persist in client-side sessionStorage
-      if (typeof window !== 'undefined' && window.sessionStorage) {
-        sessionStorage.setItem('deriv_user_loginid', accountId);
-        sessionStorage.setItem('deriv_user_email', email);
-        sessionStorage.setItem('deriv_user_currency', currency);
-        sessionStorage.setItem('deriv_user_balance', String(balanceAmount));
-        sessionStorage.setItem('deriv_session', JSON.stringify({
+      // Persist in client-side storage
+      if (typeof window !== 'undefined') {
+        const sessionJson = JSON.stringify({
           userId: accountId,
           loginid: accountId,
           email,
@@ -390,7 +386,17 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           displayName,
           fullName: userData.fullName,
           role,
-        }));
+        });
+        sessionStorage.setItem('deriv_user_loginid', accountId);
+        sessionStorage.setItem('deriv_user_email', email);
+        sessionStorage.setItem('deriv_user_currency', currency);
+        sessionStorage.setItem('deriv_user_balance', String(balanceAmount));
+        sessionStorage.setItem('deriv_session', sessionJson);
+        localStorage.setItem('deriv_session', sessionJson);
+        if (userData.token) {
+          localStorage.setItem('deriv_access_token', userData.token);
+          localStorage.setItem('deriv_oauth_token', userData.token);
+        }
       }
 
       dispatch({
@@ -524,11 +530,6 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       while (retries <= maxRetries && !isCancelled) {
         try {
           const res = await apiFetch('/api/auth/session');
-          if (res.status === 401 || res.status === 403) {
-            // Unauthenticated session - stop immediately
-            if (!isCancelled) setIsAuthorizing(false);
-            return;
-          }
           if (res.ok) {
             const data = await res.json().catch(() => null);
             if (data && data.success && data.data?.authenticated && data.data.user) {
@@ -546,22 +547,70 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
                   role: user.role,
                 });
               }
+              if (!isCancelled) setIsAuthorizing(false);
+              return;
             }
-            if (!isCancelled) setIsAuthorizing(false);
-            return;
-          } else {
-            throw new Error(`Session verification HTTP ${res.status}`);
           }
         } catch {
-          retries++;
-          if (retries > maxRetries) {
-            if (!isCancelled) setIsAuthorizing(false);
-            return;
-          }
+          // Network retry
+        }
+        retries++;
+        if (retries <= maxRetries && !isCancelled) {
           await new Promise((resolve) => setTimeout(resolve, delay));
           delay *= 2;
         }
       }
+
+      // Permanent Session Persistence Fallback: Rehydrate from client storage if valid token exists
+      if (typeof window !== 'undefined' && !isCancelled) {
+        const savedToken = localStorage.getItem('deriv_access_token') || localStorage.getItem('deriv_oauth_token');
+        if (savedToken) {
+          try {
+            const profile = await derivAuthService.authorize(savedToken);
+            if (profile && !isCancelled) {
+              establishUserSession({
+                id: profile.loginid,
+                accountId: profile.loginid,
+                token: savedToken,
+                email: profile.email,
+                fullName: profile.fullname,
+                balance: profile.balance,
+                currency: profile.currency || 'USD',
+                accountType: profile.is_virtual ? 'demo' : (profile.loginid.startsWith('VR') ? 'demo' : 'real'),
+              });
+              if (!isCancelled) setIsAuthorizing(false);
+              return;
+            }
+          } catch {
+            // Token expired or invalid
+          }
+        }
+
+        const cachedSessionStr = sessionStorage.getItem('deriv_session') || localStorage.getItem('deriv_session');
+        if (cachedSessionStr) {
+          try {
+            const cachedUser = JSON.parse(cachedSessionStr);
+            if (cachedUser && (cachedUser.userId || cachedUser.loginid) && !isCancelled) {
+              establishUserSession({
+                id: cachedUser.userId || cachedUser.loginid,
+                accountId: cachedUser.loginid || cachedUser.userId,
+                email: cachedUser.email,
+                displayName: cachedUser.displayName,
+                fullName: cachedUser.fullName,
+                balance: cachedUser.balance,
+                currency: cachedUser.currency,
+                accountType: cachedUser.accountType,
+                role: cachedUser.role,
+              });
+              if (!isCancelled) setIsAuthorizing(false);
+              return;
+            }
+          } catch {
+            // Invalid JSON
+          }
+        }
+      }
+
       if (!isCancelled) setIsAuthorizing(false);
     };
 

@@ -812,8 +812,22 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     }
   };
 
-  // Direct platform workspace access for visitors landing on the platform
-  return <>{children}</>;
+  // Protected Route Guard:
+  // If user tries to access any app route (e.g. /dashboard) while NOT authenticated,
+  // automatically redirect route to 'landing' so user sees the Landing Page first.
+  const isLandingRoute = state.currentRoute === 'landing';
+  const isAuthenticated = state.session.isAuthenticated;
+
+  useEffect(() => {
+    if (!isLandingRoute && !isAuthenticated) {
+      dispatch({ type: 'SET_ROUTE', payload: 'landing' });
+    }
+  }, [isLandingRoute, isAuthenticated, dispatch]);
+
+  // Render protected app workspace ONLY when on an app route AND authenticated
+  if (!isLandingRoute && isAuthenticated) {
+    return <>{children}</>;
+  }
 
   const isDark = state.theme === 'dark' || (state.theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const syncStyles = getSynchronizedStyles(progress, isDark);
@@ -852,23 +866,35 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
           {/* Desktop Actions & Theme Toggle */}
           <div className="hidden md:flex items-center gap-2.5 shrink-0">
-            <button
-              onClick={() => handleDerivLogin('connect')}
-              disabled={isBusy}
-              className={`py-1.5 px-3.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${syncStyles.primaryBtn}`}
-            >
-              <Zap className="w-3.5 h-3.5 fill-current" />
-              <span>Login</span>
-            </button>
+            {isAuthenticated ? (
+              <button
+                onClick={() => dispatch({ type: 'SET_ROUTE', payload: 'dashboard' })}
+                className="py-1.5 px-3.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-md shadow-emerald-500/20 active:scale-95"
+              >
+                <TrendingUp className="w-3.5 h-3.5" />
+                <span>Go to Dashboard</span>
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => handleDerivLogin('connect')}
+                  disabled={isBusy}
+                  className={`py-1.5 px-3.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${syncStyles.primaryBtn}`}
+                >
+                  <Zap className="w-3.5 h-3.5 fill-current" />
+                  <span>Login</span>
+                </button>
 
-            <button
-              onClick={() => handleDerivLogin('signup')}
-              disabled={isBusy}
-              className="py-1.5 px-3.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer bg-[#FF444F] hover:bg-[#E03B44] text-white shadow-md shadow-[#FF444F]/20"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span>Create Account</span>
-            </button>
+                <button
+                  onClick={() => handleDerivLogin('signup')}
+                  disabled={isBusy}
+                  className="py-1.5 px-3.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer bg-[#FF444F] hover:bg-[#E03B44] text-white shadow-md shadow-[#FF444F]/20"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Create Account</span>
+                </button>
+              </>
+            )}
 
             <div className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
               <ShieldCheck className="w-3 h-3 text-emerald-400" />
@@ -1191,25 +1217,35 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           
           <div className="flex flex-col gap-2.5">
             {/* Primary Broker OAuth Buttons Synchronized with Progress Stages */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {isAuthenticated ? (
               <button
-                onClick={() => handleDerivLogin('connect')}
-                disabled={isBusy}
-                className={`w-full py-3 px-4 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer ${syncStyles.primaryBtn}`}
+                onClick={() => dispatch({ type: 'SET_ROUTE', payload: 'dashboard' })}
+                className="w-full py-3 px-4 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/20"
               >
-                <Zap className="w-4 h-4 fill-current" />
-                <span>Log in</span>
+                <TrendingUp className="w-4 h-4" />
+                <span>Open Dashboard Workspace</span>
               </button>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button
+                  onClick={() => handleDerivLogin('connect')}
+                  disabled={isBusy}
+                  className={`w-full py-3 px-4 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer ${syncStyles.primaryBtn}`}
+                >
+                  <Zap className="w-4 h-4 fill-current" />
+                  <span>Log in</span>
+                </button>
 
-              <button
-                onClick={() => handleDerivLogin('signup')}
-                disabled={isBusy}
-                className="w-full py-3 px-4 rounded-xl font-bold text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer bg-[#FF444F] hover:bg-[#E03B44] text-white shadow-lg shadow-[#FF444F]/20"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>Create Account</span>
-              </button>
-            </div>
+                <button
+                  onClick={() => handleDerivLogin('signup')}
+                  disabled={isBusy}
+                  className="w-full py-3 px-4 rounded-xl font-bold text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer bg-[#FF444F] hover:bg-[#E03B44] text-white shadow-lg shadow-[#FF444F]/20"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Create Account</span>
+                </button>
+              </div>
+            )}
 
             {/* Direct Token Access Option */}
             <div className="flex items-center justify-center pt-1">

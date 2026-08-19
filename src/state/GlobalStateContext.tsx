@@ -16,6 +16,7 @@ import { derivAuthService } from '../services/deriv/authService.ts';
 import { derivWs } from '../services/deriv/DerivWebSocketManager.ts';
 
 export type AppViewRoute =
+  | 'landing'
   | 'dashboard'
   | 'markets'
   | 'signals'
@@ -69,6 +70,25 @@ export interface GlobalState {
   isBalanceHidden: boolean;
 }
 
+const getInitialRoute = (): AppViewRoute => {
+  if (typeof window !== 'undefined' && window.location) {
+    const rawPath = window.location.pathname.replace(/^\//, '').trim().toLowerCase();
+    if (!rawPath || rawPath === 'landing' || rawPath === 'index.html') {
+      return 'landing';
+    }
+    const validRoutes: AppViewRoute[] = [
+      'landing', 'dashboard', 'markets', 'signals', 'strategies', 'backtest', 
+      'trade', 'eas', 'analytics', 'calendar', 'news', 'community', 
+      'leaderboard', 'account', 'legal', 'admin', 'health', 'automation', 
+      'education', 'p2p', 'ai-analysis', 'strategy-lab'
+    ];
+    if (validRoutes.includes(rawPath as AppViewRoute)) {
+      return rawPath as AppViewRoute;
+    }
+  }
+  return 'landing';
+};
+
 export const initialGlobalState: GlobalState = {
   user: null,
   session: {
@@ -107,7 +127,7 @@ export const initialGlobalState: GlobalState = {
   featureFlags: defaultFeatureFlags,
   notifications: [],
   theme: (typeof window !== 'undefined' && (localStorage.getItem('appex_theme_mode_v1') as ThemeMode)) || 'system',
-  currentRoute: 'dashboard',
+  currentRoute: getInitialRoute(),
   isBalanceHidden: typeof window !== 'undefined' ? localStorage.getItem('appex_balance_hidden_v1') === 'true' : false,
 };
 
@@ -250,8 +270,15 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
       }
       return { ...state, isBalanceHidden: action.payload };
 
-    case 'SET_ROUTE':
+    case 'SET_ROUTE': {
+      if (typeof window !== 'undefined' && window.history) {
+        const targetPath = action.payload === 'landing' ? '/' : `/${action.payload}`;
+        if (window.location.pathname !== targetPath) {
+          window.history.pushState(null, '', targetPath);
+        }
+      }
       return { ...state, currentRoute: action.payload };
+    }
 
     case 'SET_CONNECTION_STATUS':
       return { ...state, connectionStatus: action.payload };
@@ -360,6 +387,19 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
+  }, []);
+
+  // Popstate listener to handle browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      if (typeof window !== 'undefined') {
+        const rawPath = window.location.pathname.replace(/^\//, '').trim().toLowerCase();
+        const route: AppViewRoute = (!rawPath || rawPath === 'landing') ? 'landing' : (rawPath as AppViewRoute);
+        dispatch({ type: 'SET_ROUTE', payload: route });
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   // Listen to Deriv WebSocket real-time balance stream

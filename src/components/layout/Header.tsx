@@ -47,8 +47,9 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
         </button>
 
         <div
-          onClick={() => handleNavigate('dashboard')}
+          onClick={() => handleNavigate('landing')}
           className="flex items-center space-x-2 cursor-pointer shrink-0"
+          title="Return to Landing Page"
         >
           <div className="w-8 h-8 sm:w-9 sm:h-9 bg-accent-primary rounded-lg flex items-center justify-center font-extrabold text-bg-main text-base sm:text-lg shadow-sm shrink-0">
             A

@@ -24,6 +24,19 @@ export interface BuildAuthUrlOptions {
 }
 
 /**
+ * Safely retrieves client-side environment variables without triggering
+ * static esbuild 'import.meta' warnings for CommonJS format.
+ */
+function getClientEnv(): Record<string, string> {
+  try {
+    const getMetaEnv = new Function('return import.meta.env');
+    return getMetaEnv() || {};
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Returns the effective Deriv App ID from environment variables or default fallback.
  */
 export function getDerivAppId(): string {
@@ -33,10 +46,9 @@ export function getDerivAppId(): string {
     if (process.env.CLIENT_ID) return process.env.CLIENT_ID;
     if (process.env.VITE_CLIENT_ID) return process.env.VITE_CLIENT_ID;
   }
-  if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
-    if ((import.meta as any).env?.VITE_DERIV_APP_ID) return (import.meta as any).env.VITE_DERIV_APP_ID;
-    if ((import.meta as any).env?.VITE_CLIENT_ID) return (import.meta as any).env.VITE_CLIENT_ID;
-  }
+  const clientEnv = getClientEnv();
+  if (clientEnv.VITE_DERIV_APP_ID) return clientEnv.VITE_DERIV_APP_ID;
+  if (clientEnv.VITE_CLIENT_ID) return clientEnv.VITE_CLIENT_ID;
   return '1089';
 }
 
@@ -50,9 +62,8 @@ export function getDerivRedirectUri(): string {
     if (process.env.REDIRECT_URI) return process.env.REDIRECT_URI;
     if (process.env.VITE_REDIRECT_URI) return process.env.VITE_REDIRECT_URI;
   }
-  if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
-    if ((import.meta as any).env?.VITE_REDIRECT_URI) return (import.meta as any).env.VITE_REDIRECT_URI;
-  }
+  const clientEnv = getClientEnv();
+  if (clientEnv.VITE_REDIRECT_URI) return clientEnv.VITE_REDIRECT_URI;
   if (typeof window !== 'undefined' && window.location) {
     return `${window.location.origin}/api/auth/deriv/callback`;
   }

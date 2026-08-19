@@ -1100,12 +1100,10 @@ export async function createApp() {
     if (req.sessionToken) {
       revokeSessionToken(req.sessionToken);
     }
-    const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
-    const secureFlag = isHttps || process.env.APP_ENV === 'production' ? '; Secure' : '';
     res.setHeader('Set-Cookie', [
-      `session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`,
-      `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`,
-      `deriv_oauth_token=; Path=/; Max-Age=0${secureFlag}`,
+      `session_token=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`,
+      `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`,
+      `deriv_oauth_token=; Path=/; SameSite=None; Secure; Max-Age=0`,
     ]);
     logSecurityEvent(req, 'USER_LOGOUT', 'INFO', { userId: req.sessionUser?.userId });
     res.json(createSuccessResponse({ message: 'Logged out successfully' }));
@@ -1129,9 +1127,7 @@ export async function createApp() {
         requestProtocol,
       });
 
-      const isHttps = requestProtocol === 'https' || process.env.APP_ENV === 'production';
-      const secureFlag = isHttps ? '; Secure' : '';
-      res.setHeader('Set-Cookie', `deriv_oauth_state=${cookieValue}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600${secureFlag}`);
+      res.setHeader('Set-Cookie', `deriv_oauth_state=${cookieValue}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=600`);
 
       logSecurityEvent(req, 'DERIV_OAUTH_INITIATED', 'INFO', { action, state });
 
@@ -1217,7 +1213,7 @@ export async function createApp() {
 
       if (!result.success) {
         logSecurityEvent(req, 'DERIV_OAUTH_FAILED', 'WARNING', { errorMessage: result.errorMessage });
-        res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`);
+        res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`);
         if (req.headers.accept?.includes('application/json')) {
           return res.status(400).json(createErrorResponse(result.errorMessage || 'Unable to complete authentication. Please try again.', 'AUTH_FAILED'));
         }
@@ -1256,8 +1252,8 @@ export async function createApp() {
 
       // Set session cookie & clean temporary OAuth state cookie
       res.setHeader('Set-Cookie', [
-        `session_token=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800${secureFlag}`,
-        `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`,
+        `session_token=${sessionToken}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=604800`,
+        `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`,
       ]);
 
       console.log('[DERIV_OAUTH_SESSION_PERSISTED]', { userId: rawAcct, email: realEmail, accountType });
@@ -1279,7 +1275,7 @@ export async function createApp() {
             role: sessionPayload.role,
           },
           csrfToken,
-          destination: (result.destination && result.destination.startsWith('/') && result.destination !== '/' && result.destination !== '/login') ? result.destination : '/dashboard',
+          destination: (result.destination && result.destination.startsWith('/') && result.destination !== '/' && result.destination !== '/login') ? result.destination : '/',
           accountList: result.rawAccountDetails?.accountList,
         }));
       }
@@ -1287,13 +1283,13 @@ export async function createApp() {
       const rawDest = result.destination;
       const safeDestination = (rawDest && rawDest.startsWith('/') && rawDest !== '/' && rawDest !== '/login' && rawDest !== '/auth')
         ? rawDest
-        : '/dashboard';
+        : '/';
       console.log('[DERIV_OAUTH_REDIRECT_ISSUED]', { safeDestination });
       res.redirect(safeDestination);
     } catch (err: any) {
       const errMsg = err?.message || 'Unknown OAuth callback error';
       logger.error('Deriv OAuth callback server error:', { error: errMsg, stack: err?.stack });
-      res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`);
+      res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`);
       if (req.headers.accept?.includes('application/json')) {
         return res.status(500).json(createErrorResponse(`Deriv OAuth Callback Error: ${errMsg}`, 'SERVER_ERROR'));
       }

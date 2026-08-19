@@ -88,7 +88,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
       setTimeout(() => {
         setConnectStep('Securing connection...');
         setTimeout(() => {
-          window.location.href = `/api/auth/deriv/login?action=connect&destination=/dashboard`;
+          window.location.href = `/api/auth/deriv/login?action=connect&destination=/`;
         }, 300);
       }, 300);
     }, 300);

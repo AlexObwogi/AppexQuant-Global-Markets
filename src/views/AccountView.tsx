@@ -162,11 +162,8 @@ export const AccountView: React.FC = () => {
   const handleInitiateOAuth = () => {
     setErrorMessage(null);
     setMessage('Redirecting to official Deriv OAuth authorization...');
-    const appId = '1089';
-    const redirectUri = `${window.location.origin}/api/auth/deriv/callback`;
-    const authUrl = `https://oauth.deriv.com/oauth2/authorize?app_id=${appId}&brand=deriv&redirect_uri=${encodeURIComponent(redirectUri)}&scope=trade+account_manage+payments&l=EN`;
     setTimeout(() => {
-      window.location.href = authUrl;
+      window.location.href = `/api/auth/deriv/login?action=connect&destination=/`;
     }, 200);
   };
 

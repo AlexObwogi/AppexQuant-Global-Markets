@@ -43,7 +43,7 @@ export function useDerivAuth() {
   /**
    * Generates a high-entropy PKCE verifier/challenge pair and redirects to Deriv OAuth gateway
    */
-  const initiateRedirect = useCallback(async (action: 'connect' | 'signup' = 'connect', destination: string = '/dashboard') => {
+  const initiateRedirect = useCallback(async (action: 'connect' | 'signup' = 'connect', destination: string = '/') => {
     setIsAuthenticating(true);
     setAuthError(null);
     setAuthStatusMessage(

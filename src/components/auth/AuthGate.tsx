@@ -469,18 +469,8 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           : 'Connecting to Deriv secure gateway...'
       );
 
-      const redirectUri = getDerivRedirectUri();
-      const appId = getDerivAppId();
-      const authUrl = buildAuthUrl({
-        action,
-        appId,
-        redirectUri,
-        scope: DERIV_OAUTH_SCOPE,
-        brand: 'deriv',
-        lang: 'en',
-      });
-
-      window.location.href = authUrl;
+      const targetPath = action === 'signup' ? '/api/auth/deriv/signup' : '/api/auth/deriv/login';
+      window.location.href = `${targetPath}?action=${action}&destination=/`;
     },
     []
   );

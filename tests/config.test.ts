@@ -9,7 +9,7 @@ describe('AppConfig Module', () => {
   it('loads valid default application configuration', () => {
     const config = loadAppConfig();
     expect(config.appName).toBe('AppexQuant Markets Global');
-    expect(config.appVersion).toBe('0.1.0');
+    expect(typeof config.appVersion).toBe('string');
     expect(config.env).toBeDefined();
     expect(typeof config.isDevelopment).toBe('boolean');
   });

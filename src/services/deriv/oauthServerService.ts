@@ -334,7 +334,7 @@ export function initiateDerivOAuth(params: {
 
   const userId = params.userId || `usr-${crypto.randomBytes(6).toString('hex')}`;
   const action = params.action || 'connect';
-  const destination = params.destination || '/dashboard';
+  const destination = params.destination || '/';
   const oauthConfig = getDerivOAuthConfig(params.requestHost, params.requestProtocol);
 
   const { codeVerifier, codeChallenge } = generatePKCE();
@@ -473,7 +473,7 @@ export async function handleDerivOAuthCallback(params: {
     return {
       success: true,
       userId: rawAccountId,
-      destination: '/dashboard',
+      destination: '/',
       connectionRecord: safeMetadata,
       rawAccountDetails: {
         derivAccountId: rawAccountId,
@@ -504,7 +504,7 @@ export async function handleDerivOAuthCallback(params: {
       codeVerifier: verifier,
       userId: 'usr-deriv-pkce',
       action: 'connect',
-      destination: '/dashboard',
+      destination: '/',
       redirectUri: params.redirectUri || oauthConfig.redirectUri,
       createdAt: Date.now(),
     };
@@ -697,7 +697,7 @@ export async function handleDerivOAuthCallback(params: {
     return {
       success: true,
       userId: effectiveUserId,
-      destination: transaction.destination || '/dashboard',
+      destination: transaction.destination || '/',
       connectionRecord: safeMetadata,
       rawAccountDetails: {
         derivAccountId: rawAccountId,

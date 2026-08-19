@@ -5,8 +5,8 @@
  */
 
 export const DERIV_OAUTH_SCOPE = 'trade account_manage';
-export const DERIV_AUTH_BASE_URL = 'https://oauth.deriv.com/oauth2/authorize';
-export const DERIV_TOKEN_ENDPOINT = 'https://oauth.deriv.com/oauth2/token';
+export const DERIV_AUTH_BASE_URL = 'https://auth.deriv.com/oauth2/auth';
+export const DERIV_TOKEN_ENDPOINT = 'https://auth.deriv.com/oauth2/token';
 
 export interface BuildAuthUrlOptions {
   appId?: string;
@@ -70,6 +70,8 @@ export function buildAuthUrl(options: BuildAuthUrlOptions = {}): string {
 
   // Build query parameters ensuring strictly space-separated scope='trade account_manage' and l='en'
   const params: Record<string, string> = {
+    response_type: 'code',
+    client_id: appId,
     app_id: appId,
     l: (options.lang || 'en').toLowerCase(),
     brand: options.brand || 'deriv',
@@ -115,8 +117,8 @@ export function buildAuthUrl(options: BuildAuthUrlOptions = {}): string {
 /**
  * Helper to build the backend login gateway URL or direct gateway URL.
  */
-export function buildLoginGatewayUrl(action: 'connect' | 'signup' = 'connect', destination: string = '/dashboard'): string {
-  const dest = encodeURIComponent(destination || '/dashboard');
+export function buildLoginGatewayUrl(action: 'connect' | 'signup' = 'connect', destination: string = '/'): string {
+  const dest = encodeURIComponent(destination || '/');
   return `/api/auth/deriv/login?action=${action}&destination=${dest}`;
 }
 

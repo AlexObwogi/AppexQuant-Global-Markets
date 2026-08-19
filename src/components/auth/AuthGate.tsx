@@ -342,8 +342,6 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const [reducedMotion, setReducedMotion] = useState(false);
   const [topTrader, setTopTrader] = useState<{ name: string; roi: string } | null>(null);
   const [progress, setProgress] = useState(0);
-  const [showTokenModal, setShowTokenModal] = useState(false);
-  const [apiTokenInput, setApiTokenInput] = useState('');
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [authStatusMessage, setAuthStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -460,15 +458,15 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     [dispatch, state.theme]
   );
 
-  // Redirect to official Deriv OAuth endpoint with dynamic redirect_uri and scope
+  // Connect to official secure broker platform
   const handleDerivLogin = useCallback(
     (action: 'connect' | 'signup' = 'connect') => {
       setIsAuthorizing(true);
       setErrorMessage(null);
       setAuthStatusMessage(
         action === 'signup' 
-          ? 'Redirecting to Deriv for account creation...' 
-          : 'Redirecting to official Deriv OAuth 2.0 authorization endpoint...'
+          ? 'Connecting for account creation...' 
+          : 'Connecting to Deriv secure gateway...'
       );
 
       const redirectUri = getDerivRedirectUri();
@@ -482,7 +480,6 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         lang: 'en',
       });
 
-      // Full-page browser redirect to https://oauth.deriv.com/oauth2/authorize
       window.location.href = authUrl;
     },
     []
@@ -511,11 +508,11 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       let computedErrorMessage = rawMessage;
       if (!computedErrorMessage) {
         if (rawError === 'oauth_failed') {
-          computedErrorMessage = 'Deriv OAuth authentication could not be completed. Please try signing in again.';
+          computedErrorMessage = 'We couldn\'t connect to your Deriv account. Please try signing in again.';
         } else if (rawError === 'access_denied') {
-          computedErrorMessage = 'Authorization was cancelled or access denied by user.';
+          computedErrorMessage = 'Connection was cancelled or denied.';
         } else {
-          computedErrorMessage = rawErrorDesc || 'Deriv authorization encountered an error. Please try logging in again.';
+          computedErrorMessage = 'We couldn\'t connect to your Deriv account. Please try again.';
         }
       }
       setErrorMessage(computedErrorMessage);
@@ -526,7 +523,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     if (token1) {
       callbackHandledRef.current = true;
       setIsAuthorizing(true);
-      setAuthStatusMessage('Validating Deriv OAuth session tokens with broker gateway...');
+      setAuthStatusMessage('Verifying account credentials...');
       window.history.replaceState({}, document.title, window.location.pathname);
 
       (async () => {
@@ -571,7 +568,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     if (connection === 'success') {
       callbackHandledRef.current = true;
       setIsAuthorizing(true);
-      setAuthStatusMessage('Synchronizing authorized broker session...');
+      setAuthStatusMessage('Setting up your trading connection...');
       window.history.replaceState({}, document.title, window.location.pathname);
     }
 
@@ -752,66 +749,6 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     }
   }, [phase, reducedMotion]);
 
-  // Direct Token Login Submission
-  const handleTokenSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!apiTokenInput.trim() || apiTokenInput.trim().length < 5) {
-      setErrorMessage('Please enter a valid Deriv API token.');
-      return;
-    }
-
-    setIsAuthorizing(true);
-    setErrorMessage(null);
-    setAuthStatusMessage('Validating token credentials with Deriv WebSocket gateway...');
-
-    const token = apiTokenInput.trim();
-    try {
-      const authProfile = await derivAuthService.authorize(token);
-      if (!authProfile) {
-        throw new Error('Deriv WebSocket rejected API token. Please verify trade and account_manage permissions.');
-      }
-
-      const res = await apiFetch('/api/auth/deriv/token-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiToken: token }),
-      });
-
-      const json = await res.json();
-      const accountId = json.data?.derivAccountId || authProfile.loginid || json.data?.userId;
-      if (!accountId) {
-        throw new Error('Deriv authorized account ID could not be retrieved.');
-      }
-
-      await setEncryptedCookie('deriv_oauth_token', token);
-      await setEncryptedCookie('deriv_account_id', accountId);
-      localStorage.setItem('deriv_access_token', token);
-      localStorage.setItem('deriv_account_id', accountId);
-      // Ensure we cache this token based on its environment format
-      if (accountId.startsWith('VR')) {
-        localStorage.setItem('deriv_demo_token', token);
-      } else {
-        localStorage.setItem('deriv_real_token', token);
-      }
-
-      setShowTokenModal(false);
-      establishUserSession({
-        id: accountId,
-        accountId,
-        token,
-        email: authProfile.email || json.data?.email,
-        fullName: authProfile.fullname || json.data?.fullName,
-        balance: typeof authProfile.balance === 'number' ? authProfile.balance : json.data?.balance,
-        currency: authProfile.currency || json.data?.currency || 'USD',
-        accountType: authProfile.is_virtual ? 'demo' : (accountId.startsWith('VR') ? 'demo' : 'real'),
-      });
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Token authentication failed. Please check token permissions.');
-    } finally {
-      setIsAuthorizing(false);
-    }
-  };
-
   // Protected Route Guard:
   // If user tries to access any app route (e.g. /dashboard) while NOT authenticated,
   // automatically redirect route to 'landing' so user sees the Landing Page first.
@@ -947,14 +884,6 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
             >
               <ExternalLink className="w-3.5 h-3.5" />
               <span>Create Account</span>
-            </button>
-
-            <button
-              onClick={() => { setIsMobileMenuOpen(false); setShowTokenModal(true); }}
-              className="w-full py-2 px-4 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 border border-cyan-500/30 text-cyan-400 bg-cyan-500/10"
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-              <span>Connect via API Token</span>
             </button>
 
             <div className="pt-2 flex items-center justify-between border-t border-slate-800/40 text-[10px] text-slate-400 font-mono">
@@ -1247,16 +1176,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
               </div>
             )}
 
-            {/* Direct Token Access Option */}
-            <div className="flex items-center justify-center pt-1">
-              <button
-                onClick={() => setShowTokenModal(true)}
-                className="text-[10px] text-slate-400 hover:text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors py-1 px-2.5 rounded-lg hover:bg-white/5"
-              >
-                <KeyRound className="w-3 h-3 text-cyan-400" />
-                <span>Connect via API Token</span>
-              </button>
-            </div>
+            {/* Clean Actions */}
           </div>
         </div>
 
@@ -1267,74 +1187,6 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         <p>&copy; <span id="copyright-year">{new Date().getFullYear()}</span> AppexQuant Global Markets. All Rights Reserved.</p>
       </footer>
 
-      {/* MODAL: DIRECT DERIV API TOKEN AUTHENTICATION */}
-      {showTokenModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className={`w-full max-w-md p-6 rounded-2xl border shadow-2xl space-y-4 ${isDark ? 'bg-[#181A20] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400">
-                  <KeyRound className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold uppercase tracking-wider">Deriv API Token Login</h3>
-                  <p className="text-[10px] text-slate-400">Direct client authorization without redirection</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowTokenModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleTokenSubmit} className="space-y-3">
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                  Deriv API Token (Trade & Account Management Scopes)
-                </label>
-                <input
-                  type="password"
-                  value={apiTokenInput}
-                  onChange={(e) => setApiTokenInput(e.target.value)}
-                  placeholder="e.g. abc123def456ghi789"
-                  className={`w-full h-11 px-3.5 rounded-xl border text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-all ${isDark ? 'bg-black/30 border-white/10 text-white placeholder:text-slate-600' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400'}`}
-                  autoFocus
-                />
-              </div>
-
-              <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[10px] text-blue-400 space-y-1">
-                <div className="font-bold flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>How to generate your token:</span>
-                </div>
-                <p className="text-slate-300 dark:text-slate-400">
-                  Log into Deriv → Settings → API Token → Create token with <strong>Trade</strong> and <strong>Account Management</strong> scopes.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowTokenModal(false)}
-                  className={`w-1/2 py-2.5 rounded-xl border text-xs font-bold uppercase tracking-wider cursor-pointer ${isDark ? 'border-white/10 hover:bg-white/5 text-slate-300' : 'border-slate-300 hover:bg-slate-100 text-slate-700'}`}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isBusy || !apiTokenInput.trim()}
-                  className="w-1/2 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-lg disabled:opacity-50 cursor-pointer"
-                >
-                  {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                  <span>Authorize</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -13,16 +13,27 @@ export interface DerivAccountItem {
 }
 
 export interface DerivAccountProfile {
+  /** Traced to Deriv Authorize API response field: 'email' */
   email?: string;
+  /** Traced to Deriv Authorize API response field: 'fullname' */
   fullname?: string;
+  /** Traced to Deriv Authorize API response field: 'loginid' */
   loginid: string;
+  /** Traced to Deriv Authorize API response field: 'currency' */
   currency: string;
+  /** Traced to Deriv Authorize API response field: 'balance' or 'balance' subscription message field: 'balance' */
   balance: number;
+  /** Traced to Deriv Authorize API response field: 'country' */
   country?: string;
+  /** Traced to Deriv Authorize API response field: 'is_virtual' */
   is_virtual: number;
+  /** Traced to Deriv Authorize API response field: 'landing_company_name' */
   landing_company_name?: string;
+  /** Traced to Deriv Authorize API response field: 'scopes' */
   scopes?: string[];
+  /** Traced to Deriv Authorize API response field: 'user_id' */
   userId?: number | string;
+  /** Traced to Deriv Authorize API response field: 'account_list' */
   account_list?: DerivAccountItem[];
 }
 

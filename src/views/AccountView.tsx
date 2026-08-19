@@ -505,18 +505,32 @@ export const AccountView: React.FC = () => {
                   <Button 
                     onClick={handleInitiateOAuth} 
                     variant="primary" 
-                    className="w-full sm:w-auto font-bold text-xs px-5 py-2.5"
+                    className="w-full sm:w-auto font-bold text-xs px-5 py-2.5 flex items-center justify-center gap-1.5"
                   >
-                    Connect Account (OAuth)
+                    Login to Account
                   </Button>
+
+                  <a 
+                    href="https://deriv.com/signup/" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="w-full sm:w-auto font-bold text-xs px-5 py-2.5 rounded-lg bg-[#FF444F] hover:bg-[#E03B44] text-white transition-colors text-center inline-flex items-center justify-center gap-1.5"
+                  >
+                    Create Account
+                  </a>
                   
                   <Button 
                     onClick={() => setShowTokenInput(!showTokenInput)} 
                     variant="secondary" 
                     className="w-full sm:w-auto text-xs px-5 py-2.5"
                   >
-                    {showTokenInput ? 'Cancel Token Connection' : 'Connect via API Token'}
+                    {showTokenInput ? 'Cancel Token Input' : 'API Token Login'}
                   </Button>
+                </div>
+
+                <div className="p-3 bg-bg-secondary/60 border border-border-color rounded-lg text-[11px] text-text-secondary leading-relaxed">
+                  <p className="font-semibold text-text-primary mb-0.5">Administrative Access Notice:</p>
+                  Manual broker connection & profile synchronization operations (syncing live balances and broker IDs) are restricted to the site administrator via the status indicator flame trigger.
                 </div>
 
                 {showTokenInput && (
@@ -565,38 +579,6 @@ export const AccountView: React.FC = () => {
               </div>
             )}
           </Card>
-
-          {/* Feature Flags Control Panel */}
-          {isAdminOrOwner && (
-            <Card variant="surface" className="p-4 space-y-3">
-              <h3 className="text-xs font-bold text-text-primary pb-2.5 border-b border-border-color dark:border-[#2B3139] flex items-center gap-2 font-mono uppercase tracking-wider">
-                <Cpu className="w-3.5 h-3.5 text-color-warning dark:text-accent-primary" />
-                Feature Flag Settings
-              </h3>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-                {Object.entries(state.featureFlags).map(([flag, isEnabled]) => (
-                  <div key={flag} className="p-2.5 bg-bg-main border border-border-color dark:bg-[#0B0E11] dark:border-[#2B3139] rounded-[2px] flex items-center justify-between">
-                    <div>
-                      <div className="font-mono font-bold text-text-primary dark:text-text-primary">{flag}</div>
-                      <div className="text-[10px] text-text-secondary font-semibold">{isEnabled ? 'Activated' : 'Inactive'}</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={isEnabled}
-                      onChange={(e) =>
-                        dispatch({
-                          type: 'SET_FEATURE_FLAG',
-                          payload: { flag: flag as any, value: e.target.checked },
-                        })
-                      }
-                      className="w-4 h-4 accent-[#FCD535] rounded cursor-pointer"
-                    />
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
         </div>
       </div>
     </div>

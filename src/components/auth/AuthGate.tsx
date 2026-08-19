@@ -812,10 +812,8 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     }
   };
 
-  // If authenticated, render app workspace
-  if (state.session.isAuthenticated) {
-    return <>{children}</>;
-  }
+  // Direct platform workspace access for visitors landing on the platform
+  return <>{children}</>;
 
   const isDark = state.theme === 'dark' || (state.theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const syncStyles = getSynchronizedStyles(progress, isDark);

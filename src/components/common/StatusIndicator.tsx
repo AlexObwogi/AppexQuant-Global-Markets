@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Wifi, RefreshCw, Clock, WifiOff } from 'lucide-react';
+import { derivWs } from '../../services/deriv/DerivWebSocketManager.ts';
 
 export type SystemStatusType = 'LIVE' | 'SYNCING' | 'STALE' | 'OFFLINE';
 
@@ -18,6 +19,15 @@ export const StatusIndicator: React.FC<StatusIndicatorProps> = ({
   className = '',
   label,
 }) => {
+  const [wsConnected, setWsConnected] = useState(derivWs.getConnectionState() === 'CONNECTED');
+
+  useEffect(() => {
+    const unsub = derivWs.onStatusChange((s) => setWsConnected(s === 'CONNECTED'));
+    return unsub;
+  }, []);
+
+  const effectiveStatus: SystemStatusType = status === 'LIVE' && !wsConnected ? 'OFFLINE' : status;
+
   const statusId = id || `status-indicator-${Math.random().toString(36).substring(2, 8)}`;
 
   const config: Record<SystemStatusType, {
@@ -62,7 +72,7 @@ export const StatusIndicator: React.FC<StatusIndicatorProps> = ({
     },
   };
 
-  const current = config[status] || config.OFFLINE;
+  const current = config[effectiveStatus] || config.OFFLINE;
   const ariaLabel = label || `System connection status: ${current.text}`;
 
   return (

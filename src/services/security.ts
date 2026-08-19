@@ -195,6 +195,11 @@ export function requestIdMiddleware(req: Request, res: Response, next: NextFunct
 }
 
 export function rateLimiterMiddleware(req: Request, res: Response, next: NextFunction): void {
+  // Rate limit API endpoints only; bypass static files, Vite modules, and assets
+  if (!req.path.startsWith('/api')) {
+    return next();
+  }
+
   const ip = req.ip || req.socket.remoteAddress || '0.0.0.0';
   const key = `global:${ip}`;
   const result = globalLimiter.check(key);

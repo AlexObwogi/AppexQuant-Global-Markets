@@ -48,9 +48,15 @@ export class DerivWebSocketManager {
   private maxReconnectDelayMs = 30000;
   private isExplicitDisconnect = false;
 
+  private endpoints: string[];
+
   constructor(appId = '1089') {
     this.appId = appId;
-    this.endpoint = `wss://ws.derivws.com/websockets/v3?app_id=${this.appId}`;
+    this.endpoints = [
+      `wss://ws.derivws.com/websockets/v3?app_id=${this.appId}`,
+      `wss://ws.binaryws.com/websockets/v3?app_id=${this.appId}`,
+    ];
+    this.endpoint = this.endpoints[0];
   }
 
   public getIsSimulated(): boolean {
@@ -114,7 +120,7 @@ export class DerivWebSocketManager {
         this.ws.onmessage = (event) => this.handleMessage(event);
 
         this.ws.onerror = (error) => {
-          console.error('[DerivWS] Connection error:', error);
+          console.warn(`[DerivWS] Connection error on ${this.endpoint}. Re-initiating connection fallback...`);
           clearTimeout(openTimeout);
           this.ws?.close();
           this.connectPromise = null;
@@ -189,6 +195,7 @@ export class DerivWebSocketManager {
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.reconnectAttempts++;
+      this.endpoint = this.endpoints[this.reconnectAttempts % this.endpoints.length];
       this.connect().catch(() => {});
     }, delay);
   }

@@ -27,14 +27,15 @@ export interface BuildAuthUrlOptions {
  * Returns the effective Deriv App ID from environment variables or default fallback.
  */
 export function getDerivAppId(): string {
+  if (typeof process !== 'undefined' && process.env) {
+    if (process.env.DERIV_APP_ID) return process.env.DERIV_APP_ID;
+    if (process.env.VITE_DERIV_APP_ID) return process.env.VITE_DERIV_APP_ID;
+    if (process.env.CLIENT_ID) return process.env.CLIENT_ID;
+    if (process.env.VITE_CLIENT_ID) return process.env.VITE_CLIENT_ID;
+  }
   if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
     if ((import.meta as any).env?.VITE_DERIV_APP_ID) return (import.meta as any).env.VITE_DERIV_APP_ID;
     if ((import.meta as any).env?.VITE_CLIENT_ID) return (import.meta as any).env.VITE_CLIENT_ID;
-  }
-  if (typeof process !== 'undefined' && process.env) {
-    if (process.env.VITE_DERIV_APP_ID) return process.env.VITE_DERIV_APP_ID;
-    if (process.env.DERIV_APP_ID) return process.env.DERIV_APP_ID;
-    if (process.env.CLIENT_ID) return process.env.CLIENT_ID;
   }
   return '1089';
 }
@@ -43,12 +44,14 @@ export function getDerivAppId(): string {
  * Returns the dynamic redirect URI for Deriv OAuth callback.
  */
 export function getDerivRedirectUri(): string {
-  if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
-    if ((import.meta as any).env?.VITE_REDIRECT_URI) return (import.meta as any).env.VITE_REDIRECT_URI;
-  }
   if (typeof process !== 'undefined' && process.env) {
+    if (process.env.DERIV_REDIRECT_URI) return process.env.DERIV_REDIRECT_URI;
+    if (process.env.DERIV_OAUTH_REDIRECT_URI) return process.env.DERIV_OAUTH_REDIRECT_URI;
     if (process.env.REDIRECT_URI) return process.env.REDIRECT_URI;
     if (process.env.VITE_REDIRECT_URI) return process.env.VITE_REDIRECT_URI;
+  }
+  if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+    if ((import.meta as any).env?.VITE_REDIRECT_URI) return (import.meta as any).env.VITE_REDIRECT_URI;
   }
   if (typeof window !== 'undefined' && window.location) {
     return `${window.location.origin}/api/auth/deriv/callback`;

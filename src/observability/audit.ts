@@ -2,9 +2,9 @@
  * AppexQuant Markets Global - Centralized Audit Logging Service
  */
 
-import { AuditEvent, AuditEventType } from '../types/audit.js';
-import { createCorrelationId } from '../types/api.js';
-import { logger } from './logger.js';
+import { AuditEvent, AuditEventType } from '../types/audit.ts';
+import { createCorrelationId } from '../types/api.ts';
+import { logger } from './logger.ts';
 
 const inMemoryAuditLogs: AuditEvent[] = [];
 

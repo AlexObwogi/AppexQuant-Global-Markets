@@ -3,14 +3,14 @@
  * Rebuilt for compact mobile responsive layout and user privacy controls.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGlobalState, AppViewRoute } from '../../state/GlobalStateContext.tsx';
 import { derivAuthService } from '../../services/deriv/authService.ts';
-import { useEffect } from 'react';
 import { useMarketData } from '../../state/MarketDataContext.tsx';
 import { EnvironmentSelector } from '../common/EnvironmentSelector.tsx';
 import { ThemeSelector } from '../common/ThemeSelector.tsx';
-import { Menu, User, Eye, EyeOff } from 'lucide-react';
+import { Menu, User, Eye, EyeOff, Flame } from 'lucide-react';
+import { DerivConnectionModal } from '../auth/DerivConnectionModal.tsx';
 
 
 import { formatCurrencyValue } from '../../utils/userStatusPresentation.ts';
@@ -21,6 +21,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
   const { state, dispatch, selectedAccount } = useGlobalState();
+  const [showAdminModal, setShowAdminModal] = useState(false);
 
   const [authProfile, setAuthProfile] = useState(derivAuthService.getProfile());
   useEffect(() => {
@@ -33,6 +34,32 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
 
   const isBalanceHidden = state.isBalanceHidden;
   const balanceValue = selectedAccount ? selectedAccount.balance.balance : 0;
+
+  // Real Connection Status Logic
+  const isAuthenticated = state.session.isAuthenticated;
+  const env = state.executionEnvironment;
+  const derivAcct = state.user?.derivAccountId || state.session.userId;
+  const accountType = state.user?.accountType || (derivAcct?.startsWith('VR') ? 'demo' : 'real');
+
+  let statusText = 'OFFLINE';
+  let badgeClass = 'bg-rose-500/10 text-rose-400 border-rose-500/30';
+  let dotClass = 'bg-rose-500';
+
+  if (isAuthenticated) {
+    if (env === 'PAPER') {
+      statusText = 'PAPER';
+      badgeClass = 'bg-purple-500/10 text-purple-400 border-purple-500/30';
+      dotClass = 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.7)] animate-pulse';
+    } else if (accountType === 'demo' || env === 'DEMO') {
+      statusText = 'DEMO';
+      badgeClass = 'bg-amber-500/10 text-amber-400 border-amber-500/30';
+      dotClass = 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.7)] animate-pulse';
+    } else {
+      statusText = 'LIVE';
+      badgeClass = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+      dotClass = 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.7)] animate-pulse';
+    }
+  }
 
   return (
     <header className="h-14 sm:h-16 flex items-center justify-between px-2.5 sm:px-4 lg:px-8 border-b border-border-color bg-bg-nav shrink-0 sticky top-0 z-30 w-full select-none">
@@ -66,7 +93,23 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
 
       {/* Right Controls: Environment, Balance Privacy, Connection, Theme, Profile */}
       <div className="flex items-center space-x-1 sm:space-x-2.5 shrink-0">
-        {/* DERIV CONNECTION STATUS */}
+        {/* DERIV CONNECTION STATUS: [🔥 admin trigger] [LIVE / DEMO / PAPER / OFFLINE] */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          <button
+            onClick={() => setShowAdminModal(true)}
+            className="p-1 sm:p-1.5 rounded-lg border border-border-color/60 bg-bg-surface hover:bg-bg-hover text-rose-500 transition-colors cursor-pointer shrink-0"
+            title="Admin: Open broker connection panel"
+          >
+            <Flame className="w-4 h-4 text-rose-500 hover:scale-110 active:scale-95 transition-transform" />
+          </button>
+
+          <div
+            className={`flex items-center gap-1 sm:gap-1.5 px-2 py-1 rounded-lg border text-[10px] sm:text-xs font-mono font-extrabold uppercase tracking-wider shrink-0 select-none ${badgeClass}`}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
+            <span>{statusText}</span>
+          </div>
+        </div>
 
         {/* SINGLE CONSOLIDATED ENVIRONMENT SELECTOR ([ DEMO ▾ ]) */}
         <div className="shrink-0">
@@ -109,6 +152,10 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
           </span>
         </button>
       </div>
+
+      {showAdminModal && (
+        <DerivConnectionModal onClose={() => setShowAdminModal(false)} />
+      )}
 
     </header>
   );

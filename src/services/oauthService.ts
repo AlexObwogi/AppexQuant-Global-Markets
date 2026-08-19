@@ -24,31 +24,30 @@ export interface BuildAuthUrlOptions {
 }
 
 /**
- * Safely retrieves client-side environment variables without triggering
- * static esbuild 'import.meta' warnings for CommonJS format.
- */
-function getClientEnv(): Record<string, string> {
-  try {
-    const getMetaEnv = new Function('return import.meta.env');
-    return getMetaEnv() || {};
-  } catch {
-    return {};
-  }
-}
-
-/**
  * Returns the effective Deriv App ID from environment variables or default fallback.
  */
 export function getDerivAppId(): string {
+  // STRICTLY SERVER-SIDE USAGE
   if (typeof process !== 'undefined' && process.env) {
+    if (process.env.DERIV_OAUTH_CLIENT_ID) return process.env.DERIV_OAUTH_CLIENT_ID;
     if (process.env.DERIV_APP_ID) return process.env.DERIV_APP_ID;
-    if (process.env.VITE_DERIV_APP_ID) return process.env.VITE_DERIV_APP_ID;
     if (process.env.CLIENT_ID) return process.env.CLIENT_ID;
-    if (process.env.VITE_CLIENT_ID) return process.env.VITE_CLIENT_ID;
+    return '1089';
   }
-  const clientEnv = getClientEnv();
-  if (clientEnv.VITE_DERIV_APP_ID) return clientEnv.VITE_DERIV_APP_ID;
-  if (clientEnv.VITE_CLIENT_ID) return clientEnv.VITE_CLIENT_ID;
+  
+  // STRICTLY BROWSER-SIDE USAGE
+  if (typeof window !== 'undefined') {
+    try {
+      const getMetaEnv = new Function('return import.meta.env');
+      const env = getMetaEnv();
+      if (env) {
+        return env.VITE_DERIV_APP_ID || env.VITE_CLIENT_ID || '1089';
+      }
+    } catch {
+      // Fallback if compilation/runtime dynamic evaluation fails
+    }
+  }
+  
   return '1089';
 }
 
@@ -56,17 +55,32 @@ export function getDerivAppId(): string {
  * Returns the dynamic redirect URI for Deriv OAuth callback.
  */
 export function getDerivRedirectUri(): string {
+  // STRICTLY SERVER-SIDE USAGE
   if (typeof process !== 'undefined' && process.env) {
-    if (process.env.DERIV_REDIRECT_URI) return process.env.DERIV_REDIRECT_URI;
     if (process.env.DERIV_OAUTH_REDIRECT_URI) return process.env.DERIV_OAUTH_REDIRECT_URI;
+    if (process.env.DERIV_REDIRECT_URI) return process.env.DERIV_REDIRECT_URI;
     if (process.env.REDIRECT_URI) return process.env.REDIRECT_URI;
-    if (process.env.VITE_REDIRECT_URI) return process.env.VITE_REDIRECT_URI;
+    return 'http://localhost:3000/api/auth/deriv/callback';
   }
-  const clientEnv = getClientEnv();
-  if (clientEnv.VITE_REDIRECT_URI) return clientEnv.VITE_REDIRECT_URI;
-  if (typeof window !== 'undefined' && window.location) {
-    return `${window.location.origin}/api/auth/deriv/callback`;
+  
+  // STRICTLY BROWSER-SIDE USAGE
+  if (typeof window !== 'undefined') {
+    try {
+      const getMetaEnv = new Function('return import.meta.env');
+      const env = getMetaEnv();
+      if (env) {
+        const viteRedirect = env.VITE_REDIRECT_URI || env.VITE_DERIV_REDIRECT_URI;
+        if (viteRedirect) return viteRedirect;
+      }
+    } catch {
+      // Fallback
+    }
+    
+    if (window.location) {
+      return `${window.location.origin}/api/auth/deriv/callback`;
+    }
   }
+  
   return 'http://localhost:3000/api/auth/deriv/callback';
 }
 

@@ -7,6 +7,7 @@ import { ScenarioEngine } from '../components/analysis/ScenarioEngine.tsx';
 import { AiExplanationPanel } from '../components/analysis/AiExplanationPanel.tsx';
 import { ExecutionCommandDesk } from '../components/eas/ExecutionCommandDesk.tsx';
 import { PositionsPanel } from '../components/trading/PositionsPanel.tsx';
+import { VoiceStatusToggle } from '../components/trading/VoiceStatusToggle.tsx';
 import { MarketSelectorModal } from '../components/market/MarketSelectorModal.tsx';
 import { ChevronDown, TrendingUp, TrendingDown, Activity, Globe } from 'lucide-react';
 
@@ -60,7 +61,10 @@ export const TradingWorkspaceView: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 sm:space-x-3">
+          {/* Voice Status Toggle */}
+          <VoiceStatusToggle />
+
           <span className={`px-2.5 py-1 text-[10px] font-mono font-bold rounded-lg border ${
             dataFreshness === 'LIVE' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
           }`}>

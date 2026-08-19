@@ -132,7 +132,7 @@ export function useDerivAuth() {
         const statusJson = await statusRes.json();
         if (statusJson.success && statusJson.data?.connected) {
           accountId = statusJson.data.derivAccountId;
-          token = statusJson.data.token || localStorage.getItem('deriv_access_token') || `token-${accountId}`;
+          token = statusJson.data.token || localStorage.getItem('deriv_access_token');
           currency = statusJson.data.currency || 'USD';
           balance = statusJson.data.balance ?? 0;
           accountType = statusJson.data.accountType || (accountId.startsWith('VR') ? 'demo' : 'real');

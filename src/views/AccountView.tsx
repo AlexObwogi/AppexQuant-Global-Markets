@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { useGlobalState } from '../state/GlobalStateContext.tsx';
 import { useApiFetch } from '../utils/apiFetch.ts';
 import { Card } from '../components/ui/Card.tsx';
+import { setEncryptedCookie } from "../utils/auth/pkce.ts";
 import { Button } from '../components/ui/Button.tsx';
 import { Input, Select } from '../components/ui/Input.tsx';
 import { Badge } from '../components/ui/Badge.tsx';
@@ -149,39 +150,65 @@ export const AccountView: React.FC = () => {
     }, 500);
   };
 
-  // Submit Deriv API Token for login
-  const handleTokenSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!apiTokenInput.trim()) {
-      setErrorMessage('Please provide a valid API Token.');
-      return;
+  // Handle environment toggling
+  const handleEnvToggle = async (targetEnv: 'demo' | 'real') => {
+    // Determine the expected token key based on environment
+    const tokenKey = targetEnv === 'demo' ? 'deriv_demo_token' : 'deriv_real_token';
+    const savedToken = localStorage.getItem(tokenKey);
+    
+    // Update global state immediately for UI consistency
+    dispatch({ type: 'SET_EXECUTION_ENVIRONMENT', payload: targetEnv === 'demo' ? 'DEMO' : 'LIVE' });
+
+    if (savedToken) {
+       // Silently switch using the stored token for this environment
+       setApiTokenInput(savedToken);
+       await performTokenLogin(savedToken);
+    } else {
+       // Ask user to provide token if we don't have it
+       setMeta(null);
+       setShowTokenInput(true);
+       setApiTokenInput('');
+       setMessage(`Please provide your Deriv ${targetEnv.toUpperCase()} API token to switch environments.`);
     }
+  };
+
+  const performTokenLogin = async (tokenStr: string) => {
     setIsSubmittingToken(true);
     setErrorMessage(null);
     setMessage(null);
-
     try {
       const res = await apiFetch('/api/auth/deriv/token-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiToken: apiTokenInput.trim() }),
+        body: JSON.stringify({ apiToken: tokenStr }),
       });
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.data) {
+          const accType = json.data.accountType || 'demo';
+          // Save tokens for active WebSocket and persistence
+          localStorage.setItem('deriv_oauth_token', tokenStr);
+          localStorage.setItem('deriv_access_token', tokenStr);
+          localStorage.setItem(accType === 'demo' ? 'deriv_demo_token' : 'deriv_real_token', tokenStr);
+          await setEncryptedCookie('deriv_oauth_token', tokenStr);
+          await setEncryptedCookie('deriv_account_id', json.data.derivAccountId || 'unknown');
+          
           setMeta(json.data);
           dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'ONLINE' });
+          dispatch({ type: 'SET_EXECUTION_ENVIRONMENT', payload: accType === 'demo' ? 'DEMO' : 'LIVE' });
           dispatch({
             type: 'ADD_NOTIFICATION',
             payload: {
-              title: 'Account Integration Configured',
-              message: `Successfully connected to Deriv account ${json.data.derivAccountId}`,
+              title: 'Environment Switched',
+              message: `Successfully connected to ${accType.toUpperCase()} account ${json.data.derivAccountId}`,
               type: 'success',
             },
           });
           setApiTokenInput('');
           setShowTokenInput(false);
-          setMessage('Integration connected successfully.');
+          setMessage(`Integration connected successfully to ${accType.toUpperCase()} environment.`);
+          // Hard reload to guarantee WebSocket and API instances use the newly activated token
+          setTimeout(() => window.location.reload(), 1500);
         } else {
           setErrorMessage(json.error?.message || 'Token authentication failed.');
         }
@@ -195,6 +222,15 @@ export const AccountView: React.FC = () => {
     }
   };
 
+  // Submit Deriv API Token for login
+  const handleTokenSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!apiTokenInput.trim()) {
+      setErrorMessage('Please provide a valid API Token.');
+      return;
+    }
+    await performTokenLogin(apiTokenInput.trim());
+  };
   // Trigger manual backend account sync
   const handleSync = async () => {
     setIsSyncing(true);
@@ -429,13 +465,30 @@ export const AccountView: React.FC = () => {
                 Deriv Account Integration
               </h3>
               
-              {meta?.connected && (
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
-                  <Check className="w-3 h-3" /> ACTIVE INTEGRATION
-                </span>
-              )}
+              {/* Environment Toggle Switcher */}
+              <div className="flex items-center gap-1.5 p-1 bg-bg-secondary border border-border-color rounded-lg">
+                <button
+                  onClick={() => handleEnvToggle('demo')}
+                  className={`px-3 py-1 text-[10px] font-mono font-bold uppercase rounded transition-all ${
+                    (meta?.accountType === 'demo' || state.executionEnvironment === 'DEMO') 
+                      ? 'bg-accent-primary text-white shadow-sm' 
+                      : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  Demo
+                </button>
+                <button
+                  onClick={() => handleEnvToggle('real')}
+                  className={`px-3 py-1 text-[10px] font-mono font-bold uppercase rounded transition-all ${
+                    (meta?.accountType === 'real' || state.executionEnvironment === 'LIVE')
+                      ? 'bg-danger text-white shadow-sm'
+                      : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  Real
+                </button>
+              </div>
             </div>
-
             {isLoading ? (
               <div className="py-12 flex flex-col items-center justify-center space-y-3">
                 <Loader2 className="w-8 h-8 text-accent-primary animate-spin" />

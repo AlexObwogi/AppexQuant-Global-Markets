@@ -417,6 +417,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       });
 
       dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'ONLINE' });
+      dispatch({ type: 'SET_EXECUTION_ENVIRONMENT', payload: isDemo ? 'DEMO' : 'LIVE' });
       dispatch({
         type: 'SELECT_BROKER',
         payload: {
@@ -448,213 +449,47 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
   // Redirect to server-side Deriv OAuth PKCE login gateway or official Deriv signup
   const handleDerivLogin = useCallback(
     (action: 'connect' | 'signup' = 'connect') => {
-      if (action === 'signup') {
-        window.open('https://deriv.com/signup/', '_blank');
-        return;
-      }
-
       setIsAuthorizing(true);
       setErrorMessage(null);
-      setAuthStatusMessage('Redirecting to secure Deriv OAuth 2.0 PKCE authentication gateway...');
+      setAuthStatusMessage(
+        action === 'signup' 
+          ? 'Redirecting to Deriv for account creation...' 
+          : 'Redirecting to secure Deriv OAuth 2.0 authentication gateway...'
+      );
 
-      const destination = '/dashboard';
-      const loginEndpoint = buildLoginGatewayUrl('connect', destination);
-
-      // Orchestrate browser redirect to server-side PKCE gateway
-      setTimeout(() => {
-        window.location.href = loginEndpoint;
-      }, 150);
+      // Orchestrate full-page browser redirect to server-side gateway which handles dynamic URL construction
+      window.location.href = `/api/auth/deriv/login?action=${action}`;
     },
     []
   );
 
-  // 1. DEDICATED OAUTH REDIRECT CALLBACK & PKCE VERIFIER TOKEN EXCHANGE
+  // 1. DEDICATED OAUTH REDIRECT CALLBACK & ERROR HANDLING
   useEffect(() => {
     if (typeof window === 'undefined' || callbackHandledRef.current) return;
 
-    // Parse search parameters and URL hash parameters (if OAuth fragment response)
     const searchParams = new URLSearchParams(window.location.search);
-    const hashString = window.location.hash.startsWith('#') ? window.location.hash.substring(1) : window.location.hash;
-    const hashParams = new URLSearchParams(hashString.includes('?') ? hashString.split('?')[1] : hashString);
+    const authError = searchParams.get('auth_error');
+    const rawError = searchParams.get('error');
+    const rawErrorDesc = searchParams.get('error_description');
+    const rawMessage = searchParams.get('message') || searchParams.get('reason') || searchParams.get('msg');
+    const connection = searchParams.get('connection');
 
-    const getParam = (key: string) => searchParams.get(key) || hashParams.get(key);
-
-    const code = getParam('code');
-    const oauthState = getParam('state');
-    const token1 = getParam('token1');
-    const acct1 = getParam('acct1');
-    const cur1 = getParam('cur1');
-    const connection = getParam('connection');
-    const authError = getParam('auth_error');
-    const rawError = getParam('error');
-    const rawErrorDesc = getParam('error_description');
-    const rawMessage = getParam('message') || getParam('reason') || getParam('msg');
-
-    // Case 0: Handle Auth Error returned in query params
     if (authError || rawError || rawErrorDesc || (rawMessage && !connection)) {
       callbackHandledRef.current = true;
-      
-      let computedErrorMessage = '';
-      if (rawMessage) {
-        computedErrorMessage = rawMessage;
-      } else if (rawErrorDesc) {
-        computedErrorMessage = `Deriv OAuth Error: ${rawErrorDesc}${rawError ? ` (${rawError})` : ''}`;
-      } else if (rawError) {
-        computedErrorMessage = `Deriv OAuth Error: ${rawError}`;
-      } else if (authError) {
-        switch (authError) {
-          case 'invalid_state':
-            computedErrorMessage = 'Deriv OAuth State Error: State mismatch or expired authorization transaction. Please try logging in again.';
-            break;
-          case 'token_failed':
-            computedErrorMessage = 'Deriv Token Error: Deriv server rejected authorization code exchange.';
-            break;
-          case 'network_failure':
-            computedErrorMessage = 'Deriv Network Error: Server was unable to communicate with Deriv OAuth token endpoint.';
-            break;
-          case 'missing_code':
-            computedErrorMessage = 'Deriv OAuth Error: Authorization code was missing in callback response.';
-            break;
-          case 'cancelled':
-            computedErrorMessage = 'Deriv Authorization was cancelled by the user.';
-            break;
-          default:
-            computedErrorMessage = `Deriv Authorization Error: ${authError}`;
-        }
-      } else {
-        computedErrorMessage = 'Deriv authorization encountered an error. Please try logging in again.';
-      }
-
+      let computedErrorMessage = rawMessage || 'Deriv authorization encountered an error. Please try logging in again.';
       setErrorMessage(computedErrorMessage);
       window.history.replaceState({}, document.title, window.location.pathname);
       return;
     }
 
-    // Case A: Authorization Code returned -> async exchange with stored verifier
-    if (code) {
-      callbackHandledRef.current = true;
-      setIsAuthorizing(true);
-      setAuthStatusMessage('Extracting authorization code & verifying PKCE handshake...');
-
-      exchangeCodeForToken(code, oauthState || undefined)
-        .then(async (result) => {
-          if (result && result.accountId) {
-            // Persist token in encrypted cookie for subsequent visits
-            await setEncryptedCookie('deriv_oauth_token', result.token);
-            await setEncryptedCookie('deriv_account_id', result.accountId);
-
-            establishUserSession({
-              id: result.accountId,
-              accountId: result.accountId,
-              token: result.token,
-              email: result.email,
-              displayName: result.displayName,
-              fullName: result.fullName,
-              balance: result.balance,
-              currency: result.currency,
-              accountType: result.accountType,
-              role: result.role,
-            });
-            window.history.replaceState({}, document.title, window.location.pathname);
-            window.location.replace('/dashboard');
-          } else {
-            setErrorMessage('Could not complete Deriv PKCE token exchange.');
-          }
-        })
-        .catch((err) => {
-          setErrorMessage(err?.message || 'Deriv token exchange failed.');
-        })
-        .finally(() => {
-          setIsAuthorizing(false);
-        });
-      return;
-    }
-
-    // Case B: Direct token1/acct1 query parameters returned from Deriv gateway
-    if (token1 && acct1) {
-      callbackHandledRef.current = true;
-      setIsAuthorizing(true);
-      setAuthStatusMessage(`Authenticating Deriv account ${acct1}...`);
-
-      setEncryptedCookie('deriv_oauth_token', token1);
-      setEncryptedCookie('deriv_account_id', acct1);
-      localStorage.setItem('deriv_access_token', token1);
-      localStorage.setItem('deriv_account_id', acct1);
-      if (cur1) localStorage.setItem('deriv_currency', cur1);
-
-      derivAuthService
-        .authorize(token1)
-        .then(async () => {
-          let realProfile: any = null;
-          try {
-            const syncRes = await apiFetch('/api/auth/deriv/token-login', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ apiToken: token1 }),
-            });
-            const syncJson = await syncRes.json();
-            if (syncJson.success && syncJson.data) {
-              realProfile = syncJson.data;
-            }
-          } catch {
-            // Non-blocking sync
-          }
-
-          establishUserSession({
-            id: acct1,
-            accountId: acct1,
-            displayName: realProfile?.fullName || `Deriv Trader (${acct1})`,
-            fullName: realProfile?.fullName,
-            email: realProfile?.email,
-            balance: realProfile?.balance,
-            currency: cur1 || realProfile?.currency || 'USD',
-            accountType: realProfile?.accountType || (acct1.startsWith('VR') ? 'demo' : 'real'),
-            token: token1,
-          });
-
-          window.history.replaceState({}, document.title, window.location.pathname);
-          window.location.replace('/dashboard');
-        })
-        .catch(() => {
-          setErrorMessage('Deriv authorization handshake failed. Please reconnect.');
-        })
-        .finally(() => {
-          setIsAuthorizing(false);
-        });
-      return;
-    }
-
-    // Case C: Server redirect with connection=success
     if (connection === 'success') {
-      callbackHandledRef.current = true;
-      setIsAuthorizing(true);
-      setAuthStatusMessage('Synchronizing authorized broker session...');
-      apiFetch('/api/auth/deriv/status')
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success && data.data?.connected && data.data.derivAccountId) {
-            establishUserSession({
-              id: data.data.derivAccountId,
-              accountId: data.data.derivAccountId,
-              displayName: data.data.fullName || `Deriv Trader (${data.data.derivAccountId})`,
-              fullName: data.data.fullName,
-              email: data.data.email,
-              balance: data.data.balance,
-              currency: data.data.currency,
-              accountType: data.data.accountType,
-            });
-            window.history.replaceState({}, document.title, window.location.pathname);
-            window.location.replace('/dashboard');
-          }
-        })
-        .catch((err) => {
-          console.warn('[AuthGate] Deriv status check failed:', err);
-        })
-        .finally(() => setIsAuthorizing(false));
-      return;
+       callbackHandledRef.current = true;
+       setIsAuthorizing(true);
+       setAuthStatusMessage('Synchronizing authorized broker session...');
+       window.history.replaceState({}, document.title, window.location.pathname);
     }
 
-    // Case D: Resume from active server session (HttpOnly cookie), encrypted cookie, or local storage
+    // Check session status from secure backend
     apiFetch('/api/auth/session')
       .then((res) => res.json())
       .then((data) => {
@@ -671,49 +506,12 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
             accountType: user.accountType,
             role: user.role,
           });
-          return;
         }
-
-        // Fallback: check encrypted cookie or local storage if server session is not yet active
-        getEncryptedCookie('deriv_oauth_token').then((cookieToken) => {
-          const storedToken = cookieToken || localStorage.getItem('deriv_access_token');
-          const storedAccountId = localStorage.getItem('deriv_account_id');
-          if (storedToken && storedAccountId) {
-            derivAuthService.authorize(storedToken).then((ok) => {
-              if (ok) {
-                establishUserSession({
-                  id: storedAccountId,
-                  accountId: storedAccountId,
-                  token: storedToken,
-                });
-              }
-            }).catch((err) => {
-              console.warn('[AuthGate] Resume token auth failed:', err);
-            });
-          }
-        }).catch((err) => {
-          console.warn('[AuthGate] Cookie retrieval warning:', err);
-        });
       })
-      .catch(() => {
-        // Fallback to client-side cookie if session endpoint is unreachable
-        getEncryptedCookie('deriv_oauth_token').then((cookieToken) => {
-          const storedToken = cookieToken || localStorage.getItem('deriv_access_token');
-          const storedAccountId = localStorage.getItem('deriv_account_id');
-          if (storedToken && storedAccountId) {
-            derivAuthService.authorize(storedToken).then((ok) => {
-              if (ok) {
-                establishUserSession({
-                  id: storedAccountId,
-                  accountId: storedAccountId,
-                  token: storedToken,
-                });
-              }
-            });
-          }
-        });
-      });
-  }, [apiFetch, establishUserSession, exchangeCodeForToken]);
+      .catch((err) => console.warn('[AuthGate] Session retrieval warning:', err))
+      .finally(() => setIsAuthorizing(false));
+
+  }, [apiFetch, establishUserSession]);
 
   // Fetch top trader data for live display
   useEffect(() => {
@@ -840,6 +638,12 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       await setEncryptedCookie('deriv_account_id', accountId);
       localStorage.setItem('deriv_access_token', token);
       localStorage.setItem('deriv_account_id', accountId);
+      // Ensure we cache this token based on its environment format
+      if (accountId.startsWith('VR')) {
+        localStorage.setItem('deriv_demo_token', token);
+      } else {
+        localStorage.setItem('deriv_real_token', token);
+      }
 
       setShowTokenModal(false);
       establishUserSession({

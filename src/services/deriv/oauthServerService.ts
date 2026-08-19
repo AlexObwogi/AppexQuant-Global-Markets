@@ -282,7 +282,19 @@ export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: stri
   const proto = requestProtocol || (requestHost?.includes('localhost') ? 'http' : 'https');
   const host = requestHost || (process.env.APP_URL ? new URL(process.env.APP_URL).host : 'localhost:3000');
 
-  const redirectUri = process.env.REDIRECT_URI || `${proto}://${host}/api/auth/deriv/callback`;
+  let redirectUri = `${proto}://${host}/api/auth/deriv/callback`;
+  
+  if (process.env.REDIRECT_URI) {
+    redirectUri = process.env.REDIRECT_URI;
+  } else if (process.env.NEXT_PUBLIC_SITE_URL) {
+    redirectUri = `${process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '')}/api/auth/deriv/callback`;
+  } else if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    redirectUri = `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/api/auth/deriv/callback`;
+  } else if (process.env.VERCEL_URL) {
+    redirectUri = `https://${process.env.VERCEL_URL}/api/auth/deriv/callback`;
+  } else if (process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production') {
+    redirectUri = 'https://appex-quant-global-markets-cnuojfuwm-alexs-projects-73667c3b.vercel.app/api/auth/deriv/callback';
+  }
 
   const scopes = process.env.DERIV_SCOPES || 'trade account_manage';
 

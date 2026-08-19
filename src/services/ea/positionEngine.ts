@@ -391,6 +391,14 @@ export function executeSafeguardAction(proposal: SafeguardActionRecord): Safegua
   return proposal;
 }
 
+// Manual close a specific open position
+export function closePosition(positionId: string, reason: string = 'Manual Close'): SafeguardActionRecord | null {
+  const pos = positions.find(p => p.id === positionId);
+  if (!pos) return null;
+  const proposal = createSafeguardProposal(pos, 'MANUAL_CLOSE', reason);
+  return executeSafeguardAction(proposal);
+}
+
 // Reset positions state
 export function resetPositionsState(): void {
   seedPositions();

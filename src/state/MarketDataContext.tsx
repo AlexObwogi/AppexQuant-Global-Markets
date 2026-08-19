@@ -74,7 +74,7 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   const [isLoadingSymbols, setIsLoadingSymbols] = useState<boolean>(true);
   const [balance, setBalance] = useState<number>(10000);
   const [currency, setCurrency] = useState<string>('USD');
-  const [loginid, setLoginid] = useState<string>('CR-TRADER');
+  const [loginid, setLoginid] = useState<string>('');
 
   // WebSocket subscription service connecting to wss://ws.derivws.com/websockets/v3 for real-time balance
   useEffect(() => {

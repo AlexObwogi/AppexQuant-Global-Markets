@@ -581,6 +581,24 @@ export async function createApp() {
     }
   });
 
+  // Manual close a specific open position
+  app.post('/api/positions/close', async (req: Request, res: Response) => {
+    try {
+      const { closePosition } = await import('./src/services/ea/positionEngine.js');
+      const { positionId, reason } = req.body;
+      if (!positionId) {
+        return res.status(400).json(createErrorResponse('Missing positionId', 'BAD_REQUEST'));
+      }
+      const result = closePosition(positionId, reason || 'Manual Exit');
+      if (!result) {
+        return res.status(404).json(createErrorResponse('Position not found or already closed', 'NOT_FOUND'));
+      }
+      res.json(createSuccessResponse(result));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse(err.message || 'Failed to close position', 'POSITION_ERROR'));
+    }
+  });
+
   // Reset positions state
   app.post('/api/positions/reset', requirePermission(UserPermission.MANAGE_SYSTEM), async (req: Request, res: Response) => {
     try {

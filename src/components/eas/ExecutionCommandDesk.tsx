@@ -26,10 +26,16 @@ import { useApiFetch } from '../../utils/apiFetch.ts';
 import { useGlobalState } from '../../state/GlobalStateContext.tsx';
 import { hasPermission } from '../../utils/auth.ts';
 import { UserPermission } from '../../types/user.ts';
+import { useTradeVoiceStatus } from '../../hooks/useTradeVoiceStatus.ts';
 
 export const ExecutionCommandDesk: React.FC = () => {
   const apiFetch = useApiFetch();
   const { state } = useGlobalState();
+  const { 
+    announceOrderSubmitted, 
+    announceOrderCancelled, 
+    processOrdersDelta 
+  } = useTradeVoiceStatus();
   const canManageSystem = state.user && hasPermission(state.user.role, UserPermission.MANAGE_SYSTEM);
   const [orders, setOrders] = useState<ExecutionOrder[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<ExecutionOrder | null>(null);
@@ -58,6 +64,7 @@ export const ExecutionCommandDesk: React.FC = () => {
       const data = await res.json();
       if (data.success) {
         setOrders(data.data);
+        processOrdersDelta(data.data);
         // If selected order is active, refresh its details
         if (selectedOrder) {
           const updatedSelected = data.data.find((o: ExecutionOrder) => o.requestId === selectedOrder.requestId);
@@ -108,6 +115,11 @@ export const ExecutionCommandDesk: React.FC = () => {
       });
       const data = await res.json();
       if (data.success) {
+        announceOrderSubmitted({
+          symbol: dispatchForm.symbol,
+          side: dispatchForm.side,
+          quantity: dispatchForm.quantity
+        });
         // Set tab to pending to watch the live pre-trade progression
         setActiveTab('pending');
         setSelectedOrder(data.data);
@@ -123,6 +135,7 @@ export const ExecutionCommandDesk: React.FC = () => {
   // Request order cancellation
   const handleCancelOrder = async (requestId: string) => {
     try {
+      const orderToCancel = orders.find(o => o.requestId === requestId);
       const res = await apiFetch('/api/execution/cancel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -130,6 +143,9 @@ export const ExecutionCommandDesk: React.FC = () => {
       });
       const data = await res.json();
       if (data.success) {
+        if (orderToCancel) {
+          announceOrderCancelled(orderToCancel.symbol);
+        }
         await fetchOrders(true);
       }
     } catch (err) {

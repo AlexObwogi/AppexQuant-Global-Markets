@@ -18,7 +18,7 @@ export const ConnectionStatus: React.FC = () => {
 
   const isWsConnected = wsState === 'CONNECTED' || derivWs.getConnectionState() === 'CONNECTED';
   const isAuthenticated = state.session.isAuthenticated;
-  const isLiveConnected = isWsConnected && isAuthenticated;
+  const isLiveConnected = isAuthenticated;
 
   const accountType = state.user?.accountType || (state.user?.derivAccountId?.startsWith('VR') ? 'demo' : 'real');
   const env = state.executionEnvironment;

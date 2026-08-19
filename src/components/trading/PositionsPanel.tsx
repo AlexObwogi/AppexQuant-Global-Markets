@@ -29,7 +29,10 @@ export const PositionsPanel: React.FC = () => {
 
   useEffect(() => {
     fetchPositions();
-    const interval = setInterval(() => fetchPositions(true), 2500);
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      fetchPositions(true);
+    }, 4000);
     return () => clearInterval(interval);
   }, []);
 

@@ -12,6 +12,7 @@ import { DependencyTopologyGraph } from '../components/health/DependencyTopology
 import { CircuitBreakerPanel } from '../components/health/CircuitBreakerPanel.tsx';
 import { HealthAuditLogTable } from '../components/health/HealthAuditLogTable.tsx';
 import { useGlobalState } from '../state/GlobalStateContext.tsx';
+import { useSmartQuery } from '../hooks/useSmartQuery.ts';
 import {
   Activity,
   ShieldAlert,
@@ -39,7 +40,20 @@ export const SystemHealthView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'TOPOLOGY' | 'SERVICES_GRID' | 'CIRCUIT_BREAKERS' | 'AUDIT_LOGS'>('TOPOLOGY');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('ALL');
 
-  // Subscribe to real-time service updates
+  // Smart Query for server-side edge-cached health check (Deduplicated, SWR pattern)
+  const { isValidating, mutate: revalidateHealth } = useSmartQuery(
+    '/api/health',
+    async () => {
+      const res = await fetch('/api/health');
+      return res.json();
+    },
+    {
+      dedupingInterval: 30000,
+      revalidateOnFocus: false,
+    }
+  );
+
+  // Subscribe to real-time service updates without high-frequency polling
   useEffect(() => {
     const unsubscribe = systemHealthService.subscribe(() => {
       setServices(systemHealthService.getServices());
@@ -48,14 +62,8 @@ export const SystemHealthView: React.FC = () => {
       setMasterEmergencyStop(systemHealthService.getMasterEmergencyStop());
     });
 
-    // Auto diagnostic pulse every 10 seconds
-    const interval = setInterval(() => {
-      systemHealthService.runDiagnosticsProbe();
-    }, 10000);
-
     return () => {
       unsubscribe();
-      clearInterval(interval);
     };
   }, []);
 

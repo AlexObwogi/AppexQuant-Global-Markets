@@ -11,6 +11,7 @@ import { VerifiedLeaderBadge } from '../components/leaderboard/VerifiedLeaderBad
 import { RetentionModal } from '../components/leaderboard/RetentionModal.tsx';
 import { HallOfFameSection } from '../components/leaderboard/HallOfFameSection.tsx';
 import { useGlobalState } from '../state/GlobalStateContext.tsx';
+import { useSmartQuery } from '../hooks/useSmartQuery.ts';
 import {
   Trophy,
   Crown,
@@ -27,6 +28,7 @@ import {
   Clock,
   History,
   CheckCircle2,
+  RefreshCw,
 } from 'lucide-react';
 
 export const LeaderboardView: React.FC = () => {
@@ -34,31 +36,55 @@ export const LeaderboardView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'LEADERBOARD' | 'HALL_OF_FAME'>('LEADERBOARD');
   const [selectedWindow, setSelectedWindow] = useState<LeaderboardWindow>('MONTHLY');
   const [searchQuery, setSearchQuery] = useState('');
-  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
-  const [hallOfFameInductees, setHallOfFameInductees] = useState<HallOfFameInductee[]>([]);
   const [selectedRetentionTrader, setSelectedRetentionTrader] = useState<LeaderboardEntry | null>(null);
   const [isRetentionModalOpen, setIsRetentionModalOpen] = useState(false);
 
-  // Load data & subscribe to real-time updates
-  useEffect(() => {
-    fetchData();
-
-    // Live tick interval
-    const timer = setInterval(() => {
-      leaderboardService.tickLiveLeaderboard();
-      if (activeTab === 'LEADERBOARD') {
-        setEntries(leaderboardService.getLeaderboard(selectedWindow, searchQuery));
+  // Scalable Edge-Optimized Query via useSmartQuery (Stale-While-Revalidate with deduplication)
+  const {
+    data: fetchedEntries,
+    isValidating,
+    mutate: refreshLeaderboard
+  } = useSmartQuery<LeaderboardEntry[]>(
+    `/api/leaderboard?window=${selectedWindow}&search=${encodeURIComponent(searchQuery)}`,
+    async () => {
+      try {
+        const res = await fetch(`/api/leaderboard?window=${selectedWindow}&search=${encodeURIComponent(searchQuery)}`);
+        const json = await res.json();
+        if (json && json.success && Array.isArray(json.data)) {
+          return json.data;
+        }
+      } catch (e) {
+        // Fallback to local service cache if offline
       }
-    }, 4000);
+      return leaderboardService.getLeaderboard(selectedWindow, searchQuery);
+    },
+    {
+      dedupingInterval: 20000,
+      revalidateOnFocus: false,
+      initialData: leaderboardService.getLeaderboard(selectedWindow, searchQuery),
+    }
+  );
 
-    return () => clearInterval(timer);
-  }, [selectedWindow, searchQuery, activeTab]);
+  const { data: hallOfFameInductees = leaderboardService.getHallOfFame() } = useSmartQuery<HallOfFameInductee[]>(
+    '/api/leaderboard/hall-of-fame',
+    async () => {
+      try {
+        const res = await fetch('/api/leaderboard/hall-of-fame');
+        const json = await res.json();
+        if (json && json.success && Array.isArray(json.data)) {
+          return json.data;
+        }
+      } catch (e) {}
+      return leaderboardService.getHallOfFame();
+    },
+    {
+      dedupingInterval: 60000,
+      revalidateOnFocus: false,
+      initialData: leaderboardService.getHallOfFame(),
+    }
+  );
 
-  const fetchData = () => {
-    const data = leaderboardService.getLeaderboard(selectedWindow, searchQuery);
-    setEntries(data);
-    setHallOfFameInductees(leaderboardService.getHallOfFame());
-  };
+  const entries = fetchedEntries || leaderboardService.getLeaderboard(selectedWindow, searchQuery);
 
   const handleOpenRetention = (entry: LeaderboardEntry) => {
     setSelectedRetentionTrader(entry);
@@ -148,16 +174,25 @@ export const LeaderboardView: React.FC = () => {
               ))}
             </div>
 
-            {/* Search Filter */}
-            <div className="relative w-full md:w-72">
-              <Search className="w-4 h-4 text-text-secondary absolute left-3 top-3" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search ranked trader or strategy..."
-                className="w-full bg-bg-main border border-border-color rounded-xl pl-9 pr-3 py-2.5 text-xs text-text-primary focus:outline-none focus:border-accent-primary font-mono"
-              />
+            {/* Search Filter & Manual SWR Revalidate */}
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <div className="relative w-full md:w-72">
+                <Search className="w-4 h-4 text-text-secondary absolute left-3 top-3" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search ranked trader or strategy..."
+                  className="w-full bg-bg-main border border-border-color rounded-xl pl-9 pr-3 py-2.5 text-xs text-text-primary focus:outline-none focus:border-accent-primary font-mono"
+                />
+              </div>
+              <button
+                onClick={() => refreshLeaderboard()}
+                title="Refresh rankings cache"
+                className="p-2.5 rounded-xl bg-bg-elevated border border-border-color hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-all cursor-pointer shrink-0"
+              >
+                <RefreshCw className={`w-4 h-4 ${isValidating ? 'animate-spin text-accent-primary' : ''}`} />
+              </button>
             </div>
           </div>
 

@@ -133,7 +133,10 @@ export const AutomationOrchestrator: React.FC = () => {
 
   useEffect(() => {
     fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 3000);
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      fetchDashboardData();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 

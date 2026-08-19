@@ -33,7 +33,7 @@ import {
 export const LegalView: React.FC = () => {
   const { state, dispatch } = useGlobalState();
   const apiFetch = useApiFetch();
-  const userId = state.user?.id || 'usr-default-001';
+  const userId = state.user?.id || '';
 
   const [documents, setDocuments] = useState<LegalDocument[]>(OFFICIAL_LEGAL_DOCUMENTS);
   const [acceptances, setAcceptances] = useState<LegalAcceptanceRecord[]>([]);

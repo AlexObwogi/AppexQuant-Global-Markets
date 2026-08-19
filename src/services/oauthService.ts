@@ -51,24 +51,27 @@ export function getDerivRedirectUri(): string {
     if (process.env.VITE_REDIRECT_URI) return process.env.VITE_REDIRECT_URI;
   }
   if (typeof window !== 'undefined' && window.location) {
-    return `${window.location.origin}/api/auth/deriv/callback`;
+    const host = window.location.host;
+    if (host.includes('localhost') || host.includes('run.app')) {
+      return `${window.location.origin}/api/auth/deriv/callback`;
+    }
   }
-  return 'https://appex-quant-global-markets-cnuojfuwm-alexs-projects-73667c3b.vercel.app/api/auth/deriv/callback';
+  return 'https://appex-quant-global-markets.vercel.app/api/auth/deriv/callback';
 }
 
 /**
  * Builds the authentic Deriv OAuth 2.0 authorization URL.
- * Strictly uses scope='trade account_manage' with space-separated encoding.
+ * Strictly uses scope='trade account_manage' with space-separated encoding and l=en.
  */
 export function buildAuthUrl(options: BuildAuthUrlOptions = {}): string {
   const appId = options.appId || options.clientId || getDerivAppId();
   const baseUrl = (typeof process !== 'undefined' && process.env?.DERIV_AUTH_URL) || DERIV_AUTH_BASE_URL;
   const redirectUri = options.redirectUri || getDerivRedirectUri();
 
-  // Build query parameters ensuring strictly space-separated scope='trade account_manage'
+  // Build query parameters ensuring strictly space-separated scope='trade account_manage' and l='en'
   const params: Record<string, string> = {
     app_id: appId,
-    l: options.lang || 'EN',
+    l: (options.lang || 'en').toLowerCase(),
     brand: options.brand || 'deriv',
     redirect_uri: redirectUri,
     scope: options.scope || DERIV_OAUTH_SCOPE,

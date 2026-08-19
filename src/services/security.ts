@@ -107,28 +107,59 @@ export function revokeSessionToken(token: string): void {
   revokedSessionTokens.add(token);
 }
 
-// 4. RATE LIMITING ENGINE
-class RateLimiter {
+// 4. RATE LIMITING ENGINE (Sliding Window & Token Bucket with Standard RFC Headers)
+interface RateLimitResult {
+  limited: boolean;
+  limit: number;
+  remaining: number;
+  resetSeconds: number;
+  retryAfterSeconds: number;
+}
+
+class SlidingWindowRateLimiter {
   private requests = new Map<string, number[]>();
 
   constructor(private limit: number, private windowMs: number) {}
 
-  public isRateLimited(key: string): boolean {
+  public check(key: string): RateLimitResult {
     const now = Date.now();
-    const timestamps = this.requests.get(key) || [];
-    const validTimestamps = timestamps.filter(t => now - t < this.windowMs);
-    if (validTimestamps.length >= this.limit) {
-      return true;
+    const timestamps = (this.requests.get(key) || []).filter(t => now - t < this.windowMs);
+    const oldest = timestamps.length > 0 ? timestamps[0] : now;
+    const resetSeconds = Math.max(1, Math.ceil((oldest + this.windowMs - now) / 1000));
+
+    if (timestamps.length >= this.limit) {
+      return {
+        limited: true,
+        limit: this.limit,
+        remaining: 0,
+        resetSeconds,
+        retryAfterSeconds: resetSeconds,
+      };
     }
-    validTimestamps.push(now);
-    this.requests.set(key, validTimestamps);
-    return false;
+
+    timestamps.push(now);
+    this.requests.set(key, timestamps);
+
+    return {
+      limited: false,
+      limit: this.limit,
+      remaining: Math.max(0, this.limit - timestamps.length),
+      resetSeconds,
+      retryAfterSeconds: 0,
+    };
+  }
+
+  public isRateLimited(key: string): boolean {
+    return this.check(key).limited;
   }
 }
 
-const globalLimiter = new RateLimiter(200, 60000); // 200 reqs/min
-const mfaLimiter = new RateLimiter(10, 30000); // 10 attempts/30 secs
-const orderLimiter = new RateLimiter(15, 10000); // 15 orders/10 secs (prevents high-frequency flood)
+const globalLimiter = new SlidingWindowRateLimiter(300, 60000); // 300 reqs/min general API
+const authLimiter = new SlidingWindowRateLimiter(15, 60000); // 15 login/session attempts/min (brute-force defense)
+const mfaLimiter = new SlidingWindowRateLimiter(10, 30000); // 10 attempts/30 secs
+const orderLimiter = new SlidingWindowRateLimiter(20, 10000); // 20 orders/10 secs (order flood defense)
+const ingestionLimiter = new SlidingWindowRateLimiter(60, 60000); // 60 data writes/min
+const aiLimiter = new SlidingWindowRateLimiter(30, 60000); // 30 AI queries/min
 
 // 5. STRUCTURED SECURITY LOGGING Helper
 export function logSecurityEvent(
@@ -151,6 +182,15 @@ export function logSecurityEvent(
   console.log(`[SECURITY_${severity}] ${JSON.stringify(logObj)}`);
 }
 
+function applyRateLimitHeaders(res: Response, result: RateLimitResult): void {
+  res.setHeader('RateLimit-Limit', result.limit);
+  res.setHeader('RateLimit-Remaining', result.remaining);
+  res.setHeader('RateLimit-Reset', result.resetSeconds);
+  if (result.limited) {
+    res.setHeader('Retry-After', result.retryAfterSeconds);
+  }
+}
+
 // 6. EXPRESS MIDDLEWARES
 export function requestIdMiddleware(req: Request, res: Response, next: NextFunction): void {
   req.id = crypto.randomBytes(16).toString('hex');
@@ -159,11 +199,74 @@ export function requestIdMiddleware(req: Request, res: Response, next: NextFunct
 }
 
 export function rateLimiterMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const ip = req.ip || '0.0.0.0';
-  const key = `${ip}:${req.path}`;
-  if (globalLimiter.isRateLimited(key)) {
-    logSecurityEvent(req, 'RATE_LIMIT_EXCEEDED', 'WARNING', { path: req.path });
-    res.status(429).json({ success: false, error: 'Too Many Requests', code: 'RATE_LIMIT_EXCEEDED' });
+  const ip = req.ip || req.socket.remoteAddress || '0.0.0.0';
+  const key = `global:${ip}`;
+  const result = globalLimiter.check(key);
+  applyRateLimitHeaders(res, result);
+
+  if (result.limited) {
+    logSecurityEvent(req, 'GLOBAL_RATE_LIMIT_EXCEEDED', 'WARNING', { path: req.path });
+    res.status(429).json({
+      success: false,
+      error: 'Too Many Requests - Rate limit exceeded. Please retry after ' + result.retryAfterSeconds + 's',
+      code: 'RATE_LIMIT_EXCEEDED',
+      retryAfter: result.retryAfterSeconds,
+    });
+    return;
+  }
+  next();
+}
+
+export function authRateLimiterMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const ip = req.ip || req.socket.remoteAddress || '0.0.0.0';
+  const key = `auth:${ip}`;
+  const result = authLimiter.check(key);
+  applyRateLimitHeaders(res, result);
+
+  if (result.limited) {
+    logSecurityEvent(req, 'AUTH_RATE_LIMIT_EXCEEDED', 'CRITICAL', { path: req.path, ip });
+    res.status(429).json({
+      success: false,
+      error: 'Too many authentication attempts. Please wait before retrying.',
+      code: 'AUTH_RATE_LIMITED',
+      retryAfter: result.retryAfterSeconds,
+    });
+    return;
+  }
+  next();
+}
+
+export function ingestionRateLimiterMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const key = req.sessionUser?.userId ? `ingest:usr:${req.sessionUser.userId}` : `ingest:ip:${req.ip || '0.0.0.0'}`;
+  const result = ingestionLimiter.check(key);
+  applyRateLimitHeaders(res, result);
+
+  if (result.limited) {
+    logSecurityEvent(req, 'INGESTION_RATE_LIMIT_EXCEEDED', 'WARNING', { path: req.path });
+    res.status(429).json({
+      success: false,
+      error: 'Data ingestion rate limit exceeded.',
+      code: 'INGESTION_RATE_LIMITED',
+      retryAfter: result.retryAfterSeconds,
+    });
+    return;
+  }
+  next();
+}
+
+export function aiRateLimiterMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const key = req.sessionUser?.userId ? `ai:usr:${req.sessionUser.userId}` : `ai:ip:${req.ip || '0.0.0.0'}`;
+  const result = aiLimiter.check(key);
+  applyRateLimitHeaders(res, result);
+
+  if (result.limited) {
+    logSecurityEvent(req, 'AI_RATE_LIMIT_EXCEEDED', 'WARNING', { path: req.path });
+    res.status(429).json({
+      success: false,
+      error: 'AI inference rate limit exceeded. Please wait a moment.',
+      code: 'AI_RATE_LIMITED',
+      retryAfter: result.retryAfterSeconds,
+    });
     return;
   }
   next();
@@ -171,19 +274,36 @@ export function rateLimiterMiddleware(req: Request, res: Response, next: NextFun
 
 export function mfaRateLimiterMiddleware(req: Request, res: Response, next: NextFunction): void {
   const ip = req.ip || '0.0.0.0';
-  if (mfaLimiter.isRateLimited(ip)) {
+  const key = `mfa:${ip}`;
+  const result = mfaLimiter.check(key);
+  applyRateLimitHeaders(res, result);
+
+  if (result.limited) {
     logSecurityEvent(req, 'MFA_RATE_LIMIT_EXCEEDED', 'CRITICAL', { path: req.path });
-    res.status(429).json({ success: false, error: 'Too many MFA attempts. Access blocked.', code: 'MFA_BLOCKED' });
+    res.status(429).json({
+      success: false,
+      error: 'Too many MFA verification attempts. Access temporarily locked.',
+      code: 'MFA_BLOCKED',
+      retryAfter: result.retryAfterSeconds,
+    });
     return;
   }
   next();
 }
 
 export function orderRateLimiterMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const key = req.sessionUser?.userId || req.ip || '0.0.0.0';
-  if (orderLimiter.isRateLimited(key)) {
+  const key = req.sessionUser?.userId ? `order:usr:${req.sessionUser.userId}` : `order:ip:${req.ip || '0.0.0.0'}`;
+  const result = orderLimiter.check(key);
+  applyRateLimitHeaders(res, result);
+
+  if (result.limited) {
     logSecurityEvent(req, 'ORDER_RATE_LIMIT_EXCEEDED', 'WARNING', { path: req.path });
-    res.status(429).json({ success: false, error: 'Order rate limit exceeded. Slow down.', code: 'ORDER_LIMIT_EXCEEDED' });
+    res.status(429).json({
+      success: false,
+      error: 'Order execution rate limit reached. Slow down trading requests.',
+      code: 'ORDER_LIMIT_EXCEEDED',
+      retryAfter: result.retryAfterSeconds,
+    });
     return;
   }
   next();

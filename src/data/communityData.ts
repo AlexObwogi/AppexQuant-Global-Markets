@@ -106,8 +106,8 @@ export const INITIAL_TRADER_PROFILES: TraderProfile[] = [
   },
   {
     id: 'trader-current',
-    userId: 'usr-default-001',
-    displayName: 'Alex Obwogi (You)',
+    userId: 'usr-admin-alex',
+    displayName: 'Alex Obwogi',
     username: 'alex_appexquant',
     avatar: 'AO',
     country: 'Kenya',

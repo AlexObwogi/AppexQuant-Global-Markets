@@ -22,9 +22,7 @@ let profilesStore: TraderProfile[] = [...INITIAL_TRADER_PROFILES];
 let postsStore: CommunityPost[] = [...INITIAL_COMMUNITY_POSTS];
 let reportsStore: CommunityReport[] = [...INITIAL_COMMUNITY_REPORTS];
 let verificationRequestsStore: VerificationRequest[] = [...INITIAL_VERIFICATION_REQUESTS];
-let userFollowsStore: Record<string, string[]> = {
-  'usr-default-001': ['trader-001'],
-};
+let userFollowsStore: Record<string, string[]> = {};
 let userBlocksStore: Record<string, string[]> = {};
 
 // 1. Get Profiles

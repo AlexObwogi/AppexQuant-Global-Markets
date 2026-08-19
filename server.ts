@@ -34,6 +34,9 @@ import {
 import {
   requestIdMiddleware,
   rateLimiterMiddleware,
+  authRateLimiterMiddleware,
+  ingestionRateLimiterMiddleware,
+  aiRateLimiterMiddleware,
   mfaRateLimiterMiddleware,
   orderRateLimiterMiddleware,
   sessionMiddleware,
@@ -49,6 +52,10 @@ import {
   parseCookies,
   SessionPayload
 } from './src/services/security.ts';
+import { edgeCache, edgeCacheStore } from './src/lib/cache/edgeCache.ts';
+import { dbQueries } from './src/lib/db/prisma.ts';
+import { leaderboardService } from './src/services/leaderboard/leaderboardService.ts';
+import { LeaderboardWindow } from './src/types/leaderboard.ts';
 
 import {
   initiateDerivOAuth,
@@ -140,8 +147,8 @@ export async function createApp() {
   };
 
   // API Endpoints
-  // 1. Health Check
-  app.get('/api/health', (req: Request, res: Response) => {
+  // 1. Health Check with Edge Caching
+  app.get('/api/health', edgeCache({ ttlSeconds: 10, swrSeconds: 30, tags: ['health'], isPublic: true }), (req: Request, res: Response) => {
     res.json(
       createSuccessResponse({
         status: 'ok',
@@ -158,8 +165,8 @@ export async function createApp() {
     );
   });
 
-  // 2. Public Safe Config
-  app.get('/api/config/public', (req: Request, res: Response) => {
+  // 2. Public Safe Config with Edge Caching
+  app.get('/api/config/public', edgeCache({ ttlSeconds: 300, swrSeconds: 900, tags: ['config'], isPublic: true }), (req: Request, res: Response) => {
     res.json(
       createSuccessResponse({
         env: config.env,
@@ -169,6 +176,47 @@ export async function createApp() {
         featureFlagsEnabled: config.featureFlagsEnabled,
       })
     );
+  });
+
+  // 2b. Edge-Optimized Leaderboard Top Endpoints (ISR / Edge Network Cached)
+  app.get('/api/leaderboard/top', edgeCache({ ttlSeconds: 60, swrSeconds: 300, tags: ['leaderboard'], isPublic: true }), async (req: Request, res: Response) => {
+    try {
+      const window = ((req.query.window as string) || 'MONTHLY').toUpperCase() as LeaderboardWindow;
+      const limit = Math.min(parseInt((req.query.limit as string) || '20', 10), 100);
+
+      // Fast-path: query PostgreSQL via Prisma with indexed projection
+      const prismaEntries = await dbQueries.getTopLeaderboard(window, limit);
+      if (prismaEntries && prismaEntries.length > 0) {
+        return res.json(createSuccessResponse(prismaEntries));
+      }
+
+      // Memory-fallback path
+      const entries = leaderboardService.getLeaderboard(window).slice(0, limit);
+      res.json(createSuccessResponse(entries));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Failed to fetch top leaderboard', 'LEADERBOARD_ERROR'));
+    }
+  });
+
+  app.get('/api/leaderboard', edgeCache({ ttlSeconds: 60, swrSeconds: 300, tags: ['leaderboard'], isPublic: true }), (req: Request, res: Response) => {
+    try {
+      const window = ((req.query.window as string) || 'MONTHLY').toUpperCase() as LeaderboardWindow;
+      const search = req.query.search as string | undefined;
+      const entries = leaderboardService.getLeaderboard(window, search);
+      res.json(createSuccessResponse(entries));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Failed to fetch leaderboard entries', 'LEADERBOARD_ERROR'));
+    }
+  });
+
+  app.get('/api/leaderboard/hall-of-fame', edgeCache({ ttlSeconds: 300, swrSeconds: 900, tags: ['leaderboard', 'hall-of-fame'], isPublic: true }), (req: Request, res: Response) => {
+    try {
+      const filter = (req.query.filter as string | undefined)?.toUpperCase() as 'ALL' | 'YEARLY' | 'MONTHLY' | undefined;
+      const inductees = leaderboardService.getHallOfFame(filter);
+      res.json(createSuccessResponse(inductees));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Failed to fetch Hall of Fame', 'HALL_OF_FAME_ERROR'));
+    }
   });
 
   // 3. Audit Logs Stream (Authenticated / Protected Endpoint)
@@ -263,8 +311,8 @@ export async function createApp() {
     res.json(createSuccessResponse({ reset: true, timestamp: new Date().toISOString() }));
   });
 
-  // 4. AI Market Analysis Endpoint
-  app.post('/api/ai/analyze', async (req: Request, res: Response) => {
+  // 4. AI Market Analysis Endpoint (Protected with AI Rate Limiter)
+  app.post('/api/ai/analyze', aiRateLimiterMiddleware, async (req: Request, res: Response) => {
     try {
       const { symbol, marketSummary, userStrategyText } = req.body;
       const { analyzeMarketWithGemini } = await import('./src/services/ai/geminiBridge.js');
@@ -275,8 +323,8 @@ export async function createApp() {
     }
   });
 
-  // 5. AI Strategy Parser Endpoint
-  app.post('/api/ai/parse-strategy', async (req: Request, res: Response) => {
+  // 5. AI Strategy Parser Endpoint (Protected with AI Rate Limiter)
+  app.post('/api/ai/parse-strategy', aiRateLimiterMiddleware, async (req: Request, res: Response) => {
     try {
       const { promptText } = req.body;
       const { parseNaturalLanguageStrategy } = await import('./src/services/ai/strategyEngine.js');
@@ -287,8 +335,8 @@ export async function createApp() {
     }
   });
 
-  // 6. AI Assisted Strategy Builder Endpoint
-  app.post('/api/ai/build-strategy', async (req: Request, res: Response) => {
+  // 6. AI Assisted Strategy Builder Endpoint (Protected with AI Rate Limiter)
+  app.post('/api/ai/build-strategy', aiRateLimiterMiddleware, async (req: Request, res: Response) => {
     try {
       const { promptText } = req.body;
       const { buildStrategyWithAI } = await import('./src/services/ai/aiStrategyBuilder.js');
@@ -299,49 +347,8 @@ export async function createApp() {
     }
   });
 
-  // 7. Multi-Tier Leaderboard, Hall of Fame, & 2-Year Retention API Endpoints
-  app.get('/api/leaderboard', async (req: Request, res: Response) => {
-    try {
-      const { leaderboardService } = await import('./src/services/leaderboard/leaderboardService.js');
-      const window = (req.query.window as any) || 'MONTHLY';
-      const search = req.query.search as string | undefined;
-      const data = leaderboardService.getLeaderboard(window, search);
-      res.json(createSuccessResponse(data));
-    } catch (err: any) {
-      res.status(500).json(createErrorResponse(err.message || 'Failed to fetch leaderboard', 'LEADERBOARD_ERROR'));
-    }
-  });
-
-  app.get('/api/leaderboard/top', async (req: Request, res: Response) => {
-    try {
-      const { leaderboardService } = await import('./src/services/leaderboard/leaderboardService.js');
-      const topMonthly = leaderboardService.getLeaderboard('MONTHLY')[0];
-      res.json(createSuccessResponse({
-        name: topMonthly ? topMonthly.displayName : 'Alex Nyangaresi Obwogi',
-        roi: topMonthly ? `+${topMonthly.roiPct.toFixed(1)}%` : '+247.1%',
-        pnlUsd: topMonthly ? topMonthly.pnlUsd : 1420800,
-        winRate: topMonthly ? topMonthly.winRatePct : 91.4,
-        badges: topMonthly ? topMonthly.badges : [],
-      }));
-    } catch (err: any) {
-      res.json(createSuccessResponse({
-        name: 'Alex Nyangaresi Obwogi',
-        roi: '+247.1%',
-      }));
-    }
-  });
-
-  app.get('/api/leaderboard/hall-of-fame', async (req: Request, res: Response) => {
-    try {
-      const { leaderboardService } = await import('./src/services/leaderboard/leaderboardService.js');
-      const inductees = leaderboardService.getHallOfFame();
-      res.json(createSuccessResponse(inductees));
-    } catch (err: any) {
-      res.status(500).json(createErrorResponse(err.message || 'Failed to fetch Hall of Fame', 'HALL_OF_FAME_ERROR'));
-    }
-  });
-
-  app.get('/api/leaderboard/retention/:userId', async (req: Request, res: Response) => {
+  // 7. Multi-Tier Leaderboard, Hall of Fame, & 2-Year Retention API Endpoints (Edge Cached)
+  app.get('/api/leaderboard/retention/:userId', edgeCache({ ttlSeconds: 300, swrSeconds: 900, tags: ['leaderboard'], isPublic: true }), async (req: Request, res: Response) => {
     try {
       const { leaderboardService } = await import('./src/services/leaderboard/leaderboardService.js');
       const trader = leaderboardService.getTraderById(req.params.userId);
@@ -808,7 +815,7 @@ export async function createApp() {
   ];
 
   // 1. Secure Authentication Login Endpoint
-  app.post('/api/auth/login', async (req: Request, res: Response) => {
+  app.post('/api/auth/login', authRateLimiterMiddleware, async (req: Request, res: Response) => {
     try {
       const { email, password, role } = req.body;
       
@@ -862,22 +869,11 @@ export async function createApp() {
             status: 'ACTIVE',
           };
         } else {
-          targetUser = mockUsers.find(u => u.email === email) || {
-            id: 'usr-default-001',
-            displayName: 'Appex Quant Trader',
-            email: email || 'trader@appexquant.global',
-            role: (role as UserRole) || 'USER',
-            status: 'ACTIVE',
-          };
+          targetUser = mockUsers.find(u => u.email === email);
+          if (!targetUser) {
+            return res.status(401).json(createErrorResponse('Invalid credentials', 'INVALID_CREDENTIALS'));
+          }
         }
-      }
-
-      // Automatically handle live broker handshake on authentication behind the scenes
-      try {
-        const liveToken =  `secure_pkce_deriv_${crypto.randomBytes(16).toString('hex')}`;
-        connectUserWithApiToken(targetUser.id, liveToken);
-      } catch (err: any) {
-        logger.error('Failed to auto-connect live broker during login handshake:', { error: err.message });
       }
 
       const csrfToken = crypto.randomBytes(32).toString('hex');
@@ -909,7 +905,7 @@ export async function createApp() {
   });
 
   // 1b. Referral-Gated Account Creation (Sign Up) Endpoint
-  app.post('/api/auth/register', async (req: Request, res: Response) => {
+  app.post('/api/auth/register', authRateLimiterMiddleware, async (req: Request, res: Response) => {
     try {
       const { email, displayName, password, referralCode } = req.body;
       
@@ -1076,8 +1072,8 @@ export async function createApp() {
     }));
   };
 
-  app.get('/api/auth/session', sessionHandler);
-  app.get('/api/auth/me', sessionHandler);
+  app.get('/api/auth/session', authRateLimiterMiddleware, sessionHandler);
+  app.get('/api/auth/me', authRateLimiterMiddleware, sessionHandler);
 
   // 4. Secure Logout Endpoint
   app.post('/api/auth/logout', (req: Request, res: Response) => {
@@ -1161,11 +1157,11 @@ export async function createApp() {
     }
   };
 
-  app.all(['/api/auth/deriv/login', '/api/auth/deriv/signin', '/api/deriv/oauth/init'], derivAuthInitHandler);
-  app.all(['/api/auth/deriv/register', '/api/auth/deriv/signup', '/api/auth/deriv/open_account'], derivAuthInitHandler);
+  app.all(['/api/auth/deriv/login', '/api/auth/deriv/signin', '/api/deriv/oauth/init'], authRateLimiterMiddleware, derivAuthInitHandler);
+  app.all(['/api/auth/deriv/register', '/api/auth/deriv/signup', '/api/auth/deriv/open_account'], authRateLimiterMiddleware, derivAuthInitHandler);
 
   // Deriv OAuth Callback endpoint (Server-side token exchange & session establishment)
-  app.get(['/api/auth/deriv/callback', '/auth/deriv/callback'], async (req: Request, res: Response) => {
+  app.get(['/api/auth/deriv/callback', '/auth/deriv/callback'], authRateLimiterMiddleware, async (req: Request, res: Response) => {
     const isHttps = (req.headers['x-forwarded-proto'] as string) === 'https' || req.secure || process.env.APP_ENV === 'production';
     const secureFlag = isHttps ? '; Secure' : '';
 
@@ -1284,9 +1280,12 @@ export async function createApp() {
   // Get current user's safe Deriv connection metadata (No secret tokens returned to normal users)
   app.get('/api/auth/deriv/status', async (req: Request, res: Response) => {
     try {
-      const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string) || 'usr-default-001';
+      const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string);
+      if (!userId) {
+        return res.json(createSuccessResponse({ connected: false, connectionStatus: 'DISCONNECTED' }));
+      }
       const metadata = await getUserDerivConnectionAsync(userId);
-      res.json(createSuccessResponse(metadata));
+      res.json(createSuccessResponse(metadata || { connected: false, connectionStatus: 'DISCONNECTED' }));
     } catch (err: any) {
       res.status(500).json(createErrorResponse('Failed to fetch Deriv connection status', 'DERIV_STATUS_ERROR'));
     }
@@ -1295,7 +1294,10 @@ export async function createApp() {
   // Disconnect Deriv connection (User action or Admin)
   app.post('/api/auth/deriv/disconnect', (req: Request, res: Response) => {
     try {
-      const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string) || 'usr-default-001';
+      const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string);
+      if (!userId) {
+        return res.status(401).json(createErrorResponse('Authentication required', 'UNAUTHENTICATED'));
+      }
       const success = disconnectUserDeriv(userId);
       logAuditEvent('ACCOUNT_DISCONNECTED', userId, { event: 'DERIV_ACCOUNT_DISCONNECTED' });
       res.json(createSuccessResponse({ disconnected: success }));
@@ -1307,7 +1309,10 @@ export async function createApp() {
   // Trigger manual Deriv account metadata & balance sync
   app.post('/api/auth/deriv/sync', (req: Request, res: Response) => {
     try {
-      const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string) || 'usr-default-001';
+      const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string);
+      if (!userId) {
+        return res.status(401).json(createErrorResponse('Authentication required', 'UNAUTHENTICATED'));
+      }
       const metadata = syncUserDeriv(userId);
       res.json(createSuccessResponse(metadata));
     } catch (err: any) {
@@ -1318,11 +1323,11 @@ export async function createApp() {
   // Login using Deriv API Token
   app.post('/api/auth/deriv/token-login', async (req: Request, res: Response) => {
     try {
-      const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string) || 'usr-default-001';
       const { apiToken } = req.body;
       if (!apiToken || typeof apiToken !== 'string' || apiToken.trim().length < 5) {
         return res.status(400).json(createErrorResponse('Invalid Deriv API token provided', 'INVALID_API_TOKEN'));
       }
+      const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string) || `usr-${crypto.randomBytes(6).toString('hex')}`;
       const metadata = await connectUserWithApiTokenAsync(userId, apiToken);
       logAuditEvent('ACCOUNT_CONNECTED', userId, { event: 'DERIV_API_TOKEN_CONNECTED' });
       res.json(createSuccessResponse(metadata));
@@ -1429,8 +1434,8 @@ export async function createApp() {
     }))
   ];
 
-  // 1. Get all active legal disclosure documents
-  app.get('/api/legal/documents', (req: Request, res: Response) => {
+  // 1. Get all active legal disclosure documents (Edge Cached)
+  app.get('/api/legal/documents', edgeCache({ ttlSeconds: 3600, swrSeconds: 86400, tags: ['legal'], isPublic: true }), (req: Request, res: Response) => {
     try {
       res.json(createSuccessResponse(legalDocumentsStore));
     } catch (err: any) {
@@ -1600,7 +1605,7 @@ export async function createApp() {
       const oldRole = userToUpdate.role;
       userToUpdate.role = newRole;
 
-      logAuditEvent('ADMIN_ACTION', (req.headers['x-user-id'] || 'usr-default-001') as string, {
+      logAuditEvent('ADMIN_ACTION', (req.headers['x-user-id'] || req.sessionUser?.userId || 'system') as string, {
         event: 'USER_ROLE_UPDATED',
         targetUserId,
         targetEmail: userToUpdate.email,
@@ -1619,7 +1624,7 @@ export async function createApp() {
   // 1. Get Trader Profiles
   app.get('/api/community/profiles', (req: Request, res: Response) => {
     try {
-      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || 'usr-default-001';
+      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || '';
       const profiles = getTraderProfiles(currentUserId);
       res.json(createSuccessResponse(profiles));
     } catch (err: any) {
@@ -1630,7 +1635,7 @@ export async function createApp() {
   // 2. Get Single Profile
   app.get('/api/community/profiles/:id', (req: Request, res: Response) => {
     try {
-      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || 'usr-default-001';
+      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || '';
       const profile = getTraderProfileByUserId(req.params.id, currentUserId);
       if (!profile) {
         return res.status(404).json(createErrorResponse('Trader profile not found', 'NOT_FOUND'));
@@ -1644,7 +1649,7 @@ export async function createApp() {
   // 3. Update Current User Profile
   app.put('/api/community/profiles/me', (req: Request, res: Response) => {
     try {
-      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || 'usr-default-001';
+      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || '';
       const updated = updateTraderProfile(currentUserId, req.body);
       if (!updated) {
         return res.status(404).json(createErrorResponse('User profile not found', 'NOT_FOUND'));
@@ -1658,7 +1663,7 @@ export async function createApp() {
   // 4. Toggle Follow/Unfollow
   app.post('/api/community/follow', (req: Request, res: Response) => {
     try {
-      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || 'usr-default-001';
+      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || '';
       const { targetTraderId } = req.body;
       if (!targetTraderId) {
         return res.status(400).json(createErrorResponse('targetTraderId is required', 'INVALID_PAYLOAD'));
@@ -1670,10 +1675,10 @@ export async function createApp() {
     }
   });
 
-  // 5. Get Posts
-  app.get('/api/community/posts', (req: Request, res: Response) => {
+  // 5. Get Posts (Edge Cached)
+  app.get('/api/community/posts', edgeCache({ ttlSeconds: 20, swrSeconds: 60, tags: ['community'], isPublic: true }), (req: Request, res: Response) => {
     try {
-      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || 'usr-default-001';
+      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || '';
       const category = req.query.category as string | undefined;
       const search = req.query.search as string | undefined;
       const posts = getCommunityPosts(category, search, currentUserId);
@@ -1683,14 +1688,15 @@ export async function createApp() {
     }
   });
 
-  // 6. Create Post
+  // 6. Create Post (Invalidates Community Cache)
   app.post('/api/community/posts', (req: Request, res: Response) => {
     try {
-      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || 'usr-default-001';
+      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || '';
       const newPost = createCommunityPost({
         ...req.body,
         authorId: currentUserId,
       });
+      edgeCacheStore.invalidateTag('community');
       logAuditEvent('COMMUNITY_ACTION', currentUserId, { event: 'POST_CREATED', postId: newPost.id, title: newPost.title });
       res.json(createSuccessResponse(newPost));
     } catch (err: any) {
@@ -1698,11 +1704,12 @@ export async function createApp() {
     }
   });
 
-  // 7. Toggle Like Post
+  // 7. Toggle Like Post (Invalidates Community Cache)
   app.post('/api/community/posts/:id/like', (req: Request, res: Response) => {
     try {
-      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || 'usr-default-001';
+      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || '';
       const result = toggleLikePost(req.params.id, currentUserId);
+      edgeCacheStore.invalidateTag('community');
       res.json(createSuccessResponse(result));
     } catch (err: any) {
       res.status(500).json(createErrorResponse('Failed to toggle like', 'LIKE_ERROR'));
@@ -1712,7 +1719,7 @@ export async function createApp() {
   // 8. Add Comment
   app.post('/api/community/posts/:id/comments', (req: Request, res: Response) => {
     try {
-      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || 'usr-default-001';
+      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || '';
       const comment = addPostComment(req.params.id, {
         ...req.body,
         authorId: currentUserId,
@@ -1721,16 +1728,17 @@ export async function createApp() {
       if (!comment) {
         return res.status(404).json(createErrorResponse('Target post not found', 'NOT_FOUND'));
       }
+      edgeCacheStore.invalidateTag('community');
       res.json(createSuccessResponse(comment));
     } catch (err: any) {
       res.status(500).json(createErrorResponse('Failed to add comment', 'COMMENT_ERROR'));
     }
   });
 
-  // 9. Submit Report
-  app.post('/api/community/report', (req: Request, res: Response) => {
+  // 9. Submit Report (Protected with Ingestion Rate Limiter)
+  app.post('/api/community/report', ingestionRateLimiterMiddleware, (req: Request, res: Response) => {
     try {
-      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || 'usr-default-001';
+      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || '';
       const report = submitCommunityReport({
         ...req.body,
         reporterId: currentUserId,
@@ -1745,7 +1753,7 @@ export async function createApp() {
   // 10. Toggle Block User
   app.post('/api/community/block', (req: Request, res: Response) => {
     try {
-      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || 'usr-default-001';
+      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || '';
       const { targetUserId } = req.body;
       if (!targetUserId) {
         return res.status(400).json(createErrorResponse('targetUserId is required', 'INVALID_PAYLOAD'));
@@ -1757,10 +1765,10 @@ export async function createApp() {
     }
   });
 
-  // 11. Submit Verification Request
-  app.post('/api/community/verification/request', (req: Request, res: Response) => {
+  // 11. Submit Verification Request (Protected with Ingestion Rate Limiter)
+  app.post('/api/community/verification/request', ingestionRateLimiterMiddleware, (req: Request, res: Response) => {
     try {
-      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || 'usr-default-001';
+      const currentUserId = (req.headers['x-user-id'] as string) || req.sessionUser?.userId || '';
       const reqPayload = submitVerificationRequest({
         ...req.body,
         userId: currentUserId,
@@ -1789,7 +1797,7 @@ export async function createApp() {
       if (!success) {
         return res.status(404).json(createErrorResponse('Report not found', 'NOT_FOUND'));
       }
-      logAuditEvent('ADMIN_ACTION', (req.headers['x-user-id'] || 'usr-default-001') as string, { event: 'REPORT_RESOLVED', reportId, actionTaken });
+      logAuditEvent('ADMIN_ACTION', (req.headers['x-user-id'] || req.sessionUser?.userId || 'system') as string, { event: 'REPORT_RESOLVED', reportId, actionTaken });
       res.json(createSuccessResponse({ resolved: true, reportId }));
     } catch (err: any) {
       res.status(500).json(createErrorResponse('Failed to resolve report', 'ADMIN_REPORT_RESOLVE_ERROR'));
@@ -1813,7 +1821,7 @@ export async function createApp() {
       if (!updated) {
         return res.status(404).json(createErrorResponse('Verification request not found', 'NOT_FOUND'));
       }
-      logAuditEvent('ADMIN_ACTION', (req.headers['x-user-id'] || 'usr-default-001') as string, {
+      logAuditEvent('ADMIN_ACTION', (req.headers['x-user-id'] || req.sessionUser?.userId || 'system') as string, {
         event: 'VERIFICATION_REVIEWED',
         requestId,
         targetUserId: updated.userId,

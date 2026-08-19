@@ -163,7 +163,7 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
           user: null,
           session: {
             ...state.session,
-            userId: 'usr-default-001',
+            userId: '',
             isAuthenticated: false,
           },
         };

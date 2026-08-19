@@ -470,7 +470,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         redirectUri,
         scope: DERIV_OAUTH_SCOPE,
         brand: 'deriv',
-        lang: 'EN',
+        lang: 'en',
       });
 
       // Full-page browser redirect to https://oauth.deriv.com/oauth2/authorize
@@ -492,42 +492,85 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
     if (authError || rawError || rawErrorDesc || (rawMessage && !connection)) {
       callbackHandledRef.current = true;
-      let computedErrorMessage = rawMessage || 'Deriv authorization encountered an error. Please try logging in again.';
+      let computedErrorMessage = rawMessage;
+      if (!computedErrorMessage) {
+        if (rawError === 'oauth_failed') {
+          computedErrorMessage = 'Deriv OAuth authentication could not be completed. Please try signing in again.';
+        } else if (rawError === 'access_denied') {
+          computedErrorMessage = 'Authorization was cancelled or access denied by user.';
+        } else {
+          computedErrorMessage = rawErrorDesc || 'Deriv authorization encountered an error. Please try logging in again.';
+        }
+      }
       setErrorMessage(computedErrorMessage);
       window.history.replaceState({}, document.title, window.location.pathname);
       return;
     }
 
     if (connection === 'success') {
-       callbackHandledRef.current = true;
-       setIsAuthorizing(true);
-       setAuthStatusMessage('Synchronizing authorized broker session...');
-       window.history.replaceState({}, document.title, window.location.pathname);
+      callbackHandledRef.current = true;
+      setIsAuthorizing(true);
+      setAuthStatusMessage('Synchronizing authorized broker session...');
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
 
-    // Check session status from secure backend
-    apiFetch('/api/auth/session')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.data?.authenticated && data.data.user) {
-          const user = data.data.user;
-          establishUserSession({
-            id: user.userId || user.derivAccountId,
-            accountId: user.derivAccountId || user.userId,
-            email: user.email,
-            displayName: user.displayName,
-            fullName: user.fullName,
-            balance: user.balance,
-            currency: user.currency,
-            accountType: user.accountType,
-            role: user.role,
-          });
-        }
-      })
-      .catch((err) => console.warn('[AuthGate] Session retrieval warning:', err))
-      .finally(() => setIsAuthorizing(false));
+    // Controlled single-flight session check on mount with exponential backoff on network failures
+    let isCancelled = false;
+    let retries = 0;
+    let delay = 1000;
+    const maxRetries = 2;
 
-  }, [apiFetch, establishUserSession]);
+    const verifySession = async () => {
+      while (retries <= maxRetries && !isCancelled) {
+        try {
+          const res = await apiFetch('/api/auth/session');
+          if (res.status === 401 || res.status === 403) {
+            // Unauthenticated session - stop immediately
+            if (!isCancelled) setIsAuthorizing(false);
+            return;
+          }
+          if (res.ok) {
+            const data = await res.json().catch(() => null);
+            if (data && data.success && data.data?.authenticated && data.data.user) {
+              const user = data.data.user;
+              if (!isCancelled) {
+                establishUserSession({
+                  id: user.userId || user.derivAccountId,
+                  accountId: user.derivAccountId || user.userId,
+                  email: user.email,
+                  displayName: user.displayName,
+                  fullName: user.fullName,
+                  balance: user.balance,
+                  currency: user.currency,
+                  accountType: user.accountType,
+                  role: user.role,
+                });
+              }
+            }
+            if (!isCancelled) setIsAuthorizing(false);
+            return;
+          } else {
+            throw new Error(`Session verification HTTP ${res.status}`);
+          }
+        } catch {
+          retries++;
+          if (retries > maxRetries) {
+            if (!isCancelled) setIsAuthorizing(false);
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          delay *= 2;
+        }
+      }
+      if (!isCancelled) setIsAuthorizing(false);
+    };
+
+    verifySession();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [establishUserSession]);
 
   // Fetch top trader data for live display
   useEffect(() => {

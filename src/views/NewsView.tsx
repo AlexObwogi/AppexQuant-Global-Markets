@@ -148,7 +148,7 @@ export const NewsView: React.FC = () => {
       case AlertType.AUTHENTICATION_EVENT:
         setSimSource('Auth-System Monitor');
         setSimSeverity(AlertSeverity.INFO);
-        setSimMessage('User "usr-default-001" logged in from a new Chrome environment (IP: 185.190.140.23).');
+        setSimMessage(`User session authenticated from IP 185.190.140.23.`);
         break;
       case AlertType.SECURITY_EVENT:
         setSimSource('Cloudflare Web Firewall');
@@ -176,12 +176,13 @@ export const NewsView: React.FC = () => {
 
   const loadPreferences = async () => {
     setPrefsLoading(true);
+    const uid = state.user?.id || 'anonymous';
     try {
-      const response = await apiFetch('/api/alerts/preferences/usr-default-001');
+      const response = await apiFetch(`/api/alerts/preferences/${uid}`);
       const result = await response.json();
       if (result.success && result.data) {
         setUserPrefs(result.data);
-        setTempEmail(result.data.emailAddress || 'trader@appexquant.global');
+        setTempEmail(result.data.emailAddress || state.user?.email || '');
         setEmailConfigured(result.data.emailConfigured);
         setPushSupported(result.data.pushSupported);
       }
@@ -255,8 +256,9 @@ export const NewsView: React.FC = () => {
       pushSupported: pushSupported,
     };
 
+    const uid = state.user?.id || 'anonymous';
     try {
-      const response = await apiFetch('/api/alerts/preferences/usr-default-001', {
+      const response = await apiFetch(`/api/alerts/preferences/${uid}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

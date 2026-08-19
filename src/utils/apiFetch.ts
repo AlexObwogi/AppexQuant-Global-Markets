@@ -1,4 +1,5 @@
 import { useGlobalState } from '../state/GlobalStateContext.tsx';
+import { useCallback, useRef } from 'react';
 
 let globalCsrfToken: string | null = null;
 
@@ -52,10 +53,15 @@ export async function apiFetch(
 
     const customHeaders: Record<string, string> = {
       'x-user-role': userState?.role || 'USER',
-      'x-user-id': userState?.id || 'usr-default-001',
-      'x-user-email': userState?.email || 'trader@appexquant.global',
       'x-session-elevated': userState?.isElevated ? 'true' : 'false',
     };
+
+    if (userState?.id) {
+      customHeaders['x-user-id'] = userState.id;
+    }
+    if (userState?.email) {
+      customHeaders['x-user-email'] = userState.email;
+    }
 
     if (globalCsrfToken) {
       customHeaders['x-csrf-token'] = globalCsrfToken;
@@ -159,13 +165,16 @@ export async function apiFetch(
  */
 export function useApiFetch() {
   const { state } = useGlobalState();
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
-  return (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  return useCallback((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const currentState = stateRef.current;
     return apiFetch(input, init, {
-      id: state.user?.id,
-      email: state.user?.email,
-      role: state.user?.role,
-      isElevated: state.session?.isElevated,
+      id: currentState.user?.id,
+      email: currentState.user?.email,
+      role: currentState.user?.role,
+      isElevated: currentState.session?.isElevated,
     });
-  };
+  }, []);
 }

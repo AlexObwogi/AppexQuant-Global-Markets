@@ -51,7 +51,7 @@ import {
 export const CommunityView: React.FC = () => {
   const { state, dispatch } = useGlobalState();
   const user = state.user;
-  const currentUserId = user?.id || 'usr-default-001';
+  const currentUserId = user?.id || '';
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'RISK_MANAGER';
 
   const [activeTab, setActiveTab] = useState<'POSTS_FEED' | 'TRADERS' | 'SUCCESS_STORIES' | 'CHANNELS'>('POSTS_FEED');

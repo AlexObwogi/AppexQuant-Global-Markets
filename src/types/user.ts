@@ -66,6 +66,7 @@ export interface UserProfile {
   avatarUrl?: string;
   createdAt: string;
   updatedAt: string;
+  derivAccountId?: string;
   loginid?: string;
   currency?: string;
   balance?: number;

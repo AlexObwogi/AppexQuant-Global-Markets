@@ -71,16 +71,7 @@ const getDefaultPreferencesList = (): UserAlertPreference[] => {
 };
 
 // In-memory store for User Preferences
-let userPreferencesStore: Record<string, UserAlertPreferences> = {
-  'usr-default-001': {
-    userId: 'usr-default-001',
-    preferences: getDefaultPreferencesList(),
-    emailConfigured: true,
-    emailAddress: 'trader@appexquant.global',
-    pushSupported: true,
-    pushToken: 'push-tok-apx-9941-xj',
-  },
-};
+let userPreferencesStore: Record<string, UserAlertPreferences> = {};
 
 /**
  * Get all alerts in the system
@@ -216,9 +207,9 @@ export function updateUserPreferences(userId: string, updatedPreferences: UserAl
  * Simulates dispatching to channels (In-app, Push, Email) based on preferences.
  * Logs output to server logs and sets simulation flags.
  */
-function simulateNotifications(alert: Alert) {
-  // Get preferences of default user
-  const prefs = getUserPreferences('usr-default-001');
+function simulateNotifications(alert: Alert, targetUserId?: string) {
+  // Get preferences of current user
+  const prefs = getUserPreferences(targetUserId || 'system');
   const typePref = prefs.preferences.find((p) => p.type === alert.type);
 
   const shouldSendInApp = typePref ? typePref.channels[AlertChannel.IN_APP] : true;

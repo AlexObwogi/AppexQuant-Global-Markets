@@ -81,7 +81,7 @@ export class DerivIntegrationService {
       const res = await apiFetch('/api/admin/deriv/disconnect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUserId: targetUserId || 'usr-default-001' }),
+        body: JSON.stringify({ targetUserId }),
       });
       const json = await res.json();
       if (res.ok && json.success) {

@@ -28,7 +28,11 @@ export const LiveAuthorizationModal: React.FC<LiveAuthorizationModalProps> = ({ 
 
   const checkLegalAcceptance = async () => {
     try {
-      const userId = state.user?.id || 'usr-default-001';
+      const userId = state.user?.id;
+      if (!userId) {
+        setHasLegalSignoff(false);
+        return;
+      }
       const res = await apiFetch(`/api/legal/acceptances/${userId}`);
       if (res.ok) {
         const data = await res.json();

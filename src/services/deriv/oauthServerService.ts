@@ -271,16 +271,12 @@ export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: stri
     process.env.DERIV_CLIENT_ID ||
     process.env.DERIV_APP_ID ||
     process.env.VITE_DERIV_APP_ID ||
-    '';
-
-  if (!clientId) {
-    throw new Error('Deriv OAuth configuration error: Missing CLIENT_ID or DERIV_APP_ID environment variable.');
-  }
+    '1089';
 
   const clientSecret = process.env.CLIENT_SECRET || process.env.DERIV_CLIENT_SECRET || '';
 
   const proto = requestProtocol || (requestHost?.includes('localhost') ? 'http' : 'https');
-  const host = requestHost || (process.env.APP_URL ? new URL(process.env.APP_URL).host : 'localhost:3000');
+  const host = requestHost || (process.env.APP_URL ? new URL(process.env.APP_URL).host : 'appex-quant-global-markets.vercel.app');
 
   let redirectUri = `${proto}://${host}/api/auth/deriv/callback`;
   
@@ -292,8 +288,8 @@ export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: stri
     redirectUri = `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/api/auth/deriv/callback`;
   } else if (process.env.VERCEL_URL) {
     redirectUri = `https://${process.env.VERCEL_URL}/api/auth/deriv/callback`;
-  } else if (process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production') {
-    redirectUri = 'https://appex-quant-global-markets-cnuojfuwm-alexs-projects-73667c3b.vercel.app/api/auth/deriv/callback';
+  } else if (process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production' || host.includes('vercel.app')) {
+    redirectUri = 'https://appex-quant-global-markets.vercel.app/api/auth/deriv/callback';
   }
 
   const scopes = process.env.DERIV_SCOPES || 'trade account_manage';

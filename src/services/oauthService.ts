@@ -96,6 +96,7 @@ export function buildAuthUrl(options: BuildAuthUrlOptions = {}): string {
     params.action = options.action;
     if (options.action === 'signup') {
       params.ac = 'signup';
+      params.prompt = 'registration';
     }
   }
 

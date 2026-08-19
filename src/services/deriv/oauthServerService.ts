@@ -315,7 +315,7 @@ export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: stri
     clientSecret,
     redirectUri,
     scopes,
-    authBaseUrl: process.env.DERIV_AUTH_URL || 'https://oauth.deriv.com/oauth2/authorize',
+    authBaseUrl: process.env.DERIV_AUTH_URL || 'https://auth.deriv.com/oauth2/auth',
     tokenEndpoint: process.env.DERIV_TOKEN_ENDPOINT || 'https://oauth.deriv.com/oauth2/token',
   };
 }

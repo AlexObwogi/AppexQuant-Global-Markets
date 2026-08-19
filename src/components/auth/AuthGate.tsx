@@ -984,7 +984,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center font-black text-cyan-400 text-xs">
-                    {topTrader ? topTrader.name.charAt(0) : 'A'}
+                    {topTrader?.name ? topTrader.name.charAt(0) : 'A'}
                   </div>
                   <div className="text-left">
                     <div className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>

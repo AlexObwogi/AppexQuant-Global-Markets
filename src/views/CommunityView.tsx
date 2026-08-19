@@ -225,7 +225,7 @@ export const CommunityView: React.FC = () => {
           {currentUserProfile && (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-bg-secondary border border-border-color">
               <div className="w-8 h-8 rounded-lg bg-bg-hover border border-border-color flex items-center justify-center font-bold text-xs text-text-secondary">
-                {currentUserProfile.avatar || currentUserProfile.displayName.charAt(0)}
+                {currentUserProfile.avatar || (currentUserProfile.displayName ? currentUserProfile.displayName.charAt(0) : 'U')}
               </div>
               <div>
                 <span className="font-bold text-xs text-text-secondary block">{currentUserProfile.displayName}</span>

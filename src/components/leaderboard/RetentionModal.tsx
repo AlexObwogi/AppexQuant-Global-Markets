@@ -43,7 +43,7 @@ export const RetentionModal: React.FC<RetentionModalProps> = ({ entry, isOpen, o
         <div className="p-5 sm:p-6 border-b border-border-color bg-bg-elevated flex items-start justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
             <div className="w-12 h-12 rounded-xl bg-accent-primary/20 border border-accent-primary/40 flex items-center justify-center font-black text-accent-primary text-base shrink-0">
-              {entry.avatar || entry.displayName.charAt(0)}
+              {entry.avatar || (entry.displayName ? entry.displayName.charAt(0) : 'R')}
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">

@@ -56,6 +56,7 @@ import { edgeCache, edgeCacheStore } from './src/lib/cache/edgeCache.ts';
 import { dbQueries } from './src/lib/db/prisma.ts';
 import { leaderboardService } from './src/services/leaderboard/leaderboardService.ts';
 import { LeaderboardWindow } from './src/types/leaderboard.ts';
+import { fimMonitor } from './src/services/security/fileIntegrityMonitor.ts';
 
 import {
   initiateDerivOAuth,
@@ -75,6 +76,9 @@ export async function createApp() {
   const app = express();
   const config = loadAppConfig();
   const PORT = 3000;
+
+  // Run Cryptographic File Integrity Monitor (FIM) check
+  fimMonitor.verifyIntegrity();
 
   // Initialize PostgreSQL database system (migrations & seed data)
   await initializeDatabaseSystem();

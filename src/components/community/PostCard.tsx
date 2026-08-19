@@ -81,7 +81,7 @@ export const PostCard: React.FC<PostCardProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-color/60 pb-4">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-bg-secondary border border-border-color flex items-center justify-center font-bold text-text-primary text-sm">
-            {post.authorAvatar || post.authorName.charAt(0)}
+            {post.authorAvatar || (post.authorName ? post.authorName.charAt(0) : 'A')}
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">

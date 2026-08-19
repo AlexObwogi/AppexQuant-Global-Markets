@@ -117,7 +117,7 @@ export const SuccessStoriesSection: React.FC = () => {
             <div className="space-y-3">
               <div className="flex items-center gap-3">
                 <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500/20 to-cyan-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 font-bold text-xl">
-                  {activeStory.traderName.charAt(0)}
+                  {activeStory?.traderName ? activeStory.traderName.charAt(0) : 'S'}
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white">

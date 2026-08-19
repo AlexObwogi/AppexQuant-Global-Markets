@@ -50,7 +50,7 @@ export const TraderProfileCard: React.FC<TraderProfileCardProps> = ({
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-bg-secondary border border-border-color flex items-center justify-center font-bold text-text-primary text-base shadow-inner">
-                {profile.avatar || profile.displayName.charAt(0)}
+                {profile.avatar || (profile.displayName ? profile.displayName.charAt(0) : 'T')}
               </div>
               <div>
                 <div className="flex items-center gap-1.5 flex-wrap">
@@ -148,7 +148,7 @@ export const TraderProfileCard: React.FC<TraderProfileCardProps> = ({
             <div className="flex items-start justify-between gap-3 border-b border-border-color pb-4">
               <div className="flex items-center gap-3">
                 <div className="w-14 h-14 rounded-2xl bg-bg-secondary border border-border-color flex items-center justify-center font-bold text-text-primary text-xl">
-                  {profile.avatar || profile.displayName.charAt(0)}
+                  {profile.avatar || (profile.displayName ? profile.displayName.charAt(0) : 'T')}
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-text-primary">{profile.displayName}</h3>

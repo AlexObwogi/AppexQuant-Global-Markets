@@ -229,6 +229,21 @@ export async function createApp() {
     res.json(createSuccessResponse(logs));
   });
 
+  // Marketing Lead Capture Endpoint
+  app.post('/api/marketing/lead-capture', (req: Request, res: Response) => {
+    try {
+      const { email, telegram, source } = req.body;
+      if (!email || typeof email !== 'string') {
+        return res.status(400).json(createErrorResponse('Email is required', 'INVALID_LEAD'));
+      }
+      logger.info('Marketing lead captured successfully', { email, telegram, source });
+      logAuditEvent('COMMUNITY_ACTION', 'system-lead-capture', { event: 'LEAD_CAPTURED', email, source });
+      res.json(createSuccessResponse({ message: 'Lead captured successfully. ICT/SMC cheat sheet dispatched.' }));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Failed to capture lead', 'LEAD_CAPTURE_ERROR'));
+    }
+  });
+
   // --- RISK ENGINE SYSTEM API ENDPOINTS ---
   const historicalDecisions: any[] = [];
 

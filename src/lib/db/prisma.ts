@@ -11,6 +11,9 @@
  */
 
 import { logger } from '../../observability/logger.ts';
+import { prisma } from '../../services/db/prismaSingleton.ts';
+
+export { prisma };
 
 export interface LeanSession {
   id: string;
@@ -46,34 +49,6 @@ export interface LeanLeaderboardEntry {
   firstPlaceFinishes: number;
   isAllTimeLeader: boolean;
   isVerified: boolean;
-}
-
-// Global declaration to maintain a single cached instance across serverless lambdas / hot reloads
-const globalForPrisma = globalThis as unknown as {
-  prisma: any;
-};
-
-function buildPrismaClient(): any {
-  if (typeof process === 'undefined' || !process.env.DATABASE_URL) {
-    return null;
-  }
-
-  try {
-    // Dynamic import to prevent build breaking if schema has not yet been generated in local memory
-    const { PrismaClient } = require('@prisma/client');
-    return new PrismaClient({
-      log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-    });
-  } catch (err: any) {
-    logger.info('Prisma client runtime initialization deferred: pooled fallback active');
-    return null;
-  }
-}
-
-export const prisma = globalForPrisma.prisma ?? buildPrismaClient();
-
-if (process.env.NODE_ENV !== 'production' && prisma) {
-  globalForPrisma.prisma = prisma;
 }
 
 /**

@@ -507,7 +507,7 @@ export const AccountView: React.FC = () => {
                     variant="primary" 
                     className="w-full sm:w-auto font-bold text-xs px-5 py-2.5"
                   >
-                    Connect with Deriv (OAuth)
+                    Connect Account (OAuth)
                   </Button>
                   
                   <Button 

@@ -35,7 +35,9 @@ import {
   Sun, 
   Moon, 
   Zap,
-  Sparkles
+  Sparkles,
+  Menu,
+  X
 } from 'lucide-react';
 import { AppexQuantLogo } from '../common/AppexQuantLogo.tsx';
 
@@ -345,6 +347,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [authStatusMessage, setAuthStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Active milestone and radiant sun-burst tracking at 30%, 60%, 90%, 100%
   const [activeMilestoneStage, setActiveMilestoneStage] = useState(0);
@@ -530,6 +533,11 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         try {
           const profile = await derivAuthService.authorize(token1);
           if (profile) {
+            const targetAccountId = profile.loginid || acct1;
+            if (!targetAccountId) {
+              throw new Error('No valid account identifier returned from broker authorization.');
+            }
+
             localStorage.setItem('deriv_access_token', token1);
             if (acct1) localStorage.setItem('deriv_account_id', acct1);
 
@@ -540,14 +548,14 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
             }).catch(() => null);
 
             establishUserSession({
-              id: profile.loginid || acct1 || 'CR-DERIV',
-              accountId: profile.loginid || acct1 || 'CR-DERIV',
+              id: targetAccountId,
+              accountId: targetAccountId,
               token: token1,
               email: profile.email,
               fullName: profile.fullname,
               balance: profile.balance,
               currency: profile.currency || 'USD',
-              accountType: profile.is_virtual ? 'demo' : ((profile.loginid || acct1 || '').startsWith('VR') ? 'demo' : 'real'),
+              accountType: profile.is_virtual ? 'demo' : (targetAccountId.startsWith('VR') ? 'demo' : 'real'),
             });
             setIsAuthorizing(false);
             return;
@@ -827,36 +835,112 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       </div>
 
       {/* TOP INSTITUTIONAL HEADER - PURIFIED BRAND TITLE */}
-      <header className={`w-full flex items-center justify-between px-4 py-2.5 border-b sticky top-0 z-50 backdrop-blur-md transition-colors duration-500 ${isDark ? 'border-slate-800/80 bg-[#0B0F19]/80' : 'border-slate-200/80 bg-white/80'}`}>
-        <div className="flex items-center gap-2.5 select-none shrink-0">
-          <AppexQuantLogo variant="symbol" className="h-7 w-auto" />
-          <span className={`text-xs sm:text-sm font-black tracking-wider sm:tracking-widest uppercase transition-colors ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            APPEXQUANT MARKETS GLOBAL
-          </span>
-        </div>
+      <header className={`w-full border-b sticky top-0 z-50 backdrop-blur-md transition-colors duration-500 ${isDark ? 'border-slate-800/80 bg-[#0B0F19]/90' : 'border-slate-200/80 bg-white/90'}`}>
+        <div className="flex items-center justify-between px-4 py-2.5">
+          <div className="flex items-center gap-2.5 select-none shrink-0">
+            <AppexQuantLogo variant="symbol" className="h-7 w-auto" />
+            <span className={`text-xs sm:text-sm font-black tracking-wider sm:tracking-widest uppercase transition-colors ${isDark ? 'text-white' : 'text-slate-900'}`}>
+              APPEXQUANT MARKETS GLOBAL
+            </span>
+          </div>
 
-        {/* Live Market Ticker */}
-        <div className="hidden lg:flex flex-1 max-w-sm xl:max-w-md mx-4 overflow-hidden border border-slate-700/30 px-3 py-1 bg-black/20 dark:bg-black/40 rounded-lg shrink min-w-0">
-          <div className="animate-marquee-smooth whitespace-nowrap text-[10px] font-mono tracking-wider uppercase text-slate-400 overflow-hidden">
-            <span>BTC/USD 98,450.00 ▲0.52% • EUR/USD 1.0845 ▼0.04% • XAU/USD 2,684.20 ▲1.12% • VOLATILITY 75 124,520.10 ▲0.88% • CRASH 500 4,812.30 ▼0.35% • BOOM 1000 12,840.40 ▲2.10%</span>
-            <span className="ml-8">BTC/USD 98,450.00 ▲0.52% • EUR/USD 1.0845 ▼0.04% • XAU/USD 2,684.20 ▲1.12% • VOLATILITY 75 124,520.10 ▲0.88% • CRASH 500 4,812.30 ▼0.35% • BOOM 1000 12,840.40 ▲2.10%</span>
+          {/* Live Market Ticker */}
+          <div className="hidden lg:flex flex-1 max-w-sm xl:max-w-md mx-4 overflow-hidden border border-slate-700/30 px-3 py-1 bg-black/20 dark:bg-black/40 rounded-lg shrink min-w-0">
+            <div className="animate-marquee-smooth whitespace-nowrap text-[10px] font-mono tracking-wider uppercase text-slate-400 overflow-hidden">
+              <span>BTC/USD 98,450.00 ▲0.52% • EUR/USD 1.0845 ▼0.04% • XAU/USD 2,684.20 ▲1.12% • VOLATILITY 75 124,520.10 ▲0.88% • CRASH 500 4,812.30 ▼0.35% • BOOM 1000 12,840.40 ▲2.10%</span>
+              <span className="ml-8">BTC/USD 98,450.00 ▲0.52% • EUR/USD 1.0845 ▼0.04% • XAU/USD 2,684.20 ▲1.12% • VOLATILITY 75 124,520.10 ▲0.88% • CRASH 500 4,812.30 ▼0.35% • BOOM 1000 12,840.40 ▲2.10%</span>
+            </div>
+          </div>
+
+          {/* Desktop Actions & Theme Toggle */}
+          <div className="hidden md:flex items-center gap-2.5 shrink-0">
+            <button
+              onClick={() => handleDerivLogin('connect')}
+              disabled={isBusy}
+              className={`py-1.5 px-3.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${syncStyles.primaryBtn}`}
+            >
+              <Zap className="w-3.5 h-3.5 fill-current" />
+              <span>Login</span>
+            </button>
+
+            <button
+              onClick={() => handleDerivLogin('signup')}
+              disabled={isBusy}
+              className="py-1.5 px-3.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer bg-[#FF444F] hover:bg-[#E03B44] text-white shadow-md shadow-[#FF444F]/20"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Create Account</span>
+            </button>
+
+            <div className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
+              <ShieldCheck className="w-3 h-3 text-emerald-400" />
+              <span>PKCE 256-BIT</span>
+            </div>
+
+            <button
+              onClick={() => dispatch({ type: 'SET_THEME', payload: isDark ? 'light' : 'dark' })}
+              className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${isDark ? 'border-slate-700 bg-slate-800/80 text-amber-400 hover:bg-slate-700' : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+              title="Toggle color theme"
+            >
+              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {/* Mobile Menu Hamburger Toggle */}
+          <div className="flex md:hidden items-center gap-2">
+            <button
+              onClick={() => dispatch({ type: 'SET_THEME', payload: isDark ? 'light' : 'dark' })}
+              className={`p-1.5 rounded-lg border transition-colors ${isDark ? 'border-slate-700 bg-slate-800/80 text-amber-400' : 'border-slate-300 bg-slate-100 text-slate-700'}`}
+            >
+              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className={`p-2 rounded-lg border transition-colors ${isDark ? 'border-slate-700 bg-slate-800 text-white' : 'border-slate-300 bg-slate-100 text-slate-900'}`}
+              aria-label="Toggle navigation menu"
+            >
+              {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
         </div>
 
-        {/* Theme Toggle & Security Status */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
-            <ShieldCheck className="w-3 h-3 text-emerald-400" />
-            <span>PKCE 256-BIT</span>
+        {/* Mobile Dropdown Navigation Menu */}
+        {isMobileMenuOpen && (
+          <div className={`md:hidden px-4 py-3 border-t space-y-2.5 animate-in slide-in-from-top-2 duration-200 ${isDark ? 'border-slate-800 bg-[#0B0F19]' : 'border-slate-200 bg-white'}`}>
+            <button
+              onClick={() => { setIsMobileMenuOpen(false); handleDerivLogin('connect'); }}
+              disabled={isBusy}
+              className={`w-full py-2.5 px-4 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${syncStyles.primaryBtn}`}
+            >
+              <Zap className="w-4 h-4 fill-current" />
+              <span>Login</span>
+            </button>
+
+            <button
+              onClick={() => { setIsMobileMenuOpen(false); handleDerivLogin('signup'); }}
+              disabled={isBusy}
+              className="w-full py-2.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 bg-[#FF444F] hover:bg-[#E03B44] text-white"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Create Account</span>
+            </button>
+
+            <button
+              onClick={() => { setIsMobileMenuOpen(false); setShowTokenModal(true); }}
+              className="w-full py-2 px-4 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 border border-cyan-500/30 text-cyan-400 bg-cyan-500/10"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Connect via API Token</span>
+            </button>
+
+            <div className="pt-2 flex items-center justify-between border-t border-slate-800/40 text-[10px] text-slate-400 font-mono">
+              <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
+                <ShieldCheck className="w-3.5 h-3.5" /> PKCE 256-BIT ENCRYPTED
+              </span>
+              <span>v1.2.0 LIVE</span>
+            </div>
           </div>
-          <button
-            onClick={() => dispatch({ type: 'SET_THEME', payload: isDark ? 'light' : 'dark' })}
-            className={`p-1.5 rounded-lg border transition-colors ${isDark ? 'border-slate-700 bg-slate-800/80 text-amber-400 hover:bg-slate-700' : 'border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-            title="Toggle color theme"
-          >
-            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
-        </div>
+        )}
       </header>
 
       {/* MAIN VIEWPORT CONTAINER */}
@@ -1125,7 +1209,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
                 className="w-full py-3 px-4 rounded-xl font-bold text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer bg-[#FF444F] hover:bg-[#E03B44] text-white shadow-lg shadow-[#FF444F]/20"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
-                <span>Open account</span>
+                <span>Create Account</span>
               </button>
             </div>
 

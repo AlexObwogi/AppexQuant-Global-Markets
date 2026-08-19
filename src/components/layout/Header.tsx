@@ -104,7 +104,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
         >
           <User className="w-4 h-4 shrink-0" />
           <span className="text-[10px] sm:text-xs font-bold text-text-primary whitespace-normal break-words max-w-[120px] sm:max-w-none text-left leading-tight">
-            {authProfile?.loginid || 'Trader Profile'}
+            {authProfile?.loginid || state.user?.derivAccountId || 'Account'}
           </span>
         </button>
       </div>

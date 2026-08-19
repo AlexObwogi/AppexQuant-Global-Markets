@@ -123,9 +123,9 @@ export const DashboardView: React.FC = () => {
         />
         <MetricCard
           label="Deriv Market Feed"
-          value={dataFreshness === 'LIVE' ? 'Connected' : 'Connecting'}
+          value={dataFreshness === 'LIVE' ? 'Active' : 'Offline'}
           type={dataFreshness === 'LIVE' ? 'profit' : 'neutral'}
-          statusLabel={dataFreshness === 'LIVE' ? 'Live feed' : 'Connecting'}
+          statusLabel={dataFreshness === 'LIVE' ? 'Streaming' : 'Connecting'}
           subtext={`${instruments.length} active markets`}
           icon={<BarChart2 className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />}
         />
@@ -184,8 +184,8 @@ export const DashboardView: React.FC = () => {
               Live Watchlist
             </span>
             <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center space-x-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>{dataFreshness === 'LIVE' ? 'Live feed' : 'Connecting'}</span>
+              <span className={`w-1.5 h-1.5 rounded-full ${dataFreshness === 'LIVE' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+              <span>{dataFreshness === 'LIVE' ? 'Active' : 'Offline'}</span>
             </span>
           </div>
 

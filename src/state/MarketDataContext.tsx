@@ -25,11 +25,11 @@ export interface MarketDataContextType {
   watchlist: string[];
   searchQuery: string;
   connectionState: DerivConnectionState;
-  isSimulated: boolean;
+  
   dataFreshness: DataFreshness;
   contracts: Record<string, DerivContractCategory[]>;
   isLoadingSymbols: boolean;
-  balance: number;
+  balance: number | null;
   currency: string;
   loginid: string;
   
@@ -70,9 +70,9 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   const [candles, setCandles] = useState<Record<string, NormalizedCandle[]>>({});
   const [contracts, setContracts] = useState<Record<string, DerivContractCategory[]>>({});
   const [connectionState, setConnectionState] = useState<DerivConnectionState>('DISCONNECTED');
-  const [isSimulated, setIsSimulated] = useState<boolean>(false);
+  const [ setIsSimulated] = useState<boolean>(false);
   const [isLoadingSymbols, setIsLoadingSymbols] = useState<boolean>(true);
-  const [balance, setBalance] = useState<number>(10000);
+  const [balance, setBalance] = useState<number | null>(null);
   const [currency, setCurrency] = useState<string>('USD');
   const [loginid, setLoginid] = useState<string>('');
 
@@ -188,7 +188,7 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   useEffect(() => {
     const unsubStatus = derivWs.onStatusChange((status) => {
       setConnectionState(status);
-      setIsSimulated(derivWs.getIsSimulated());
+      
     });
 
     derivWs.connect().then(async () => {
@@ -334,7 +334,7 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
         watchlist,
         searchQuery,
         connectionState,
-        isSimulated,
+        
         dataFreshness,
         contracts,
         isLoadingSymbols,
@@ -360,7 +360,7 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
         watchlist,
         searchQuery,
         connectionState,
-        isSimulated,
+        
         dataFreshness,
         contracts,
         isLoadingSymbols,

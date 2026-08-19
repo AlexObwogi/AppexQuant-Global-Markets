@@ -68,6 +68,7 @@ import {
   getAdminDerivDiagnostics,
   connectUserWithApiToken,
   connectUserWithApiTokenAsync,
+  switchUserDerivAccountAsync,
 } from './src/services/deriv/oauthServerService.ts';
 import { initializeDatabaseSystem } from './src/db/initDb.ts';
 import { getDatabasePool, testDatabaseConnection } from './src/db/connection.ts';
@@ -1307,6 +1308,22 @@ export async function createApp() {
       res.json(createSuccessResponse(metadata || { connected: false, connectionStatus: 'DISCONNECTED' }));
     } catch (err: any) {
       res.status(500).json(createErrorResponse('Failed to fetch Deriv connection status', 'DERIV_STATUS_ERROR'));
+    }
+  });
+
+  // Switch active Deriv account from authorized account list
+  app.post('/api/auth/deriv/switch-account', async (req: Request, res: Response) => {
+    try {
+      const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string);
+      const { loginid } = req.body;
+      if (!userId || !loginid) {
+        return res.status(400).json(createErrorResponse('User ID and loginid required', 'BAD_REQUEST'));
+      }
+      const metadata = await switchUserDerivAccountAsync(userId, loginid);
+      logAuditEvent('ACCOUNT_CONNECTED', userId, { event: 'DERIV_ACCOUNT_SWITCHED', loginid });
+      res.json(createSuccessResponse(metadata));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Failed to switch Deriv account', 'SWITCH_ERROR'));
     }
   });
 

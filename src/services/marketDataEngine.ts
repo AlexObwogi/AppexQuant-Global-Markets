@@ -133,9 +133,8 @@ export class MarketDataEngine implements MarketDataProvider {
 
       try {
         this.derivWs.subscribeTick(normSymbol, derivCb);
-      } catch {
-        // Fallback simulated tick if Deriv WS not connected yet
-        this.emitSimulatedTick(normSymbol);
+      } catch (error) {
+        console.error(`[MarketDataEngine] Failed to subscribe to ${normSymbol}:`, error);
       }
     }
 
@@ -145,28 +144,11 @@ export class MarketDataEngine implements MarketDataProvider {
     const latest = this.latestQuotes.get(normSymbol);
     if (latest) {
       callback(latest);
-    } else {
-      // Generate initial quote
-      const base = normSymbol.includes('XAU') ? 2338.20 : normSymbol.includes('EUR') ? 1.08450 : 1.27500;
-      const initial = this.validateAndNormalizeQuote(normSymbol, base, base + 0.0002);
-      if (initial) callback(initial);
     }
 
     return () => {
       this.unsubscribe(normSymbol, callback);
     };
-  }
-
-  private emitSimulatedTick(symbol: string): void {
-    const base = symbol.includes('XAU') ? 2338.20 : symbol.includes('EUR') ? 1.08450 : 1.27500;
-    const jitter = (Math.random() - 0.5) * (symbol.includes('XAU') ? 1.5 : 0.0004);
-    const bid = Number((base + jitter).toFixed(symbol.includes('XAU') ? 2 : 5));
-    const ask = Number((bid + (symbol.includes('XAU') ? 0.30 : 0.00015)).toFixed(symbol.includes('XAU') ? 2 : 5));
-    const validated = this.validateAndNormalizeQuote(symbol, bid, ask);
-    if (validated) {
-      const subs = this.subscribers.get(symbol);
-      subs?.forEach((cb) => cb(validated));
-    }
   }
 
   public unsubscribe(symbol: string, callback?: (quote: MarketQuote) => void): void {

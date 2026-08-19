@@ -6,6 +6,7 @@
 
 import {
   DerivRequest,
+  DerivRequestMessage,
   DerivResponse,
   DerivActiveSymbol,
   DerivCandle,
@@ -46,7 +47,6 @@ export class DerivWebSocketManager {
   private baseReconnectDelayMs = 1000;
   private maxReconnectDelayMs = 30000;
   private isExplicitDisconnect = false;
-  private isSimulated = false;
 
   constructor(appId = '1089') {
     this.appId = appId;
@@ -54,15 +54,7 @@ export class DerivWebSocketManager {
   }
 
   public getIsSimulated(): boolean {
-    return this.isSimulated;
-  }
-
-  public switchToSimulationMode(): void {
-    if (this.isSimulated) return;
-    console.info('[DerivWS] Switching to Robust Simulation Mode.');
-    this.isSimulated = true;
-    this.setConnectionState('CONNECTED');
-    this.resubscribeAll();
+    return false;
   }
 
   public onStatusChange(callback: StatusCallback): () => void {
@@ -95,25 +87,24 @@ export class DerivWebSocketManager {
 
     this.setConnectionState(this.reconnectAttempts > 0 ? 'RECONNECTING' : 'CONNECTING');
 
-    this.connectPromise = new Promise((resolve) => {
+    this.connectPromise = new Promise((resolve, reject) => {
       try {
         this.ws = new WebSocket(this.endpoint);
 
         const openTimeout = setTimeout(() => {
           if (this.ws?.readyState !== WebSocket.OPEN) {
-            console.warn('[DerivWS] Connection timeout (4s). Bypassing to Robust Simulation Mode.');
+            console.error('[DerivWS] Connection timeout.');
             this.ws?.close();
             this.connectPromise = null;
-            this.switchToSimulationMode();
-            resolve();
+            this.setConnectionState('DISCONNECTED');
+            reject(new Error('Connection timeout'));
           }
-        }, 4000); // Fast 4-second timeout for preview simulation responsiveness
+        }, 10000);
 
         this.ws.onopen = () => {
           clearTimeout(openTimeout);
           this.reconnectAttempts = 0;
           this.connectPromise = null;
-          this.isSimulated = false;
           this.setConnectionState('CONNECTED');
           this.startPing();
           this.resubscribeAll();
@@ -123,12 +114,12 @@ export class DerivWebSocketManager {
         this.ws.onmessage = (event) => this.handleMessage(event);
 
         this.ws.onerror = (error) => {
-          console.warn('[DerivWS] Connection error. Bypassing to Robust Simulation Mode:', error);
+          console.error('[DerivWS] Connection error:', error);
           clearTimeout(openTimeout);
           this.ws?.close();
           this.connectPromise = null;
-          this.switchToSimulationMode();
-          resolve();
+          this.setConnectionState('DISCONNECTED');
+          reject(new Error('WebSocket connection error'));
         };
 
         this.ws.onclose = () => {
@@ -136,20 +127,15 @@ export class DerivWebSocketManager {
           this.connectPromise = null;
           this.stopPing();
           if (!this.isExplicitDisconnect) {
-            if (this.isSimulated) {
-              // Stay connected in simulated mode
-              this.setConnectionState('CONNECTED');
-            } else {
-              this.setConnectionState('DISCONNECTED');
-              this.scheduleReconnect();
-            }
+            this.setConnectionState('DISCONNECTED');
+            this.scheduleReconnect();
           }
         };
       } catch (err) {
-        console.warn('[DerivWS] Exception on connect. Bypassing to Robust Simulation Mode:', err);
+        console.error('[DerivWS] Exception on connect:', err);
         this.connectPromise = null;
-        this.switchToSimulationMode();
-        resolve();
+        this.setConnectionState('DISCONNECTED');
+        reject(err);
       }
     });
 
@@ -167,7 +153,6 @@ export class DerivWebSocketManager {
       this.ws.close();
       this.ws = null;
     }
-    this.isSimulated = false;
     this.setConnectionState('DISCONNECTED');
   }
 
@@ -198,51 +183,38 @@ export class DerivWebSocketManager {
       return;
     }
 
-    this.reconnectAttempts++;
-    const delay = Math.min(
-      this.baseReconnectDelayMs * Math.pow(2, this.reconnectAttempts - 1),
-      this.maxReconnectDelayMs
-    );
-
-    this.setConnectionState('RECONNECTING');
+    const delay = Math.min(this.baseReconnectDelayMs * Math.pow(2, this.reconnectAttempts), this.maxReconnectDelayMs);
+    console.log(`[DerivWS] Reconnecting in ${delay}ms (Attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})`);
+    
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.connect().catch(() => {
-        // Retry will be handled by onclose
-      });
+      this.reconnectAttempts++;
+      this.connect().catch(() => {});
     }, delay);
   }
 
-  public async sendRequest(requestPayload: Partial<DerivRequest>): Promise<DerivResponse> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      try {
-        await this.connect();
-      } catch (err) {
-        throw new Error('WebSocket is not connected');
-      }
-    }
-
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new Error('WebSocket is not connected');
-    }
-
+  public sendRequest(request: DerivRequest, timeoutMs = 15000): Promise<DerivResponse> {
     return new Promise((resolve, reject) => {
-      const reqId = ++this.reqIdCounter;
-      const fullRequest: DerivRequest = { ...requestPayload, req_id: reqId };
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        return reject(new Error('WebSocket is not connected'));
+      }
+
+      const reqId = this.reqIdCounter++;
+      const payload: DerivRequestMessage = { ...request, req_id: reqId };
 
       const timer = setTimeout(() => {
         this.pendingRequests.delete(reqId);
-        reject(new Error(`Deriv API request ${reqId} timed out`));
-      }, 15000);
+        reject(new Error(`Deriv API Request Timeout: ${JSON.stringify(request)}`));
+      }, timeoutMs);
 
       this.pendingRequests.set(reqId, { resolve, reject, timer });
 
       try {
-        this.ws!.send(JSON.stringify(fullRequest));
+        this.ws.send(JSON.stringify(payload));
       } catch (err) {
         clearTimeout(timer);
         this.pendingRequests.delete(reqId);
-        reject(err instanceof Error ? err : new Error('Failed to send WebSocket message'));
+        reject(err);
       }
     });
   }
@@ -251,52 +223,43 @@ export class DerivWebSocketManager {
     try {
       const data = JSON.parse(event.data) as DerivResponse;
       
-      // Handle correlated response
+      if (data.msg_type === 'balance' && data.balance) {
+         this.balanceCallbacks.forEach(cb => cb(data.balance));
+      }
+
       if (data.req_id && this.pendingRequests.has(data.req_id)) {
-        const { resolve, reject, timer } = this.pendingRequests.get(data.req_id)!;
-        clearTimeout(timer);
+        const req = this.pendingRequests.get(data.req_id)!;
+        clearTimeout(req.timer);
         this.pendingRequests.delete(data.req_id);
 
         if (data.error) {
-          reject(new Error(data.error.message || 'Deriv API Error'));
+          req.reject(new Error(data.error.message));
         } else {
-          resolve(data);
+          req.resolve(data);
         }
-      }
-
-      // Handle stream events (e.g. tick streams or balance streams)
-      if (data.msg_type === 'tick' && data.tick) {
+      } else if (data.msg_type === 'tick' && data.tick) {
         this.processIncomingTick(data.tick, data.subscription?.id);
       }
-      const rawData = data as any;
-      if (rawData.msg_type === 'balance' && rawData.balance) {
-        this.balanceCallbacks.forEach((cb) => cb(rawData.balance));
-      }
     } catch (err) {
-      console.error('[DerivWS] Failed to parse WebSocket message:', err);
+      console.error('[DerivWS] Failed to parse message:', err);
     }
   }
 
-  private processIncomingTick(tickData: { symbol: string; quote: number; bid: number; ask: number; epoch: number; id?: string }, subId?: string): void {
-    const { symbol, quote, bid, ask, epoch } = tickData;
-
-    // Data validation
-    if (!symbol || typeof quote !== 'number' || isNaN(quote) || quote <= 0) {
-      return;
-    }
-
+  private processIncomingTick(tickData: any, subId?: string): void {
+    if (!tickData.symbol || !tickData.quote) return;
+    
+    const { symbol, quote, epoch, bid, ask } = tickData;
     const prevTick = this.tickHistory.get(symbol);
     const prevQuote = prevTick ? prevTick.quote : quote;
-    const change = quote - prevQuote;
-    const changePct = prevQuote > 0 ? (change / prevQuote) * 100 : 0;
+    const changePct = prevQuote ? ((quote - prevQuote) / prevQuote) * 100 : 0;
 
     const normalizedTick: NormalizedTick = {
       symbol,
       quote,
-      bid: typeof bid === 'number' && !isNaN(bid) ? bid : quote,
-      ask: typeof ask === 'number' && !isNaN(ask) ? ask : quote,
-      epoch,
-      change,
+      bid: bid || quote,
+      ask: ask || quote,
+      epoch: epoch || Math.floor(Date.now() / 1000),
+      change: quote - prevQuote,
       changePct,
       prevQuote,
       lastUpdated: new Date(epoch ? epoch * 1000 : Date.now()),
@@ -317,12 +280,7 @@ export class DerivWebSocketManager {
     }
   }
 
-  private fallbackTickTimers = new Map<string, NodeJS.Timeout>();
-
   public async fetchActiveSymbols(): Promise<DerivActiveSymbol[]> {
-    if (this.isSimulated) {
-      return []; // Forces fallback to local taxonomy instruments instantly
-    }
     try {
       const response = await this.sendRequest({
         active_symbols: 'full',
@@ -332,15 +290,12 @@ export class DerivWebSocketManager {
         return response.active_symbols;
       }
     } catch (err) {
-      console.warn('[DerivWS] Active symbols lookup failed or fallback active:', err);
+      console.error('[DerivWS] Active symbols lookup failed:', err);
     }
     return [];
   }
 
   public async fetchCandles(symbol: string, granularitySeconds: number, count = 300): Promise<NormalizedCandle[]> {
-    if (this.isSimulated) {
-      return this.generateFallbackCandles(symbol, granularitySeconds, count);
-    }
     try {
       const response = await this.sendRequest({
         ticks_history: symbol,
@@ -379,46 +334,13 @@ export class DerivWebSocketManager {
         if (candles.length > 0) return candles;
       }
     } catch (err) {
-      console.warn(`[DerivWS] Ticks history lookup for ${symbol} using fallback generator:`, err);
+      console.error(`[DerivWS] Ticks history lookup for ${symbol} failed:`, err);
     }
 
-    return this.generateFallbackCandles(symbol, granularitySeconds, count);
-  }
-
-  public generateFallbackCandles(symbol: string, granularitySeconds: number, count = 200): NormalizedCandle[] {
-    const inst = FALLBACK_INSTRUMENTS.find((i) => i.symbol === symbol);
-    const lastTick = this.tickHistory.get(symbol);
-    const basePrice = lastTick ? lastTick.quote : (inst ? inst.bid : 100.0);
-    const pip = inst ? inst.pipSize : (basePrice > 100 ? 0.01 : 0.0001);
-
-    const now = Date.now();
-    const candles: NormalizedCandle[] = [];
-    let currentPrice = basePrice;
-
-    for (let i = count - 1; i >= 0; i--) {
-      const timestamp = now - i * granularitySeconds * 1000;
-      const volatility = pip * (10 + Math.random() * 20);
-      const delta = (Math.random() - 0.49) * volatility;
-      
-      const open = Number(currentPrice.toFixed(5));
-      const close = Number(Math.max(pip, currentPrice + delta).toFixed(5));
-      const high = Number((Math.max(open, close) + Math.random() * volatility * 0.5).toFixed(5));
-      const low = Number((Math.min(open, close) - Math.random() * volatility * 0.5).toFixed(5));
-
-      candles.push({ timestamp, open, high, low, close });
-      currentPrice = close;
-    }
-
-    return candles;
+    return [];
   }
 
   public async fetchContractsFor(symbol: string): Promise<DerivContractCategory[]> {
-    if (this.isSimulated) {
-      return [
-        { contract_category: 'callput', contract_category_display: 'Up/Down' },
-        { contract_category: 'digits', contract_category_display: 'Digits' },
-      ] as any;
-    }
     try {
       const response = await this.sendRequest({
         contracts_for: symbol,
@@ -427,7 +349,7 @@ export class DerivWebSocketManager {
         return response.contracts_for.available;
       }
     } catch (e) {
-      console.warn(`[DerivWS] Contracts lookup failed for ${symbol}:`, e);
+      console.error(`[DerivWS] Contracts lookup failed for ${symbol}:`, e);
     }
     return [];
   }
@@ -438,23 +360,16 @@ export class DerivWebSocketManager {
       sub = { callbacks: new Set() };
       this.tickSubscriptions.set(symbol, sub);
 
-      if (this.isSimulated) {
-        this.startFallbackTickStream(symbol);
-      } else if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.sendRequest({ ticks: symbol })
           .then((res) => {
             if (res.subscription?.id && sub) {
               sub.subId = res.subscription.id;
-            } else {
-              this.startFallbackTickStream(symbol);
             }
           })
           .catch((err) => {
-            console.warn(`[DerivWS] Deriv API subscription fallback activated for ${symbol}: ${err.message || err}`);
-            this.startFallbackTickStream(symbol);
+            console.error(`[DerivWS] Deriv API subscription failed for ${symbol}: ${err.message || err}`);
           });
-      } else {
-        this.startFallbackTickStream(symbol);
       }
     }
     sub.callbacks.add(callback);
@@ -462,8 +377,6 @@ export class DerivWebSocketManager {
     const cached = this.tickHistory.get(symbol);
     if (cached) {
       callback(cached);
-    } else {
-      this.startFallbackTickStream(symbol);
     }
   }
 
@@ -480,7 +393,6 @@ export class DerivWebSocketManager {
         });
       }
       this.tickSubscriptions.delete(symbol);
-      this.stopFallbackTickStream(symbol);
     }
   }
 
@@ -491,63 +403,13 @@ export class DerivWebSocketManager {
           .then((res) => {
             if (res.subscription?.id) {
               sub.subId = res.subscription.id;
-            } else {
-              this.startFallbackTickStream(symbol);
             }
           })
           .catch((err) => {
-            console.warn(`[DerivWS] Resubscribe notice for ${symbol}: ${err.message || err}`);
-            this.startFallbackTickStream(symbol);
+            console.error(`[DerivWS] Resubscribe failed for ${symbol}: ${err.message || err}`);
           });
-      } else {
-        this.startFallbackTickStream(symbol);
       }
     });
-  }
-
-  private startFallbackTickStream(symbol: string): void {
-    if (this.fallbackTickTimers.has(symbol)) return;
-
-    const inst = FALLBACK_INSTRUMENTS.find((i) => i.symbol === symbol);
-    let currentQuote = this.tickHistory.get(symbol)?.quote || (inst ? inst.bid : 100.0);
-    const pip = inst ? inst.pipSize : (currentQuote > 100 ? 0.01 : 0.0001);
-
-    // Initial immediate tick emit
-    const spread = Number((pip * 1.5).toFixed(5));
-    const bid = Number((currentQuote - spread / 2).toFixed(5));
-    const ask = Number((currentQuote + spread / 2).toFixed(5));
-    this.processIncomingTick({
-      symbol,
-      quote: currentQuote,
-      bid,
-      ask,
-      epoch: Math.floor(Date.now() / 1000),
-    });
-
-    const timer = setInterval(() => {
-      const delta = (Math.random() - 0.495) * (pip * 3);
-      currentQuote = Number(Math.max(pip, currentQuote + delta).toFixed(5));
-      const curBid = Number((currentQuote - spread / 2).toFixed(5));
-      const curAsk = Number((currentQuote + spread / 2).toFixed(5));
-
-      this.processIncomingTick({
-        symbol,
-        quote: currentQuote,
-        bid: curBid,
-        ask: curAsk,
-        epoch: Math.floor(Date.now() / 1000),
-      });
-    }, 800);
-
-    this.fallbackTickTimers.set(symbol, timer);
-  }
-
-  private stopFallbackTickStream(symbol: string): void {
-    const timer = this.fallbackTickTimers.get(symbol);
-    if (timer) {
-      clearInterval(timer);
-      this.fallbackTickTimers.delete(symbol);
-    }
   }
 
   public getLastTick(symbol: string): NormalizedTick | undefined {

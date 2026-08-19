@@ -18,26 +18,26 @@ export function formatUserConnectionStatus(status: ConnectionStatus): UserFacing
   switch (status) {
     case 'ONLINE':
       return {
-        label: 'Markets Connected',
+        label: 'Active',
         badgeType: 'success',
         subtext: 'Real-time market streaming active',
       };
     case 'RECONNECTING':
       return {
-        label: 'Reconnecting...',
+        label: 'Connecting',
         badgeType: 'warning',
         subtext: 'Re-establishing stream connection',
       };
     case 'DEGRADED':
       return {
-        label: 'Connection Degraded',
+        label: 'Degraded',
         badgeType: 'warning',
         subtext: 'High market latency detected',
       };
     case 'OFFLINE':
     default:
       return {
-        label: 'Markets Offline',
+        label: 'Offline',
         badgeType: 'neutral',
         subtext: 'Market stream unavailable',
       };

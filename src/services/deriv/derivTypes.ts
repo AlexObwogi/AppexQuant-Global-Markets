@@ -47,11 +47,11 @@ export interface DerivContractCategory {
 }
 
 export interface DerivRequest {
-  req_id: number;
   active_symbols?: 'full' | 'brief';
   product_type?: 'basic';
   ticks?: string;
   forget?: string;
+  forget_all?: string;
   ticks_history?: string;
   style?: 'ticks' | 'candles';
   granularity?: number; // Granularity in seconds (60, 300, 900, 1800, 3600, 14400, 86400)
@@ -59,7 +59,14 @@ export interface DerivRequest {
   end?: string | number;
   contracts_for?: string;
   ping?: 1;
+  authorize?: string;
+  balance?: number;
+  subscribe?: number;
   [key: string]: unknown;
+}
+
+export interface DerivRequestMessage extends DerivRequest {
+  req_id: number;
 }
 
 export interface DerivError {
@@ -70,10 +77,11 @@ export interface DerivError {
 
 export interface DerivResponse {
   req_id: number;
-  msg_type: 'active_symbols' | 'tick' | 'history' | 'candles' | 'contracts_for' | 'ping' | 'forget' | 'error' | 'authorize';
+  msg_type: 'active_symbols' | 'tick' | 'history' | 'candles' | 'contracts_for' | 'ping' | 'forget' | 'error' | 'authorize' | 'balance';
   active_symbols?: DerivActiveSymbol[];
   tick?: DerivTick;
   authorize?: Record<string, unknown>;
+  balance?: any;
   history?: {
     prices: number[];
     times: number[];

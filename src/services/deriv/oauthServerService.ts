@@ -931,3 +931,19 @@ export function getAdminDerivDiagnostics() {
     connections,
   };
 }
+
+/**
+ * Switch active Deriv account ID for user
+ */
+export async function switchUserDerivAccountAsync(userId: string, loginid: string): Promise<SafeDerivConnectionMetadata> {
+  const record = derivConnectionsStore.get(userId);
+  if (!record) {
+    throw new Error('No active Deriv connection found');
+  }
+  record.derivAccountId = loginid;
+  record.accountType = loginid.startsWith('VR') ? 'demo' : 'real';
+  record.updatedAt = new Date().toISOString();
+  derivConnectionsStore.set(userId, record);
+  derivConnectionsStore.set(loginid, record);
+  return getUserDerivConnectionAsync(userId);
+}

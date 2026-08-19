@@ -41,6 +41,13 @@ interface ConnectionMeta {
   connectionStatus: 'CONNECTED' | 'CONNECTING' | 'DISCONNECTED' | 'RECONNECT_REQUIRED' | 'ERROR';
   scopes?: string[];
   lastSyncedAt?: string;
+  accountList?: Array<{
+    loginid: string;
+    account_type: string;
+    currency: string;
+    is_virtual: number;
+    landing_company_name: string;
+  }>;
 }
 
 export const AccountView: React.FC = () => {
@@ -55,47 +62,48 @@ export const AccountView: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isSubmittingToken, setIsSubmittingToken] = useState(false);
-  const [isChangingRole, setIsChangingRole] = useState(false);
+  const [isSwitchingAccount, setIsSwitchingAccount] = useState(false);
   const [apiTokenInput, setApiTokenInput] = useState('');
   const [showTokenInput, setShowTokenInput] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Retrieve learning academy progress parameters
-  const progress = getStoredProgress();
-
-  const totalLessons: any[] = [];
-  TRADER_LEVELS.forEach(lvl => {
-    lvl.courses.forEach(c => {
-      c.modules.forEach(m => {
-        m.lessons.forEach(l => {
-          totalLessons.push(l);
-        });
+  const handleSwitchAccount = async (targetLoginid: string) => {
+    if (targetLoginid === meta?.derivAccountId) return;
+    setIsSwitchingAccount(true);
+    setErrorMessage(null);
+    setMessage(null);
+    try {
+      const res = await apiFetch('/api/auth/deriv/switch-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ loginid: targetLoginid }),
       });
-    });
-  });
-
-  const totalLessonsCount = totalLessons.length;
-  const completedLessonsCount = progress.completedLessons.length;
-  const overallPercentage = totalLessonsCount > 0 
-    ? Math.round((completedLessonsCount / totalLessonsCount) * 100) 
-    : 0;
-
-  const currentLevelTitle = TRADER_LEVELS.find(l => l.level === progress.currentLevel)?.title || 'Beginner';
-  const masteryHours = ((progress.theoryHours || 12.0) + (progress.practiceHours || 8.5)).toFixed(1);
-  const learningStreak = progress.streak?.current || 3;
-  const certificatesCount = progress.certificates?.length || 0;
-
-  let coursesCompleted = 0;
-  TRADER_LEVELS.forEach(lvl => {
-    lvl.courses.forEach(course => {
-      const courseLessons: string[] = [];
-      course.modules.forEach(m => m.lessons.forEach(l => courseLessons.push(l.id)));
-      if (courseLessons.length > 0 && courseLessons.every(id => progress.completedLessons.includes(id))) {
-        coursesCompleted++;
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          setMeta(json.data);
+          localStorage.setItem('deriv_account_id', targetLoginid);
+          dispatch({
+            type: 'ADD_NOTIFICATION',
+            payload: {
+              title: 'Account Switched',
+              message: `Active trading account switched to ${targetLoginid}`,
+              type: 'success',
+            },
+          });
+          setMessage(`Successfully switched to account ${targetLoginid}. Re-initiating stream...`);
+          setTimeout(() => window.location.reload(), 1200);
+        } else {
+          setErrorMessage(json.error?.message || 'Failed to switch account');
+        }
       }
-    });
-  });
+    } catch {
+      setErrorMessage('Network error while switching account.');
+    } finally {
+      setIsSwitchingAccount(false);
+    }
+  };
 
   // Fetch current user's safe Deriv connection status from backend
   const fetchDerivStatus = async () => {
@@ -144,10 +152,13 @@ export const AccountView: React.FC = () => {
   // Initiate Deriv OAuth PKCE flow
   const handleInitiateOAuth = () => {
     setErrorMessage(null);
-    setMessage('Initiating secure OAuth redirect sequence...');
+    setMessage('Redirecting to official Deriv OAuth authorization...');
+    const appId = '1089';
+    const redirectUri = `${window.location.origin}/api/auth/deriv/callback`;
+    const authUrl = `https://oauth.deriv.com/oauth2/authorize?app_id=${appId}&brand=deriv&redirect_uri=${encodeURIComponent(redirectUri)}&scope=trade+account_manage+payments&l=EN`;
     setTimeout(() => {
-      window.location.href = `/api/auth/deriv/login?action=connect&destination=${encodeURIComponent(window.location.pathname)}`;
-    }, 500);
+      window.location.href = authUrl;
+    }, 200);
   };
 
   // Handle environment toggling
@@ -294,62 +305,6 @@ export const AccountView: React.FC = () => {
     }
   };
 
-  // Role switching mechanism for RBAC testing
-  const handleRoleChange = async (newRole: string) => {
-    setIsChangingRole(true);
-    setErrorMessage(null);
-    setMessage(null);
-
-    let targetEmail = 'trader@appexquant.global';
-    if (newRole === 'RISK_MANAGER') targetEmail = 'carol.risk@appexquant.global';
-    else if (newRole === 'ADMIN') targetEmail = 'dave@appexquant.global';
-    else if (newRole === 'SUPER_ADMIN') targetEmail = 'super@appexquant.global';
-
-    try {
-      const res = await apiFetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: targetEmail, role: newRole }),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data?.user) {
-          // Synchronize state
-          dispatch({
-            type: 'SET_USER_PROFILE',
-            payload: {
-              id: json.data.user.id,
-              email: json.data.user.email,
-              displayName: json.data.user.displayName,
-              role: json.data.user.role as any,
-              createdAt: json.data.user.createdAt || new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              preferences: {
-                theme: 'dark',
-                currency: 'USD',
-                timezone: 'UTC',
-                notificationsEnabled: true
-              }
-            }
-          });
-          
-          dispatch({
-            type: 'ADD_NOTIFICATION',
-            payload: {
-              title: 'Access Level Updated',
-              message: `Switched simulation access role to: ${newRole}`,
-              type: 'success',
-            },
-          });
-          setMessage(`Switched access context to ${newRole}.`);
-        }
-      }
-    } catch {
-      setErrorMessage('Failed to simulate role transition.');
-    } finally {
-      setIsChangingRole(false);
-    }
-  };
 
   return (
     <div className="max-w-5xl mx-auto space-y-4 text-text-primary dark:text-text-primary">
@@ -368,7 +323,7 @@ export const AccountView: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Left Column: User Profile & Role simulation */}
+        {/* Left Column: User Profile & Role Switcher */}
         <div className="lg:col-span-1 space-y-4">
           <Card variant="surface" className="space-y-4 p-4">
             <h3 className="text-xs font-bold text-text-primary pb-2 flex items-center gap-2 font-mono uppercase tracking-wider border-b border-border-color">
@@ -394,66 +349,6 @@ export const AccountView: React.FC = () => {
             </div>
           </Card>
 
-          {/* Academy Stats Progress Block */}
-          <Card variant="surface" className="space-y-3.5 p-4">
-            <h3 className="text-xs font-bold text-text-primary pb-2.5 border-b border-border-color flex items-center gap-2 font-mono uppercase tracking-wider">
-              <GraduationCap className="w-3.5 h-3.5 text-color-warning dark:text-accent-primary" />
-              Academy Progress
-            </h3>
-
-            <div className="space-y-3 text-xs">
-              <div className="space-y-1">
-                <div className="flex items-center justify-between font-bold text-[10px] text-text-secondary dark:text-text-secondary">
-                  <span className="uppercase font-mono">Overall Progress</span>
-                  <span className="font-mono text-color-success">{overallPercentage}%</span>
-                </div>
-                <div className="w-full h-1.5 bg-bg-secondary rounded-full overflow-hidden">
-                  <div className="bg-color-success h-full transition-all" style={{ width: `${overallPercentage}%` }} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3.5 pt-1">
-                <div className="p-2 bg-bg-secondary border border-border-color rounded-[4px] space-y-0.5">
-                  <span className="text-[9px] font-mono text-text-secondary uppercase font-bold">Current Level</span>
-                  <span className="font-extrabold text-text-primary block truncate">{currentLevelTitle}</span>
-                </div>
-
-                <div className="p-2 bg-bg-secondary border border-border-color rounded-[4px] space-y-0.5">
-                  <span className="text-[9px] font-mono text-text-secondary uppercase font-bold">Mastery Hours</span>
-                  <span className="font-extrabold text-text-primary block font-mono">{masteryHours}h</span>
-                </div>
-
-                <div className="p-2 bg-bg-secondary border border-border-color rounded-[4px] space-y-0.5">
-                  <span className="text-[9px] font-mono text-text-secondary uppercase font-bold">Learning Streak</span>
-                  <span className="font-extrabold text-text-primary block font-mono flex items-center gap-1">
-                    <Flame className="w-3 h-3 text-color-warning dark:text-accent-primary inline shrink-0" />
-                    {learningStreak} days
-                  </span>
-                </div>
-
-                <div className="p-2 bg-bg-secondary border border-border-color rounded-[4px] space-y-0.5">
-                  <span className="text-[9px] font-mono text-text-secondary uppercase font-bold">Certs Earned</span>
-                  <span className="font-extrabold text-text-primary block font-mono flex items-center gap-1">
-                    <Award className="w-3.5 h-3.5 text-amber-500 inline shrink-0" />
-                    {certificatesCount}
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-2 pt-2 border-t border-border-color/60 dark:border-border-color/60 text-[11px] font-semibold text-text-secondary dark:text-text-secondary">
-                <div className="flex items-center justify-between">
-                  <span>Courses Completed:</span>
-                  <span className="font-mono text-text-primary font-bold">{coursesCompleted}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Strategies Mastered:</span>
-                  <span className="font-mono text-text-primary font-bold">
-                    {progress.completedLessons.filter(id => id.startsWith('l2-') || id.startsWith('l3-') || id.startsWith('l4-')).length}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </Card>
         </div>
 
         {/* Right Column: Sleek User-Facing Deriv Account Integration (Replacing Generic Setup) */}
@@ -546,6 +441,37 @@ export const AccountView: React.FC = () => {
                     </Button>
                   </div>
                 </div>
+
+                {meta?.accountList && meta.accountList.length > 0 && (
+                  <div className="p-3 bg-bg-surface border border-border-color rounded-lg space-y-2">
+                    <span className="text-text-secondary text-[9px] uppercase font-bold block">Authorized Deriv Accounts ({meta.accountList.length})</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {meta.accountList.map((acc) => {
+                        const isCurrent = acc.loginid === meta.derivAccountId;
+                        return (
+                          <button
+                            key={acc.loginid}
+                            onClick={() => handleSwitchAccount(acc.loginid)}
+                            disabled={isSwitchingAccount || isCurrent}
+                            className={`p-2.5 rounded-lg border text-left flex items-center justify-between transition-all cursor-pointer ${
+                              isCurrent
+                                ? 'bg-accent-primary/10 border-accent-primary text-text-primary font-bold shadow-xs'
+                                : 'bg-bg-secondary border-border-color hover:border-accent-primary/50 text-text-secondary hover:text-text-primary'
+                            }`}
+                          >
+                            <div>
+                              <div className="font-mono text-xs font-bold text-text-primary">{acc.loginid}</div>
+                              <div className="text-[10px] text-text-secondary uppercase">{acc.account_type} • {acc.currency}</div>
+                            </div>
+                            {isCurrent && (
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className="p-3 bg-emerald-500/5 border border-emerald-500/20 text-[11px] rounded-lg text-emerald-400 flex items-start gap-2.5">
                   <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />

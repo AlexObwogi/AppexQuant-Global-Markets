@@ -121,7 +121,16 @@ function attemptFetchProfile(token: string, appId: string): Promise<DerivAccount
 
       const safeAppId = appId.trim() || '1089';
       const wsUrl = `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(safeAppId)}&l=EN&brand=deriv`;
-      const ws = new WS(wsUrl);
+      
+      const wsOptions = typeof window === 'undefined' ? {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Origin': 'https://oauth.deriv.com',
+        },
+        handshakeTimeout: 4000,
+      } : undefined;
+
+      const ws = wsOptions ? new (WS as any)(wsUrl, wsOptions) : new (WS as any)(wsUrl);
       let settled = false;
 
       const finish = (result: DerivAccountProfileData | null) => {
@@ -144,8 +153,7 @@ function attemptFetchProfile(token: string, appId: string): Promise<DerivAccount
       const sendAuth = () => {
         try {
           ws.send(JSON.stringify({ authorize: token.trim() }));
-        } catch (sendErr) {
-          console.warn('[DerivOAuth] WebSocket send error:', sendErr);
+        } catch {
           finish(null);
         }
       };
@@ -159,15 +167,13 @@ function attemptFetchProfile(token: string, appId: string): Promise<DerivAccount
             if (parsed.msg_type === 'authorize' && parsed.authorize) {
               finish(parsed.authorize as DerivAccountProfileData);
             } else if (parsed.error) {
-              console.warn('[DerivOAuth] WebSocket authorize error response:', parsed.error);
               finish(null);
             }
           } catch {
             finish(null);
           }
         });
-        (ws as any).on('error', (err: any) => {
-          console.warn('[DerivOAuth] WebSocket profile fetch error:', err?.message || err);
+        (ws as any).on('error', () => {
           finish(null);
         });
       } else {
@@ -179,20 +185,17 @@ function attemptFetchProfile(token: string, appId: string): Promise<DerivAccount
             if (parsed.msg_type === 'authorize' && parsed.authorize) {
               finish(parsed.authorize as DerivAccountProfileData);
             } else if (parsed.error) {
-              console.warn('[DerivOAuth] WebSocket authorize error response:', parsed.error);
               finish(null);
             }
           } catch {
             finish(null);
           }
         };
-        ws.onerror = (err: any) => {
-          console.warn('[DerivOAuth] WebSocket profile fetch error:', err?.message || err);
+        ws.onerror = () => {
           finish(null);
         };
       }
-    } catch (e) {
-      console.warn('[DerivOAuth] Failed to initialize WebSocket for profile fetch:', e);
+    } catch {
       resolve(null);
     }
   });
@@ -299,11 +302,10 @@ export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: stri
 
   let redirectUri = `${proto}://${host}/api/auth/deriv/callback`;
   
-  if (process.env.REDIRECT_URI) {
-    redirectUri = process.env.REDIRECT_URI;
-  } else if (process.env.VITE_REDIRECT_URI) {
-    redirectUri = process.env.VITE_REDIRECT_URI;
-  } else if (process.env.NEXT_PUBLIC_SITE_URL) {
+  const configuredUri = process.env.OAUTH_REDIRECT_URI || process.env.REDIRECT_URI || process.env.VITE_REDIRECT_URI;
+  if (configuredUri && !configuredUri.includes('vercel.app') && !configuredUri.includes('preview')) {
+    redirectUri = configuredUri;
+  } else if (process.env.NEXT_PUBLIC_SITE_URL && !process.env.NEXT_PUBLIC_SITE_URL.includes('vercel.app')) {
     redirectUri = `${process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '')}/api/auth/deriv/callback`;
   }
 

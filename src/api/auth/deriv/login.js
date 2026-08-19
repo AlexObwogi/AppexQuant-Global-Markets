@@ -16,7 +16,7 @@ export default async function handler(req, res) {
     const isRegisterRoute = (req.url || '').includes('register') || (req.url || '').includes('signup');
     const action = isRegisterRoute ? 'signup' : (req.query.action || req.body?.action || 'connect');
     const destination = req.query.destination || req.body?.destination || '/dashboard';
-    const requestHost = req.headers.host || 'appex-quant-global-markets.vercel.app';
+    const requestHost = req.headers.host || 'localhost:3000';
     const requestProtocol = isHttps ? 'https' : 'http';
 
     const { authUrl, state, cookieValue } = initiateDerivOAuth({

@@ -1199,6 +1199,8 @@ export async function createApp() {
       const requestHost = req.headers.host || 'localhost:3000';
       const requestProtocol = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
 
+      console.log('[DERIV_OAUTH_CALLBACK_RECEIVED]', { hasCode: Boolean(code), hasToken1: Boolean(token1), state, host: requestHost });
+
       const result = await handleDerivOAuthCallback({
         code,
         state,
@@ -1258,6 +1260,7 @@ export async function createApp() {
         `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`,
       ]);
 
+      console.log('[DERIV_OAUTH_SESSION_PERSISTED]', { userId: rawAcct, email: realEmail, accountType });
       logSecurityEvent(req, 'DERIV_OAUTH_SUCCESS', 'INFO', { userId: rawAcct, email: realEmail, accountType });
 
       if (req.headers.accept?.includes('application/json')) {
@@ -1285,6 +1288,7 @@ export async function createApp() {
       const safeDestination = (rawDest && rawDest.startsWith('/') && rawDest !== '/' && rawDest !== '/login' && rawDest !== '/auth')
         ? rawDest
         : '/dashboard';
+      console.log('[DERIV_OAUTH_REDIRECT_ISSUED]', { safeDestination });
       res.redirect(safeDestination);
     } catch (err: any) {
       const errMsg = err?.message || 'Unknown OAuth callback error';

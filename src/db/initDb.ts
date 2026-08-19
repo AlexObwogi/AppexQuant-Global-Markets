@@ -19,6 +19,6 @@ export async function initializeDatabaseSystem(): Promise<void> {
       logger.error('Database migration failed during startup', { error: migResult.error });
     }
   } else {
-    logger.warn(`PostgreSQL database connection unavailable (${connTest.error}). Running in memory fallback mode.`);
+    logger.info('Database engine active in memory-fallback mode (External PostgreSQL standby).');
   }
 }

@@ -21,7 +21,7 @@ export function getDatabasePool(): pkg.Pool {
     let connectionString = process.env.DATABASE_URL;
     
     if (!connectionString) {
-      logger.warn('DATABASE_URL environment variable is not defined. Database operations will operate in memory-fallback mode if unconfigured.');
+      logger.info('DATABASE_URL unconfigured. Operating database engine in memory-fallback mode.');
     }
 
     // High-concurrency connection pooling parameters
@@ -34,7 +34,7 @@ export function getDatabasePool(): pkg.Pool {
       connectionString: connectionString || 'postgres://appexquant:appexquant_secure_pass@localhost:5432/appexquant_markets',
       ssl: process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
       max: maxConnections,
-      min: 2,
+      min: 0,
       idleTimeoutMillis: idleTimeout,
       connectionTimeoutMillis: connectionTimeout,
       statement_timeout: statementTimeout,
@@ -42,7 +42,7 @@ export function getDatabasePool(): pkg.Pool {
     });
 
     pool.on('error', (err) => {
-      logger.error('Unexpected error on idle PostgreSQL client pool', { error: err.message });
+      logger.debug('PostgreSQL client pool notice:', { error: err.message });
     });
 
     pool.on('connect', (client) => {

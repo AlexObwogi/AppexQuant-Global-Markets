@@ -9,7 +9,9 @@ import { ExecutionCommandDesk } from '../components/eas/ExecutionCommandDesk.tsx
 import { PositionsPanel } from '../components/trading/PositionsPanel.tsx';
 import { VoiceStatusToggle } from '../components/trading/VoiceStatusToggle.tsx';
 import { MarketSelectorModal } from '../components/market/MarketSelectorModal.tsx';
-import { ChevronDown, TrendingUp, TrendingDown, Activity, Globe } from 'lucide-react';
+import { PriceTriggerAlertModal } from '../components/alerts/PriceTriggerAlertModal.tsx';
+import { OrderConfirmationFlash, ConfirmedOrderEvent } from '../components/trading/OrderConfirmationFlash.tsx';
+import { ChevronDown, TrendingUp, TrendingDown, Activity, Globe, Bell } from 'lucide-react';
 
 export const TradingWorkspaceView: React.FC = () => {
   const { 
@@ -23,6 +25,8 @@ export const TradingWorkspaceView: React.FC = () => {
   } = useMarketData();
 
   const [isMarketModalOpen, setIsMarketModalOpen] = useState(false);
+  const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
+  const [confirmedOrder, setConfirmedOrder] = useState<ConfirmedOrderEvent | null>(null);
 
   const activeCandles = useMemo(() => candles[`${selectedSymbol}_${selectedTimeframe}`] || [], [candles, selectedSymbol, selectedTimeframe]);
   const currentTick = ticks[selectedSymbol];
@@ -62,6 +66,16 @@ export const TradingWorkspaceView: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-2 sm:space-x-3">
+          {/* Price Trigger Alert Button */}
+          <button
+            onClick={() => setIsAlertModalOpen(true)}
+            className="flex items-center space-x-1.5 bg-bg-main hover:bg-bg-hover border border-border-color px-3 py-1.5 rounded-xl text-xs font-bold text-text-primary transition-colors cursor-pointer"
+            title="Configure Price Trigger Alert"
+          >
+            <Bell className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden sm:inline">Set Alert</span>
+          </button>
+
           {/* Voice Status Toggle */}
           <VoiceStatusToggle />
 
@@ -100,7 +114,7 @@ export const TradingWorkspaceView: React.FC = () => {
         {/* Right: Execution + Intelligence */}
         <div className="lg:col-span-4 space-y-3 lg:space-y-4">
           <div className="bg-bg-surface p-3 rounded-2xl border border-border-color shadow-sm">
-            <ExecutionCommandDesk />
+            <ExecutionCommandDesk onOrderExecuted={(evt) => setConfirmedOrder(evt)} />
           </div>
           <div className="bg-bg-surface p-3 rounded-2xl border border-border-color shadow-sm">
             <MarketIntelligencePanel 
@@ -120,6 +134,12 @@ export const TradingWorkspaceView: React.FC = () => {
 
       {/* Market Selector Modal */}
       <MarketSelectorModal isOpen={isMarketModalOpen} onClose={() => setIsMarketModalOpen(false)} />
+
+      {/* Price Trigger Alert Modal */}
+      <PriceTriggerAlertModal isOpen={isAlertModalOpen} onClose={() => setIsAlertModalOpen(false)} />
+
+      {/* Order Confirmation Flash Animation Overlay */}
+      <OrderConfirmationFlash activeOrder={confirmedOrder} onDismiss={() => setConfirmedOrder(null)} />
     </div>
   );
 };

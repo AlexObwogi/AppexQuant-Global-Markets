@@ -11,6 +11,7 @@ import { Card } from '../components/ui/Card.tsx';
 import { Button } from '../components/ui/Button.tsx';
 import { Badge } from '../components/ui/Badge.tsx';
 import { AICommandCenter } from '../components/ai/AICommandCenter.tsx';
+import { MarketHeatmap } from '../components/dashboard/MarketHeatmap.tsx';
 import { PerformanceBadge, PerformanceDisclaimerBanner } from '../components/common/PerformanceDisclaimer.tsx';
 import { formatCurrencyValue, formatUserRiskStatus } from '../utils/userStatusPresentation.ts';
 import {
@@ -147,6 +148,9 @@ export const DashboardView: React.FC = () => {
         onOpenStrategyScanner={() => dispatch({ type: 'SET_ROUTE', payload: 'strategies' })}
         onSelectSymbol={(sym) => handleGoToMarkets(sym)}
       />
+
+      {/* D3.js Real-Time Market Heatmap Visualizer */}
+      <MarketHeatmap onSelectSymbol={(sym) => handleGoToMarkets(sym)} />
 
       {/* Main 3-Column Widget Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">

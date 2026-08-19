@@ -30,6 +30,9 @@ import {
 import {
   ResponsiveContainer,
   AreaChart,
+  ComposedChart,
+  Line,
+  ReferenceLine,
   Area,
   XAxis,
   YAxis,
@@ -693,41 +696,107 @@ export const AnalyticsView: React.FC = () => {
           {/* TAB 2: CHARTS & VISUALIZATION */}
           {activeTab === 'charts' && (
             <div className="space-y-6" id="charts-tab">
-              {/* Area Equity Curve Chart */}
-              <div className="bg-bg-surface border border-border-color p-5 rounded-xl shadow-sm space-y-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-text-secondary">Cumulative Trading Equity Curve</h3>
-                  <p className="text-[11px] text-text-secondary mt-0.5">Chronological walk of total balance across filtered {filteredTrades.length} transactions, assuming $100,000 starting account size.</p>
+              {/* Recharts PnL Performance Trend Line Chart */}
+              <div className="bg-bg-surface border border-border-color p-5 rounded-2xl shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border-color pb-3">
+                  <div>
+                    <h3 className="text-base font-bold text-text-primary font-display flex items-center gap-2">
+                      <span>PnL Performance & Equity Trend Line</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        LIVE BROKER DATA
+                      </span>
+                    </h3>
+                    <p className="text-xs text-text-secondary mt-0.5">
+                      Chronological balance trajectory and individual transaction PnL trend line across {filteredTrades.length} trades
+                    </p>
+                  </div>
+
+                  <div className="flex items-center space-x-3 font-mono text-xs">
+                    <div className="text-right">
+                      <span className="text-[10px] text-text-secondary uppercase block">Net Realized PnL</span>
+                      <span className={`font-bold ${activeMetrics.netProfitUsd >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {activeMetrics.netProfitUsd >= 0 ? '+' : ''}${activeMetrics.netProfitUsd.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="text-right border-l border-border-color pl-3">
+                      <span className="text-[10px] text-text-secondary uppercase block">Return %</span>
+                      <span className={`font-bold ${activeMetrics.netProfitUsd >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {((activeMetrics.netProfitUsd / 100000) * 100).toFixed(2)}%
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="h-72 w-full">
+
+                <div className="h-80 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <ComposedChart data={chartData} margin={{ top: 15, right: 15, left: -5, bottom: 5 }}>
                       <defs>
                         <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.1}/>
-                          <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0.0}/>
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f4f4f5" />
-                      <XAxis dataKey="name" stroke="#a1a1aa" fontSize={10} tickLine={false} />
-                      <YAxis stroke="#a1a1aa" fontSize={10} tickLine={false} domain={['dataMin - 1000', 'dataMax + 1000']} tickFormatter={(v) => `$${v.toLocaleString()}`} />
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.5} />
+                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} />
+                      <YAxis
+                        yAxisId="left"
+                        stroke="#94a3b8"
+                        fontSize={10}
+                        tickLine={false}
+                        domain={['dataMin - 1000', 'dataMax + 1000']}
+                        tickFormatter={(v) => `$${v.toLocaleString()}`}
+                      />
+                      <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        stroke="#0284c7"
+                        fontSize={10}
+                        tickLine={false}
+                        tickFormatter={(v) => `$${v}`}
+                      />
                       <Tooltip
-                        contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e4e4e7', borderRadius: '8px' }}
-                        formatter={(value: any, name: any, props: any) => {
-                          if (name === 'balance') return [`$${value.toLocaleString()}`, 'Balance'];
-                          if (name === 'pnl') return [`$${value >= 0 ? '+' : ''}${value.toLocaleString()}`, 'P&L'];
+                        contentStyle={{
+                          backgroundColor: '#0f172a',
+                          borderColor: '#334155',
+                          borderRadius: '12px',
+                          color: '#f8fafc',
+                          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)'
+                        }}
+                        formatter={(value: any, name: any) => {
+                          if (name === 'balance') return [`$${Number(value).toLocaleString()}`, 'Account Equity'];
+                          if (name === 'pnl') return [`$${Number(value) >= 0 ? '+' : ''}${Number(value).toLocaleString()}`, 'Trade PnL'];
                           return [value, name];
                         }}
                         labelFormatter={(label, items) => {
                           if (items && items[0]) {
                             const p = items[0].payload;
-                            return `Trade: ${p.tradeId || 'Start'} ${p.symbol ? `(${p.symbol})` : ''} - ${p.date}`;
+                            return `Trade Ref: ${p.tradeId || 'Baseline'} ${p.symbol ? `(${p.symbol})` : ''} • ${p.date}`;
                           }
                           return label;
                         }}
                       />
-                      <Area type="monotone" dataKey="balance" stroke="#4f46e5" strokeWidth={2} fillOpacity={1} fill="url(#colorBalance)" />
-                    </AreaChart>
+                      <ReferenceLine yAxisId="left" y={100000} stroke="#64748b" strokeDasharray="4 4" label={{ value: 'Baseline ($100k)', fill: '#64748b', fontSize: 10, position: 'insideTopLeft' }} />
+                      <Area
+                        yAxisId="left"
+                        type="monotone"
+                        dataKey="balance"
+                        name="balance"
+                        stroke="#10b981"
+                        strokeWidth={2.5}
+                        fillOpacity={1}
+                        fill="url(#colorBalance)"
+                      />
+                      <Line
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey="pnl"
+                        name="pnl"
+                        stroke="#0284c7"
+                        strokeWidth={2}
+                        dot={{ r: 3, fill: '#0284c7' }}
+                        activeDot={{ r: 6, fill: '#38bdf8' }}
+                      />
+                    </ComposedChart>
                   </ResponsiveContainer>
                 </div>
               </div>

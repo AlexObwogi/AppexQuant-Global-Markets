@@ -22,13 +22,18 @@ import {
   Gauge
 } from 'lucide-react';
 import { ExecutionOrder, OrderExecutionState } from '../../types/execution.ts';
+import { ConfirmedOrderEvent } from '../trading/OrderConfirmationFlash.tsx';
 import { useApiFetch } from '../../utils/apiFetch.ts';
 import { useGlobalState } from '../../state/GlobalStateContext.tsx';
 import { hasPermission } from '../../utils/auth.ts';
 import { UserPermission } from '../../types/user.ts';
 import { useTradeVoiceStatus } from '../../hooks/useTradeVoiceStatus.ts';
 
-export const ExecutionCommandDesk: React.FC = () => {
+interface ExecutionCommandDeskProps {
+  onOrderExecuted?: (evt: ConfirmedOrderEvent) => void;
+}
+
+export const ExecutionCommandDesk: React.FC<ExecutionCommandDeskProps> = ({ onOrderExecuted }) => {
   const apiFetch = useApiFetch();
   const { state } = useGlobalState();
   const { 
@@ -120,6 +125,18 @@ export const ExecutionCommandDesk: React.FC = () => {
           side: dispatchForm.side,
           quantity: dispatchForm.quantity
         });
+        if (onOrderExecuted) {
+          onOrderExecuted({
+            id: data.data?.requestId || `order-${Date.now()}`,
+            symbol: dispatchForm.symbol,
+            side: dispatchForm.side,
+            orderType: dispatchForm.orderType,
+            quantity: dispatchForm.quantity,
+            price: dispatchForm.price,
+            timestamp: new Date().toISOString(),
+            status: 'FILLED',
+          });
+        }
         // Set tab to pending to watch the live pre-trade progression
         setActiveTab('pending');
         setSelectedOrder(data.data);

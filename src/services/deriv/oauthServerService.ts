@@ -303,7 +303,7 @@ export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: stri
     clientSecret,
     redirectUri,
     scopes,
-    authBaseUrl: process.env.DERIV_AUTH_URL || 'https://oauth.deriv.com/oauth2/auth',
+    authBaseUrl: process.env.DERIV_AUTH_URL || 'https://oauth.deriv.com/oauth2/authorize',
     tokenEndpoint: process.env.DERIV_TOKEN_ENDPOINT || 'https://oauth.deriv.com/oauth2/token',
   };
 }
@@ -420,7 +420,7 @@ export async function handleDerivOAuthCallback(params: {
     const accountType: 'demo' | 'real' = isVirtual ? 'demo' : 'real';
     const currency = profile?.currency || cur1 || 'USD';
     const balance = typeof profile?.balance === 'number' ? profile.balance : 0;
-    const email = profile?.email || `${rawAccountId.toLowerCase()}@deriv.trader`;
+    const email = profile?.email || '';
     const fullName = profile?.fullname || `Deriv Trader (${rawAccountId})`;
     const nowIso = new Date().toISOString();
 
@@ -585,16 +585,6 @@ export async function handleDerivOAuthCallback(params: {
       }
     }
 
-    const accessToken = tokenData?.access_token || tokenData?.token1 || tokenData?.token;
-    if (!accessToken && process.env.APP_ENV !== 'production' && process.env.OAUTH_SIM === 'true') {
-      tokenData = {
-        access_token: `drv_oauth_${crypto.randomBytes(16).toString('hex')}`,
-        account_id: `CR-${Math.floor(1000000 + Math.random() * 9000000)}`,
-        currency: 'USD',
-        scopes: ['trade', 'account_manage'],
-      };
-    }
-
     const resolvedAccessToken = tokenData?.access_token || tokenData?.token1 || tokenData?.token;
     if (!resolvedAccessToken) {
       return {
@@ -607,15 +597,23 @@ export async function handleDerivOAuthCallback(params: {
     // Immediately fetch authentic Deriv account profile details using serviceFetchUserProfile
     const profile = await serviceFetchUserProfile(resolvedAccessToken, oauthConfig.clientId).catch(() => null);
 
-    const rawAccountId = profile?.loginid || tokenData.account_id || tokenData.acct1 || tokenData.acct || tokenData.loginid || tokenData.accounts?.[0]?.loginid || `CR-${Math.floor(1000000 + Math.random() * 9000000)}`;
+    const rawAccountId = profile?.loginid || tokenData.account_id || tokenData.acct1 || tokenData.acct || tokenData.loginid || tokenData.accounts?.[0]?.loginid || transaction.userId;
+    if (!rawAccountId) {
+      return {
+        success: false,
+        destination: '/?auth_error=profile_failed&message=Could%20not%20retrieve%20Deriv%20account%20profile',
+        errorMessage: 'Deriv OAuth Error: Deriv account login ID could not be retrieved from authorized profile.',
+      };
+    }
+
     const isVirtual = profile ? Boolean(profile.is_virtual) : rawAccountId.startsWith('VR');
     const accountType: 'demo' | 'real' = isVirtual ? 'demo' : 'real';
     const currency = profile?.currency || tokenData.currency || tokenData.cur1 || tokenData.accounts?.[0]?.currency || 'USD';
     const balance = typeof profile?.balance === 'number' ? profile.balance : 0;
-    const email = profile?.email || `${rawAccountId.toLowerCase()}@deriv.trader`;
+    const email = profile?.email || '';
     const fullName = profile?.fullname || `Deriv Trader (${rawAccountId})`;
     const nowIso = new Date().toISOString();
-    const effectiveUserId = rawAccountId || transaction.userId;
+    const effectiveUserId = rawAccountId;
 
     const connectionRecord: DerivConnectionRecord = {
       userId: effectiveUserId,
@@ -783,14 +781,12 @@ export async function connectUserWithApiTokenAsync(userId: string, apiToken: str
   const config = getDerivOAuthConfig();
   const profile = await fetchDerivAccountProfile(trimmed, config.clientId).catch(() => null);
 
-  const accountId = profile?.loginid || (trimmed.startsWith('VR')
-    ? 'VR-' + Math.floor(1000000 + Math.random() * 9000000)
-    : 'CR-' + Math.floor(1000000 + Math.random() * 9000000));
+  const accountId = profile?.loginid || userId;
   const isVirtual = profile ? Boolean(profile.is_virtual) : accountId.startsWith('VR');
   const accountType: 'demo' | 'real' = isVirtual ? 'demo' : 'real';
   const currency = profile?.currency || 'USD';
   const balance = typeof profile?.balance === 'number' ? profile.balance : 0;
-  const email = profile?.email || `${accountId.toLowerCase()}@deriv.trader`;
+  const email = profile?.email || '';
   const fullName = profile?.fullname || `Deriv Trader (${accountId})`;
   const nowIso = new Date().toISOString();
 
@@ -818,9 +814,7 @@ export async function connectUserWithApiTokenAsync(userId: string, apiToken: str
 
 export function connectUserWithApiToken(userId: string, apiToken: string): SafeDerivConnectionMetadata {
   const trimmed = apiToken.trim();
-  const accountId = trimmed.startsWith('VR')
-    ? 'VR-' + Math.floor(1000000 + Math.random() * 9000000)
-    : 'CR-' + Math.floor(1000000 + Math.random() * 9000000);
+  const accountId = userId;
   const accountType = accountId.startsWith('VR') ? 'demo' : 'real';
 
   const record: DerivConnectionRecord = {

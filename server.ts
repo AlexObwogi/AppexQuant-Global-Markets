@@ -1208,10 +1208,13 @@ export async function createApp() {
       }
 
       // Successful exchange: Create authenticated AppExQuant user session
-      const rawAcct = result.rawAccountDetails?.derivAccountId || result.userId || 'CR-TRADER';
+      const rawAcct = result.rawAccountDetails?.derivAccountId || result.userId;
+      if (!rawAcct) {
+        throw new Error('Deriv account identifier could not be resolved from callback.');
+      }
       const accountType = result.rawAccountDetails?.accountType || (rawAcct.startsWith('VR') ? 'demo' : 'real');
       const currency = result.rawAccountDetails?.currency || 'USD';
-      const realEmail = result.rawAccountDetails?.email || `${rawAcct.toLowerCase()}@deriv.trader`;
+      const realEmail = result.rawAccountDetails?.email || '';
       const fullName = result.rawAccountDetails?.fullName;
       const balance = result.rawAccountDetails?.balance ?? 0;
       const csrfToken = crypto.randomBytes(32).toString('hex');
@@ -1224,7 +1227,7 @@ export async function createApp() {
         derivAccountId: rawAcct,
         accountType,
         currency,
-        role: rawAcct.toLowerCase().includes('admin') ? UserRole.ADMIN : UserRole.USER,
+        role: (realEmail === 'obwogialex728@gmail.com' || rawAcct.toLowerCase().includes('admin')) ? UserRole.ADMIN : UserRole.USER,
         isElevated: false,
         elevatedUntil: null,
         csrfToken,

@@ -37,6 +37,19 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     return () => clearInterval(timer);
   }, []);
 
+  // Auto-dismiss toast notifications after 5 seconds
+  useEffect(() => {
+    if (state.notifications.length > 0) {
+      const timer = setTimeout(() => {
+        const oldestNotification = state.notifications[state.notifications.length - 1];
+        if (oldestNotification) {
+          dispatch({ type: 'DISMISS_NOTIFICATION', payload: oldestNotification.id });
+        }
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [state.notifications, dispatch]);
+
   return (
     <div className="relative min-h-screen bg-bg-main text-text-primary flex flex-col font-sans selection:bg-accent-primary/30 selection:text-text-primary w-full overflow-hidden">
       {/* Ambient Visual Background Canvas */}

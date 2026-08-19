@@ -5,7 +5,7 @@
  */
 
 export const DERIV_OAUTH_SCOPE = 'trade account_manage';
-export const DERIV_AUTH_BASE_URL = 'https://oauth.deriv.com/oauth2/auth';
+export const DERIV_AUTH_BASE_URL = 'https://oauth.deriv.com/oauth2/authorize';
 export const DERIV_TOKEN_ENDPOINT = 'https://oauth.deriv.com/oauth2/token';
 
 export interface BuildAuthUrlOptions {
@@ -27,15 +27,33 @@ export interface BuildAuthUrlOptions {
  * Returns the effective Deriv App ID from environment variables or default fallback.
  */
 export function getDerivAppId(): string {
+  if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+    if ((import.meta as any).env?.VITE_DERIV_APP_ID) return (import.meta as any).env.VITE_DERIV_APP_ID;
+    if ((import.meta as any).env?.VITE_CLIENT_ID) return (import.meta as any).env.VITE_CLIENT_ID;
+  }
   if (typeof process !== 'undefined' && process.env) {
     if (process.env.VITE_DERIV_APP_ID) return process.env.VITE_DERIV_APP_ID;
     if (process.env.DERIV_APP_ID) return process.env.DERIV_APP_ID;
     if (process.env.CLIENT_ID) return process.env.CLIENT_ID;
   }
-  if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
-    if ((import.meta as any).env?.VITE_DERIV_APP_ID) return (import.meta as any).env.VITE_DERIV_APP_ID;
-  }
   return '1089';
+}
+
+/**
+ * Returns the dynamic redirect URI for Deriv OAuth callback.
+ */
+export function getDerivRedirectUri(): string {
+  if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+    if ((import.meta as any).env?.VITE_REDIRECT_URI) return (import.meta as any).env.VITE_REDIRECT_URI;
+  }
+  if (typeof process !== 'undefined' && process.env) {
+    if (process.env.REDIRECT_URI) return process.env.REDIRECT_URI;
+    if (process.env.VITE_REDIRECT_URI) return process.env.VITE_REDIRECT_URI;
+  }
+  if (typeof window !== 'undefined' && window.location) {
+    return `${window.location.origin}/api/auth/deriv/callback`;
+  }
+  return 'https://appex-quant-global-markets-cnuojfuwm-alexs-projects-73667c3b.vercel.app/api/auth/deriv/callback';
 }
 
 /**
@@ -45,13 +63,14 @@ export function getDerivAppId(): string {
 export function buildAuthUrl(options: BuildAuthUrlOptions = {}): string {
   const appId = options.appId || options.clientId || getDerivAppId();
   const baseUrl = (typeof process !== 'undefined' && process.env?.DERIV_AUTH_URL) || DERIV_AUTH_BASE_URL;
+  const redirectUri = options.redirectUri || getDerivRedirectUri();
 
   // Build query parameters ensuring strictly space-separated scope='trade account_manage'
   const params: Record<string, string> = {
     app_id: appId,
     l: options.lang || 'EN',
     brand: options.brand || 'deriv',
-    response_type: 'code',
+    redirect_uri: redirectUri,
     scope: options.scope || DERIV_OAUTH_SCOPE,
   };
 

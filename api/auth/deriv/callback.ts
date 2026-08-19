@@ -65,10 +65,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Establish secure session token with full authentic Deriv profile metadata
-    const rawAcct = result.rawAccountDetails?.derivAccountId || result.userId || 'CR-TRADER';
+    const rawAcct = result.rawAccountDetails?.derivAccountId || result.userId;
+    if (!rawAcct) {
+      throw new Error('Deriv account identifier could not be resolved from callback.');
+    }
     const accountType = result.rawAccountDetails?.accountType || (rawAcct.startsWith('VR') ? 'demo' : 'real');
     const currency = result.rawAccountDetails?.currency || 'USD';
-    const realEmail = result.rawAccountDetails?.email || result.connectionRecord?.email || `${rawAcct.toLowerCase()}@deriv.trader`;
+    const realEmail = result.rawAccountDetails?.email || result.connectionRecord?.email || '';
     const fullName = result.rawAccountDetails?.fullName || result.connectionRecord?.fullName;
     const balance = result.rawAccountDetails?.balance ?? result.connectionRecord?.balance ?? 0;
     const csrfToken = crypto.randomBytes(32).toString('hex');

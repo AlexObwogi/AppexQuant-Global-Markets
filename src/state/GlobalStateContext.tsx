@@ -68,50 +68,11 @@ export interface GlobalState {
   isBalanceHidden: boolean;
 }
 
-const initialUser: UserProfile = {
-  id: 'usr-default-001',
-  email: 'trader@appexquant.global',
-  displayName: 'Appex Quant Trader',
-  role: 'USER',
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-  preferences: {
-    theme: 'dark',
-    currency: 'USD',
-    timezone: 'UTC',
-    notificationsEnabled: true,
-  },
-};
-
-const initialAccount: TradingAccount = {
-  id: 'acc-demo-001',
-  userId: 'usr-default-001',
-  brokerId: 'deriv-01',
-  accountNumber: 'CR-7849201',
-  accountName: 'Demo Practice Account',
-  type: 'DEMO',
-  currency: 'USD',
-  server: 'Deriv-Demo',
-  isPrimary: true,
-  isConnected: false, // Phase 1 default disconnected
-  balance: {
-    currency: 'USD',
-    balance: 0,
-    equity: 0,
-    margin: 0,
-    freeMargin: 0,
-    marginLevel: 0,
-    unrealizedPl: 0,
-  },
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-};
-
 export const initialGlobalState: GlobalState = {
-  user: initialUser,
+  user: null,
   session: {
     sessionId: 'sess-init-101',
-    userId: 'usr-default-001',
+    userId: '',
     token: null,
     expiresAt: null,
     isAuthenticated: false,
@@ -122,8 +83,8 @@ export const initialGlobalState: GlobalState = {
   connectionStatus: 'OFFLINE', // Phase 1 default
   executionEnvironment: 'DEMO', // Safe default execution environment
   selectedBroker: null,
-  accounts: [initialAccount],
-  selectedAccountId: 'acc-demo-001',
+  accounts: [],
+  selectedAccountId: null,
   selectedMarket: {
     category: 'FOREX',
     instrument: null,

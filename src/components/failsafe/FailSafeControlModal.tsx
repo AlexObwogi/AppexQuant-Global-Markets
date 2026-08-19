@@ -424,7 +424,7 @@ export const FailSafeControlModal: React.FC<FailSafeControlModalProps> = ({ isOp
                       required
                       value={userSignature}
                       onChange={(e) => setUserSignature(e.target.value)}
-                      placeholder="Type full name or Trader ID (e.g. Appex Trader / CR-7849201)"
+                      placeholder="Type full name or Deriv Login ID (e.g. CR123456)"
                       className="w-full p-3 rounded-xl bg-[#0B0E14] border border-border-color text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
                     />
                   </div>

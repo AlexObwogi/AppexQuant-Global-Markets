@@ -17,7 +17,7 @@ import {
   getEncryptedCookie 
 } from '../../utils/auth.ts';
 import { derivAuthService } from '../../services/deriv/authService.ts';
-import { buildAuthUrl, buildLoginGatewayUrl, DERIV_OAUTH_SCOPE } from '../../services/oauthService.ts';
+import { buildAuthUrl, getDerivRedirectUri, getDerivAppId, DERIV_OAUTH_SCOPE } from '../../services/oauthService.ts';
 import { 
   Globe, 
   Network, 
@@ -371,7 +371,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       const currency = userData.currency || 'USD';
       const balanceAmount = typeof userData.balance === 'number' ? userData.balance : 0;
       const displayName = userData.fullName || userData.displayName || `Deriv Trader (${accountId})`;
-      const email = userData.email || `${accountId.toLowerCase()}@deriv.trader`;
+      const email = userData.email || '';
       const isDemo = userData.accountType === 'demo' || accountId.startsWith('VR');
 
       // Persist in client-side sessionStorage
@@ -434,19 +434,24 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         },
       });
 
-      dispatch({
-        type: 'ADD_NOTIFICATION',
-        payload: {
-          title: 'Broker Connected',
-          message: `Authenticated with Deriv (${accountId}). Workspace active.`,
-          type: 'success',
-        },
-      });
+      // Dispatch connection notification strictly once per session
+      const notifKey = `appex_conn_notified_${accountId}`;
+      if (typeof window !== 'undefined' && !sessionStorage.getItem(notifKey)) {
+        sessionStorage.setItem(notifKey, 'true');
+        dispatch({
+          type: 'ADD_NOTIFICATION',
+          payload: {
+            title: 'Broker Connected',
+            message: `Authenticated with Deriv (${accountId}). Workspace active.`,
+            type: 'success',
+          },
+        });
+      }
     },
     [dispatch, state.theme]
   );
 
-  // Redirect to server-side Deriv OAuth PKCE login gateway or official Deriv signup
+  // Redirect to official Deriv OAuth endpoint with dynamic redirect_uri and scope
   const handleDerivLogin = useCallback(
     (action: 'connect' | 'signup' = 'connect') => {
       setIsAuthorizing(true);
@@ -454,11 +459,22 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       setAuthStatusMessage(
         action === 'signup' 
           ? 'Redirecting to Deriv for account creation...' 
-          : 'Redirecting to secure Deriv OAuth 2.0 authentication gateway...'
+          : 'Redirecting to official Deriv OAuth 2.0 authorization endpoint...'
       );
 
-      // Orchestrate full-page browser redirect to server-side gateway which handles dynamic URL construction
-      window.location.href = `/api/auth/deriv/login?action=${action}`;
+      const redirectUri = getDerivRedirectUri();
+      const appId = getDerivAppId();
+      const authUrl = buildAuthUrl({
+        action,
+        appId,
+        redirectUri,
+        scope: DERIV_OAUTH_SCOPE,
+        brand: 'deriv',
+        lang: 'EN',
+      });
+
+      // Full-page browser redirect to https://oauth.deriv.com/oauth2/authorize
+      window.location.href = authUrl;
     },
     []
   );
@@ -620,8 +636,8 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
     const token = apiTokenInput.trim();
     try {
-      const wsSuccess = await derivAuthService.authorize(token);
-      if (!wsSuccess) {
+      const authProfile = await derivAuthService.authorize(token);
+      if (!authProfile) {
         throw new Error('Deriv WebSocket rejected API token. Please verify trade and account_manage permissions.');
       }
 
@@ -632,7 +648,10 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       });
 
       const json = await res.json();
-      const accountId = json.data?.derivAccountId || (token.startsWith('VR') ? 'VR-' : 'CR-') + Math.floor(1000000 + Math.random() * 9000000);
+      const accountId = json.data?.derivAccountId || authProfile.loginid || json.data?.userId;
+      if (!accountId) {
+        throw new Error('Deriv authorized account ID could not be retrieved.');
+      }
 
       await setEncryptedCookie('deriv_oauth_token', token);
       await setEncryptedCookie('deriv_account_id', accountId);
@@ -650,6 +669,11 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         id: accountId,
         accountId,
         token,
+        email: authProfile.email || json.data?.email,
+        fullName: authProfile.fullname || json.data?.fullName,
+        balance: typeof authProfile.balance === 'number' ? authProfile.balance : json.data?.balance,
+        currency: authProfile.currency || json.data?.currency || 'USD',
+        accountType: authProfile.is_virtual ? 'demo' : (accountId.startsWith('VR') ? 'demo' : 'real'),
       });
     } catch (err: any) {
       setErrorMessage(err.message || 'Token authentication failed. Please check token permissions.');

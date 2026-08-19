@@ -13,6 +13,7 @@ import { FeatureFlags, defaultFeatureFlags } from '../types/featureFlags.ts';
 import { ThemeMode, applyThemeToDocument } from '../design/theme.ts';
 import { logAuditEvent } from '../observability/audit.ts';
 import { derivAuthService } from '../services/deriv/authService.ts';
+import { derivWs } from '../services/deriv/DerivWebSocketManager.ts';
 
 export type AppViewRoute =
   | 'dashboard'
@@ -325,10 +326,27 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
     }
   }, [state.theme]);
 
-  // Online / Offline window listeners for automatic Connection Status
+  // Online / Offline window listeners and WebSocket Status Synchronization
   useEffect(() => {
+    const handleWsStatus = (wsState: string) => {
+      if (wsState === 'CONNECTED') {
+        dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'ONLINE' });
+      } else if (wsState === 'CONNECTING' || wsState === 'RECONNECTING') {
+        dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'DEGRADED' });
+      } else {
+        dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'OFFLINE' });
+      }
+    };
+
+    const unsubscribe = derivWs.onStatusChange(handleWsStatus);
+    handleWsStatus(derivWs.getConnectionState());
+
     const handleOnline = () => {
-      dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'DEGRADED' });
+      if (derivWs.getConnectionState() === 'CONNECTED') {
+        dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'ONLINE' });
+      } else {
+        dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'DEGRADED' });
+      }
     };
     const handleOffline = () => {
       dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'OFFLINE' });
@@ -337,14 +355,8 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Initial check
-    if (navigator.onLine) {
-      dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'DEGRADED' }); // Degraded because broker isn't connected in Phase 1
-    } else {
-      dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'OFFLINE' });
-    }
-
     return () => {
+      unsubscribe();
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };

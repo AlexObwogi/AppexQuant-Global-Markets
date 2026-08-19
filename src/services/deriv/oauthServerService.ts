@@ -108,22 +108,15 @@ export async function fetchDerivAccountProfile(
     }
   }
 
-  // Graceful fallback profile to prevent authentication disruption during transient network failures
-  return {
-    email: 'trader@appexquant.global',
-    fullname: 'Verified Trader',
-    currency: 'USD',
-    balance: 10000,
-    loginid: token.startsWith('VR') ? 'VRTC1234567' : 'CR1234567',
-    is_virtual: token.startsWith('VR') ? 1 : 0,
-    account_list: [],
-  };
+  return null;
 }
 
 function attemptFetchProfile(token: string, appId: string): Promise<DerivAccountProfileData | null> {
   return new Promise((resolve) => {
     try {
-      const WS = typeof WebSocket !== 'undefined' ? WebSocket : (NodeWebSocket as any);
+      const WS = typeof globalThis.WebSocket !== 'undefined'
+        ? globalThis.WebSocket
+        : ((NodeWebSocket as any).default || NodeWebSocket);
       if (!WS) return resolve(null);
 
       const safeAppId = appId.trim() || '1089';
@@ -302,20 +295,16 @@ export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: stri
   const clientSecret = process.env.CLIENT_SECRET || process.env.DERIV_CLIENT_SECRET || '';
 
   const proto = requestProtocol || (requestHost?.includes('localhost') ? 'http' : 'https');
-  const host = requestHost || (process.env.APP_URL ? new URL(process.env.APP_URL).host : 'appex-quant-global-markets.vercel.app');
+  const host = requestHost || (process.env.APP_URL ? new URL(process.env.APP_URL).host : 'localhost:3000');
 
   let redirectUri = `${proto}://${host}/api/auth/deriv/callback`;
   
   if (process.env.REDIRECT_URI) {
     redirectUri = process.env.REDIRECT_URI;
+  } else if (process.env.VITE_REDIRECT_URI) {
+    redirectUri = process.env.VITE_REDIRECT_URI;
   } else if (process.env.NEXT_PUBLIC_SITE_URL) {
     redirectUri = `${process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '')}/api/auth/deriv/callback`;
-  } else if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
-    redirectUri = `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/api/auth/deriv/callback`;
-  } else if (process.env.VERCEL_URL) {
-    redirectUri = `https://${process.env.VERCEL_URL}/api/auth/deriv/callback`;
-  } else if (process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production' || host.includes('vercel.app')) {
-    redirectUri = 'https://appex-quant-global-markets.vercel.app/api/auth/deriv/callback';
   }
 
   const scopes = process.env.DERIV_SCOPES || 'trade account_manage';

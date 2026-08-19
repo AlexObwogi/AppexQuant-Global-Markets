@@ -489,10 +489,17 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
   useEffect(() => {
     if (typeof window === 'undefined' || callbackHandledRef.current) return;
 
-    const searchParams = new URLSearchParams(window.location.search);
-    const authError = searchParams.get('auth_error');
-    const rawError = searchParams.get('error');
-    const rawErrorDesc = searchParams.get('error_description');
+    const locationSearch = window.location.search;
+    const locationHash = window.location.hash;
+    const searchParams = new URLSearchParams(locationSearch);
+    const hashParams = new URLSearchParams(locationHash.startsWith('#') ? locationHash.substring(1) : locationHash);
+
+    const token1 = searchParams.get('token1') || searchParams.get('token') || hashParams.get('token1') || hashParams.get('token');
+    const acct1 = searchParams.get('acct1') || searchParams.get('acct') || hashParams.get('acct1') || hashParams.get('acct');
+
+    const authError = searchParams.get('auth_error') || hashParams.get('auth_error');
+    const rawError = searchParams.get('error') || hashParams.get('error');
+    const rawErrorDesc = searchParams.get('error_description') || hashParams.get('error_description');
     const rawMessage = searchParams.get('message') || searchParams.get('reason') || searchParams.get('msg');
     const connection = searchParams.get('connection');
 
@@ -510,6 +517,46 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       }
       setErrorMessage(computedErrorMessage);
       window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    if (token1) {
+      callbackHandledRef.current = true;
+      setIsAuthorizing(true);
+      setAuthStatusMessage('Validating Deriv OAuth session tokens with broker gateway...');
+      window.history.replaceState({}, document.title, window.location.pathname);
+
+      (async () => {
+        try {
+          const profile = await derivAuthService.authorize(token1);
+          if (profile) {
+            localStorage.setItem('deriv_access_token', token1);
+            if (acct1) localStorage.setItem('deriv_account_id', acct1);
+
+            await apiFetch('/api/auth/deriv/token-login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ apiToken: token1 }),
+            }).catch(() => null);
+
+            establishUserSession({
+              id: profile.loginid || acct1 || 'CR-DERIV',
+              accountId: profile.loginid || acct1 || 'CR-DERIV',
+              token: token1,
+              email: profile.email,
+              fullName: profile.fullname,
+              balance: profile.balance,
+              currency: profile.currency || 'USD',
+              accountType: profile.is_virtual ? 'demo' : ((profile.loginid || acct1 || '').startsWith('VR') ? 'demo' : 'real'),
+            });
+            setIsAuthorizing(false);
+            return;
+          }
+        } catch (e: any) {
+          setErrorMessage(e?.message || 'Deriv OAuth token authorization failed.');
+          setIsAuthorizing(false);
+        }
+      })();
       return;
     }
 
@@ -561,13 +608,19 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         }
       }
 
-      // Permanent Session Persistence Fallback: Rehydrate from client storage if valid token exists
+      // Rehydrate ONLY if a valid, verified token exists in storage
       if (typeof window !== 'undefined' && !isCancelled) {
         const savedToken = localStorage.getItem('deriv_access_token') || localStorage.getItem('deriv_oauth_token');
         if (savedToken) {
           try {
             const profile = await derivAuthService.authorize(savedToken);
             if (profile && !isCancelled) {
+              await apiFetch('/api/auth/deriv/token-login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ apiToken: savedToken }),
+              }).catch(() => null);
+
               establishUserSession({
                 id: profile.loginid,
                 accountId: profile.loginid,
@@ -582,31 +635,8 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
               return;
             }
           } catch {
-            // Token expired or invalid
-          }
-        }
-
-        const cachedSessionStr = sessionStorage.getItem('deriv_session') || localStorage.getItem('deriv_session');
-        if (cachedSessionStr) {
-          try {
-            const cachedUser = JSON.parse(cachedSessionStr);
-            if (cachedUser && (cachedUser.userId || cachedUser.loginid) && !isCancelled) {
-              establishUserSession({
-                id: cachedUser.userId || cachedUser.loginid,
-                accountId: cachedUser.loginid || cachedUser.userId,
-                email: cachedUser.email,
-                displayName: cachedUser.displayName,
-                fullName: cachedUser.fullName,
-                balance: cachedUser.balance,
-                currency: cachedUser.currency,
-                accountType: cachedUser.accountType,
-                role: cachedUser.role,
-              });
-              if (!isCancelled) setIsAuthorizing(false);
-              return;
-            }
-          } catch {
-            // Invalid JSON
+            localStorage.removeItem('deriv_access_token');
+            localStorage.removeItem('deriv_oauth_token');
           }
         }
       }

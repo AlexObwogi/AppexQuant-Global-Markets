@@ -51,12 +51,9 @@ export function getDerivRedirectUri(): string {
     if (process.env.VITE_REDIRECT_URI) return process.env.VITE_REDIRECT_URI;
   }
   if (typeof window !== 'undefined' && window.location) {
-    const host = window.location.host;
-    if (host.includes('localhost') || host.includes('run.app')) {
-      return `${window.location.origin}/api/auth/deriv/callback`;
-    }
+    return `${window.location.origin}/api/auth/deriv/callback`;
   }
-  return 'https://appex-quant-global-markets.vercel.app/api/auth/deriv/callback';
+  return 'http://localhost:3000/api/auth/deriv/callback';
 }
 
 /**

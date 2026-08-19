@@ -215,7 +215,7 @@ export const PriceTriggerAlertModal: React.FC<PriceTriggerAlertModalProps> = ({ 
               >
                 {instruments.map((inst) => (
                   <option key={inst.symbol} value={inst.symbol} className="bg-bg-surface text-text-primary">
-                    {inst.displayName || inst.name} ({inst.symbol})
+                    {inst.name} ({inst.symbol})
                   </option>
                 ))}
               </select>

@@ -7,7 +7,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useMarketData } from '../../state/MarketDataContext.tsx';
 import { InstrumentCategory } from '../../types/market.ts';
-import { Flame, TrendingUp, TrendingDown, Layers, Zap } from 'lucide-react';
+import { Flame } from 'lucide-react';
 
 interface MarketHeatmapProps {
   onSelectSymbol?: (symbol: string) => void;
@@ -62,14 +62,13 @@ export const MarketHeatmap: React.FC<MarketHeatmapProps> = ({ onSelectSymbol }) 
         const currentPrice = tick ? tick.quote : inst.bid || 1.0;
         const changePct = tick ? tick.changePct : inst.change24hPercentage || 0;
 
-        // Base weight on category or price volatility for D3 treemap tile sizing
         const baseWeight = inst.category === 'FOREX' ? 1.2 : inst.category === 'CRYPTO' ? 1.5 : 1.0;
         const weightFactor = Math.max(0.5, Math.abs(changePct) + baseWeight);
 
         return {
           id: inst.symbol,
           symbol: inst.symbol,
-          name: inst.displayName || inst.name || inst.symbol,
+          name: inst.name || inst.symbol,
           category: inst.category,
           price: currentPrice,
           changePct,
@@ -106,7 +105,7 @@ export const MarketHeatmap: React.FC<MarketHeatmapProps> = ({ onSelectSymbol }) 
 
     // Hierarchy Root
     const rootData = { name: 'Markets', children: heatmapData };
-    const hierarchyRoot = d3.hierarchy(rootData)
+    const hierarchyRoot = d3.hierarchy<any>(rootData)
       .sum((d: any) => d.value || 0)
       .sort((a, b) => (b.value || 0) - (a.value || 0));
 
@@ -119,7 +118,7 @@ export const MarketHeatmap: React.FC<MarketHeatmapProps> = ({ onSelectSymbol }) 
 
     treemapLayout(hierarchyRoot);
 
-    const leaves = hierarchyRoot.leaves();
+    const leaves = hierarchyRoot.leaves() as d3.HierarchyRectangularNode<any>[];
 
     // Group Container
     const g = svg.append('g');
@@ -130,15 +129,19 @@ export const MarketHeatmap: React.FC<MarketHeatmapProps> = ({ onSelectSymbol }) 
       .data(leaves)
       .enter()
       .append('g')
-      .attr('transform', (d) => `translate(${d.x0},${d.y0})`)
+      .attr('transform', (d: d3.HierarchyRectangularNode<any>) => `translate(${d.x0},${d.y0})`)
       .style('cursor', 'pointer')
-      .on('click', (_event, d) => {
+      .on('click', (_event, d: d3.HierarchyRectangularNode<any>) => {
         const node = d.data as HeatmapNode;
-        setSelectedSymbol(node.symbol);
-        if (onSelectSymbol) onSelectSymbol(node.symbol);
+        if (node.symbol) {
+          setSelectedSymbol(node.symbol);
+          if (onSelectSymbol) onSelectSymbol(node.symbol);
+        }
       })
-      .on('mouseenter', (_event, d) => {
-        setHoveredSymbol(d.data as HeatmapNode);
+      .on('mouseenter', (_event, d: d3.HierarchyRectangularNode<any>) => {
+        if (d.data.symbol) {
+          setHoveredSymbol(d.data as HeatmapNode);
+        }
       })
       .on('mouseleave', () => {
         setHoveredSymbol(null);
@@ -147,11 +150,11 @@ export const MarketHeatmap: React.FC<MarketHeatmapProps> = ({ onSelectSymbol }) 
     // Rectangles with D3 Transition and Dynamic Fill Color
     tileGroups
       .append('rect')
-      .attr('width', (d) => Math.max(0, d.x1 - d.x0))
-      .attr('height', (d) => Math.max(0, d.y1 - d.y0))
+      .attr('width', (d: d3.HierarchyRectangularNode<any>) => Math.max(0, d.x1 - d.x0))
+      .attr('height', (d: d3.HierarchyRectangularNode<any>) => Math.max(0, d.y1 - d.y0))
       .attr('rx', 6)
       .attr('ry', 6)
-      .attr('fill', (d) => colorScale(d.data.changePct))
+      .attr('fill', (d: d3.HierarchyRectangularNode<any>) => colorScale((d.data as HeatmapNode).changePct || 0))
       .attr('stroke', '#334155')
       .attr('stroke-width', 1)
       .style('transition', 'fill 0.4s ease, stroke 0.2s ease')
@@ -163,10 +166,11 @@ export const MarketHeatmap: React.FC<MarketHeatmapProps> = ({ onSelectSymbol }) 
       });
 
     // Text Content Labels for larger tiles
-    tileGroups.each(function (d) {
+    tileGroups.each(function (d: d3.HierarchyRectangularNode<any>) {
       const tileWidth = d.x1 - d.x0;
       const tileHeight = d.y1 - d.y0;
       const node = d.data as HeatmapNode;
+      if (!node.symbol) return;
       const group = d3.select(this);
 
       if (tileWidth > 45 && tileHeight > 30) {
@@ -183,7 +187,7 @@ export const MarketHeatmap: React.FC<MarketHeatmapProps> = ({ onSelectSymbol }) 
 
         // Percentage Change Label
         if (tileHeight > 45) {
-          const isPos = node.changePct >= 0;
+          const isPos = (node.changePct || 0) >= 0;
           group
             .append('text')
             .attr('x', 6)
@@ -192,7 +196,7 @@ export const MarketHeatmap: React.FC<MarketHeatmapProps> = ({ onSelectSymbol }) 
             .attr('font-size', tileWidth < 70 ? '9px' : '11px')
             .attr('font-weight', '600')
             .attr('font-family', 'monospace')
-            .text(`${isPos ? '+' : ''}${node.changePct.toFixed(2)}%`);
+            .text(`${isPos ? '+' : ''}${(node.changePct || 0).toFixed(2)}%`);
         }
 
         // Live Quote
@@ -204,11 +208,13 @@ export const MarketHeatmap: React.FC<MarketHeatmapProps> = ({ onSelectSymbol }) 
             .attr('fill', '#94a3b8')
             .attr('font-size', '9px')
             .attr('font-family', 'monospace')
-            .text(node.price.toFixed(node.pipSize < 0.001 ? 5 : 2));
+            .text((node.price || 0).toFixed((node.pipSize || 0.0001) < 0.001 ? 5 : 2));
         }
       }
     });
   }, [heatmapData, dimensions, colorScale, setSelectedSymbol, onSelectSymbol]);
+
+  const categoryFilters: (InstrumentCategory | 'ALL')[] = ['ALL', 'FOREX', 'SYNTHETICS', 'CRYPTO', 'INDICES', 'COMMODITIES'];
 
   return (
     <div className="bg-bg-surface border border-border-color rounded-2xl p-4 shadow-sm flex flex-col space-y-3">
@@ -231,7 +237,7 @@ export const MarketHeatmap: React.FC<MarketHeatmapProps> = ({ onSelectSymbol }) 
 
         {/* Category Selector Tabs */}
         <div className="flex items-center space-x-1 overflow-x-auto pb-1 sm:pb-0">
-          {(['ALL', 'FOREX', 'VOLATILITY', 'CRYPTO', 'COMMODITIES'] as const).map((cat) => (
+          {categoryFilters.map((cat) => (
             <button
               key={cat}
               onClick={() => setSelectedCatFilter(cat)}

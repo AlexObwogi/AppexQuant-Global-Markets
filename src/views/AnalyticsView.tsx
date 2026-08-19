@@ -218,6 +218,7 @@ export const AnalyticsView: React.FC = () => {
 
   // Calculate live metrics on filtered subset for instant interactive responsiveness
   const activeMetrics = calculatePerformanceMetrics(filteredTrades);
+  const netProfitUsd = filteredTrades.reduce((acc, t) => acc + t.pnlUsd, 0);
 
   // Collect unique values for dynamic dropdown population
   const uniqueSymbols = Array.from(new Set(trades.map(t => t.symbol)));
@@ -714,14 +715,14 @@ export const AnalyticsView: React.FC = () => {
                   <div className="flex items-center space-x-3 font-mono text-xs">
                     <div className="text-right">
                       <span className="text-[10px] text-text-secondary uppercase block">Net Realized PnL</span>
-                      <span className={`font-bold ${activeMetrics.netProfitUsd >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {activeMetrics.netProfitUsd >= 0 ? '+' : ''}${activeMetrics.netProfitUsd.toLocaleString()}
+                      <span className={`font-bold ${netProfitUsd >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {netProfitUsd >= 0 ? '+' : ''}${netProfitUsd.toLocaleString()}
                       </span>
                     </div>
                     <div className="text-right border-l border-border-color pl-3">
                       <span className="text-[10px] text-text-secondary uppercase block">Return %</span>
-                      <span className={`font-bold ${activeMetrics.netProfitUsd >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {((activeMetrics.netProfitUsd / 100000) * 100).toFixed(2)}%
+                      <span className={`font-bold ${netProfitUsd >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {((netProfitUsd / 100000) * 100).toFixed(2)}%
                       </span>
                     </div>
                   </div>

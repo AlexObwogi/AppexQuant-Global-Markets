@@ -344,17 +344,17 @@ export const AccountView: React.FC = () => {
               <div>
                 <span className="text-text-secondary block text-[9px] uppercase font-mono font-bold">Display Name</span>
                 <span className="font-bold text-text-primary text-sm whitespace-normal break-words block">
-                  {authProfile?.fullname || authProfile?.email || 'Authorized Trader'}
+                  {authProfile?.fullname || state.user?.fullName || state.user?.displayName || '—'}
                 </span>
               </div>
               <div>
                 <span className="text-text-secondary block text-[9px] uppercase font-mono font-bold">Email Address</span>
-                <span className="text-text-primary font-mono font-bold">{authProfile?.email || 'N/A'}</span>
+                <span className="text-text-primary font-mono font-bold">{authProfile?.email || state.user?.email || '—'}</span>
               </div>
               <div>
                 <span className="text-text-secondary block text-[9px] uppercase font-mono font-bold">Active Account</span>
-                <Badge variant="accent" size="sm" className="mt-1 font-bold">
-                  {authProfile?.loginid || 'NOT CONNECTED'}
+                <Badge variant={authProfile?.loginid || state.user?.derivAccountId ? "accent" : "neutral"} size="sm" className="mt-1 font-bold">
+                  {authProfile?.loginid || state.user?.derivAccountId || 'Disconnected'}
                 </Badge>
               </div>
             </div>

@@ -55,6 +55,7 @@ export interface SessionPayload {
   accountType?: 'demo' | 'real';
   currency?: string;
   balance?: number;
+  encryptedDerivToken?: string;
 }
 
 export function createSessionToken(payload: SessionPayload): string {

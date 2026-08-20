@@ -50,6 +50,8 @@ import {
   redactSensitiveValues,
   logSecurityEvent,
   parseCookies,
+  encryptSensitiveData,
+  decryptSensitiveData,
   SessionPayload
 } from './src/services/security.ts';
 import { edgeCache, edgeCacheStore } from './src/lib/cache/edgeCache.ts';
@@ -63,6 +65,7 @@ import {
   handleDerivOAuthCallback,
   getUserDerivConnection,
   getUserDerivConnectionAsync,
+  getUserDerivDiagnostics,
   disconnectUserDeriv,
   syncUserDeriv,
   syncUserDerivAsync,
@@ -1243,6 +1246,8 @@ export async function createApp() {
       const fullName = result.rawAccountDetails?.fullName;
       const balance = result.rawAccountDetails?.balance ?? 0;
       const csrfToken = crypto.randomBytes(32).toString('hex');
+      const rawToken = result.rawAccountDetails?.token;
+      const encryptedDerivToken = rawToken ? encryptSensitiveData(rawToken) : undefined;
 
       const sessionPayload: SessionPayload = {
         userId: rawAcct,
@@ -1257,6 +1262,7 @@ export async function createApp() {
         elevatedUntil: null,
         csrfToken,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 Days
+        encryptedDerivToken,
       };
 
       const sessionToken = createSessionToken(sessionPayload);
@@ -1311,7 +1317,7 @@ export async function createApp() {
   // Get current user's safe Deriv connection metadata (No secret tokens returned to normal users)
   app.get('/api/auth/deriv/status', async (req: Request, res: Response) => {
     try {
-      const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string);
+      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId || (req.headers['x-user-id'] as string);
       if (!userId) {
         return res.json(createSuccessResponse({ connected: false, connectionStatus: 'DISCONNECTED' }));
       }
@@ -1322,10 +1328,28 @@ export async function createApp() {
     }
   });
 
+  // Sanitized Diagnostics endpoint for user's Deriv connection & sync state
+  app.get(['/api/auth/deriv/diagnostics', '/api/deriv/diagnostics'], (req: Request, res: Response) => {
+    try {
+      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId || (req.headers['x-user-id'] as string);
+      if (!userId) {
+        return res.json(createSuccessResponse({
+          authenticated: false,
+          connectionStatus: 'DISCONNECTED',
+          message: 'No active user session',
+        }));
+      }
+      const diag = getUserDerivDiagnostics(userId);
+      res.json(createSuccessResponse(diag));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Failed to fetch Deriv diagnostics', 'DIAGNOSTICS_ERROR'));
+    }
+  });
+
   // Switch active Deriv account from authorized account list
   app.post('/api/auth/deriv/switch-account', async (req: Request, res: Response) => {
     try {
-      const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string);
+      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId || (req.headers['x-user-id'] as string);
       const { loginid } = req.body;
       if (!userId || !loginid) {
         return res.status(400).json(createErrorResponse('User ID and loginid required', 'BAD_REQUEST'));
@@ -1341,7 +1365,7 @@ export async function createApp() {
   // Disconnect Deriv connection (User action or Admin)
   app.post('/api/auth/deriv/disconnect', (req: Request, res: Response) => {
     try {
-      const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string);
+      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId || (req.headers['x-user-id'] as string);
       if (!userId) {
         return res.status(401).json(createErrorResponse('Authentication required', 'UNAUTHENTICATED'));
       }
@@ -1360,17 +1384,29 @@ export async function createApp() {
       const bodyUserId = req.body?.userId || req.body?.loginid || req.body?.accountId;
       const headerUserId = req.headers['x-user-id'] as string;
       const sessionUserId = req.sessionUser?.userId;
+      const sessionDerivAcct = req.sessionUser?.derivAccountId;
 
-      const userId = sessionUserId || headerUserId || bodyUserId || cookieUserId;
+      const userId = sessionDerivAcct || sessionUserId || headerUserId || bodyUserId || cookieUserId;
       if (!userId) {
         return res.status(401).json(createErrorResponse('Authentication required for Deriv synchronization', 'UNAUTHENTICATED'));
       }
 
-      const metadata = await syncUserDerivAsync(userId);
+      // Check if access token is available in req.body, headers, or decrypted from session
+      let tokenToUse = req.body?.apiToken || req.body?.token;
+      if (!tokenToUse && req.headers.authorization?.startsWith('Bearer ')) {
+        tokenToUse = req.headers.authorization.substring(7);
+      }
+      if (!tokenToUse && req.sessionUser?.encryptedDerivToken) {
+        try {
+          tokenToUse = decryptSensitiveData(req.sessionUser.encryptedDerivToken);
+        } catch {}
+      }
+
+      const metadata = await syncUserDerivAsync(userId, tokenToUse);
 
       logAuditEvent('ACCOUNT_CONNECTED', userId, {
         event: 'DERIV_ACCOUNT_SYNCED',
-        derivAccountId: metadata.derivAccountId,
+        derivAccountId: metadata.derivAccountId || userId,
         status: metadata.connectionStatus,
       });
 

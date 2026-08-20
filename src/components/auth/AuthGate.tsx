@@ -348,11 +348,17 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
+  const syncInFlightRef = useRef<Record<string, boolean>>({});
 
   // Synchronize authoritative Deriv account data and manage reactive sync status
   const syncAccountHydration = useCallback(
     async (targetAccountId: string) => {
       if (!targetAccountId) return;
+      if (syncInFlightRef.current[targetAccountId]) {
+        console.log('[AuthGate] Skipping duplicate concurrent sync request for account:', targetAccountId);
+        return;
+      }
+      syncInFlightRef.current[targetAccountId] = true;
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNCING' });
       setSyncErrorMessage(null);
 
@@ -392,6 +398,8 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         console.error('[AuthGate] Account hydration failed:', err);
         setSyncErrorMessage(err?.message || 'Network error during Deriv account hydration.');
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNC_FAILED' });
+      } finally {
+        syncInFlightRef.current[targetAccountId] = false;
       }
     },
     [apiFetch, dispatch]

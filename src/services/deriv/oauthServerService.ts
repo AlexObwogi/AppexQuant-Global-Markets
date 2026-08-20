@@ -303,9 +303,9 @@ export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: stri
   let redirectUri = `${proto}://${host}/api/auth/deriv/callback`;
   
   const configuredUri = process.env.OAUTH_REDIRECT_URI || process.env.REDIRECT_URI || process.env.VITE_REDIRECT_URI;
-  if (configuredUri && !configuredUri.includes('vercel.app') && !configuredUri.includes('preview')) {
+  if (configuredUri) {
     redirectUri = configuredUri;
-  } else if (process.env.NEXT_PUBLIC_SITE_URL && !process.env.NEXT_PUBLIC_SITE_URL.includes('vercel.app')) {
+  } else if (process.env.NEXT_PUBLIC_SITE_URL) {
     redirectUri = `${process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '')}/api/auth/deriv/callback`;
   }
 
@@ -611,9 +611,19 @@ export async function handleDerivOAuthCallback(params: {
       } : undefined,
     });
 
-    const targetLoginId = hydrationResult.metadata?.derivAccountId || fallbackLoginId || transaction.userId;
-    const targetAccountType: 'demo' | 'real' = hydrationResult.metadata?.accountType || (targetLoginId.startsWith('VR') ? 'demo' : 'real');
-    const targetCurrency = hydrationResult.metadata?.currency || 'USD';
+    if (!hydrationResult.success || !hydrationResult.metadata?.connected || !hydrationResult.metadata?.derivAccountId) {
+      const discError = hydrationResult.error || 'Failed to discover or verify Deriv trading account identifier.';
+      logger.error('[DerivOAuth] Callback failed at account discovery stage:', { error: discError, userId: transaction.userId });
+      return {
+        success: false,
+        destination: `/?auth_error=discovery_failed&message=${encodeURIComponent(discError)}`,
+        errorMessage: `Deriv Account Discovery Failure: ${discError}`,
+      };
+    }
+
+    const targetLoginId = hydrationResult.metadata.derivAccountId;
+    const targetAccountType: 'demo' | 'real' = hydrationResult.metadata.accountType || (targetLoginId.startsWith('VR') ? 'demo' : 'real');
+    const targetCurrency = hydrationResult.metadata.currency || 'USD';
 
     return {
       success: true,

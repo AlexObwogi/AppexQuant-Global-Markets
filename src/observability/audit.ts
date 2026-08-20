@@ -14,11 +14,30 @@ export function logAuditEvent(
   details: Record<string, unknown>,
   accountId?: string
 ): AuditEvent {
+  const cleanAccountId = (typeof accountId === 'string' && accountId.trim().length > 0) ? accountId.trim() : undefined;
+
+  // Phase 5 Invariant: ACCOUNT_CONNECTED CAN NEVER be emitted with undefined, null, empty, or unverified accountId
+  let effectiveEventType = eventType;
+  if (eventType === 'ACCOUNT_CONNECTED') {
+    if (!cleanAccountId || cleanAccountId.length < 3) {
+      logger.error('CRITICAL DATA INTEGRITY VIOLATION: ACCOUNT_CONNECTED attempted with invalid/missing accountId. Converting to ACCOUNT_CONNECTION_FAILED.', {
+        userId,
+        receivedAccountId: accountId,
+      });
+      effectiveEventType = 'ACCOUNT_CONNECTION_FAILED';
+      details = {
+        ...details,
+        rejectionReason: 'INVALID_OR_MISSING_ACCOUNT_ID',
+        originalEventType: 'ACCOUNT_CONNECTED',
+      };
+    }
+  }
+
   const event: AuditEvent = {
     id: createCorrelationId(),
-    eventType,
+    eventType: effectiveEventType,
     userId,
-    accountId,
+    accountId: cleanAccountId,
     details,
     timestamp: new Date().toISOString(),
   };
@@ -28,7 +47,7 @@ export function logAuditEvent(
     inMemoryAuditLogs.pop();
   }
 
-  logger.info(`Audit Event [${eventType}]`, { eventId: event.id, userId, accountId });
+  logger.info(`Audit Event [${effectiveEventType}]`, { eventId: event.id, userId, accountId: cleanAccountId });
   return event;
 }
 

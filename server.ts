@@ -74,6 +74,7 @@ import {
   connectUserWithApiTokenAsync,
   switchUserDerivAccountAsync,
 } from './src/services/deriv/oauthServerService.ts';
+import { isValidDerivAccountId } from './src/services/deriv/syncStateMachine.ts';
 import { initializeDatabaseSystem } from './src/db/initDb.ts';
 import { getDatabasePool, testDatabaseConnection } from './src/db/connection.ts';
 
@@ -1076,14 +1077,15 @@ export async function createApp() {
     }
     const userId = req.sessionUser.userId;
     const record = getUserDerivConnection(userId);
-    const hasRecord = record && record.connectionStatus !== 'DISCONNECTED';
+    const hasValidConnection = Boolean(record && record.connectionStatus === 'CONNECTED' && isValidDerivAccountId(record.derivAccountId));
 
-    const derivAcct = hasRecord ? record.derivAccountId || userId : (req.sessionUser.derivAccountId || userId);
-    const email = hasRecord ? record.email || req.sessionUser.email : req.sessionUser.email;
-    const fullName = hasRecord ? record.fullName || req.sessionUser.fullName : req.sessionUser.fullName;
-    const balance = hasRecord ? record.balance ?? 0 : (req.sessionUser.balance ?? 0);
-    const currency = hasRecord ? record.currency || 'USD' : (req.sessionUser.currency || 'USD');
-    const accountType = hasRecord ? record.accountType || 'real' : (req.sessionUser.accountType || 'real');
+    const rawAcctCandidate = hasValidConnection ? record?.derivAccountId : req.sessionUser.derivAccountId;
+    const derivAcct = isValidDerivAccountId(rawAcctCandidate) ? rawAcctCandidate : undefined;
+    const email = (hasValidConnection && record?.email) || req.sessionUser.email;
+    const fullName = (hasValidConnection && record?.fullName) || req.sessionUser.fullName;
+    const balance = (hasValidConnection && typeof record?.balance === 'number') ? record.balance : (req.sessionUser.balance ?? 0);
+    const currency = (hasValidConnection && record?.currency) || req.sessionUser.currency || 'USD';
+    const accountType = (hasValidConnection && record?.accountType) || req.sessionUser.accountType || 'real';
 
     res.json(createSuccessResponse({
       authenticated: true,
@@ -1092,12 +1094,12 @@ export async function createApp() {
         email,
         role: req.sessionUser.role,
         derivAccountId: derivAcct,
-        displayName: fullName || derivAcct,
+        displayName: fullName || derivAcct || email || userId,
         fullName: fullName || undefined,
         balance,
         accountType,
         currency,
-        connectionStatus: record ? record.connectionStatus : 'DISCONNECTED',
+        connectionStatus: hasValidConnection ? 'CONNECTED' : (record ? record.connectionStatus : 'DISCONNECTED'),
       },
       csrfToken: req.sessionUser.csrfToken,
       isElevated: req.sessionUser.isElevated,
@@ -1324,10 +1326,18 @@ export async function createApp() {
     try {
       const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId || (req.headers['x-user-id'] as string);
       if (!userId) {
-        return res.json(createSuccessResponse({ connected: false, connectionStatus: 'DISCONNECTED' }));
+        return res.json(createSuccessResponse({ connected: false, connectionStatus: 'DISCONNECTED', derivAccountId: undefined }));
       }
       const metadata = await getUserDerivConnectionAsync(userId);
-      res.json(createSuccessResponse(metadata || { connected: false, connectionStatus: 'DISCONNECTED' }));
+      const isVerifiedConnected = Boolean(metadata && metadata.connected && metadata.derivAccountId && isValidDerivAccountId(metadata.derivAccountId));
+      if (!isVerifiedConnected) {
+        return res.json(createSuccessResponse({
+          connected: false,
+          connectionStatus: metadata?.connectionStatus || 'DISCONNECTED',
+          derivAccountId: undefined,
+        }));
+      }
+      res.json(createSuccessResponse(metadata));
     } catch (err: any) {
       res.status(500).json(createErrorResponse('Failed to fetch Deriv connection status', 'DERIV_STATUS_ERROR'));
     }
@@ -1360,7 +1370,11 @@ export async function createApp() {
         return res.status(400).json(createErrorResponse('User ID and loginid required', 'BAD_REQUEST'));
       }
       const metadata = await switchUserDerivAccountAsync(userId, loginid);
-      logAuditEvent('ACCOUNT_CONNECTED', userId, { event: 'DERIV_ACCOUNT_SWITCHED', loginid });
+      if (!metadata.connected || !metadata.derivAccountId || !isValidDerivAccountId(metadata.derivAccountId)) {
+        logAuditEvent('DERIV_SYNC_FAILED', userId, { event: 'DERIV_SWITCH_FAILED', targetLoginid: loginid });
+        return res.status(422).json(createErrorResponse('Failed to switch to specified Deriv account', 'SWITCH_FAILED', { metadata }));
+      }
+      logAuditEvent('ACCOUNT_CONNECTED', userId, { event: 'DERIV_ACCOUNT_SWITCHED', loginid: metadata.derivAccountId }, metadata.derivAccountId);
       res.json(createSuccessResponse(metadata));
     } catch (err: any) {
       res.status(500).json(createErrorResponse('Failed to switch Deriv account', 'SWITCH_ERROR'));
@@ -1409,11 +1423,26 @@ export async function createApp() {
 
       const metadata = await syncUserDerivAsync(userId, tokenToUse);
 
+      if (!metadata.connected || !metadata.derivAccountId || !isValidDerivAccountId(metadata.derivAccountId)) {
+        logAuditEvent('DERIV_SYNC_FAILED', userId, {
+          event: 'DERIV_SYNC_FAILED',
+          status: metadata.connectionStatus || 'SYNC_FAILED',
+          userId,
+        });
+        return res.status(422).json(
+          createErrorResponse(
+            'Deriv account synchronization failed: unable to discover or verify active trading account.',
+            'DERIV_SYNC_FAILED',
+            { metadata }
+          )
+        );
+      }
+
       logAuditEvent('ACCOUNT_CONNECTED', userId, {
         event: 'DERIV_ACCOUNT_SYNCED',
-        derivAccountId: metadata.derivAccountId || userId,
+        derivAccountId: metadata.derivAccountId,
         status: metadata.connectionStatus,
-      });
+      }, metadata.derivAccountId);
 
       res.json(createSuccessResponse(metadata));
     } catch (err: any) {
@@ -1431,7 +1460,11 @@ export async function createApp() {
       }
       const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string) || `usr-${crypto.randomBytes(6).toString('hex')}`;
       const metadata = await connectUserWithApiTokenAsync(userId, apiToken);
-      logAuditEvent('ACCOUNT_CONNECTED', userId, { event: 'DERIV_API_TOKEN_CONNECTED' });
+      if (!metadata.connected || !metadata.derivAccountId || !isValidDerivAccountId(metadata.derivAccountId)) {
+        logAuditEvent('DERIV_SYNC_FAILED', userId, { event: 'DERIV_API_TOKEN_CONNECTED_FAILED' });
+        return res.status(422).json(createErrorResponse('Failed to authenticate with Deriv API token', 'TOKEN_LOGIN_ERROR', { metadata }));
+      }
+      logAuditEvent('ACCOUNT_CONNECTED', userId, { event: 'DERIV_API_TOKEN_CONNECTED' }, metadata.derivAccountId);
       res.json(createSuccessResponse(metadata));
     } catch (err: any) {
       res.status(500).json(createErrorResponse('Failed to authenticate with Deriv API token', 'TOKEN_LOGIN_ERROR'));

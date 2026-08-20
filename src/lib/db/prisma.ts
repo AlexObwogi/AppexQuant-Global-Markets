@@ -147,11 +147,151 @@ export const dbQueries = {
               kycStatus: true,
             },
           },
+          derivAccounts: {
+            select: {
+              id: true,
+              accountType: true,
+              currency: true,
+              balance: true,
+              equity: true,
+              isVirtual: true,
+              status: true,
+              lastSyncedAt: true,
+            },
+          },
         },
       });
     } catch (err: any) {
       logger.warn('Prisma findUserById fallback:', { error: err.message });
       return null;
+    }
+  },
+
+  /**
+   * Idempotently upserts a DerivAccount record mapped to a user
+   */
+  async upsertDerivAccount(data: {
+    id: string; // Deriv loginid
+    userId: string;
+    accountType?: string;
+    currency?: string;
+    balance?: number;
+    equity?: number;
+    isVirtual?: boolean;
+    isDisabled?: boolean;
+    status?: string;
+    lastSyncedAt?: Date | string;
+  }): Promise<any | null> {
+    if (!prisma || !process.env.DATABASE_URL) return null;
+    try {
+      const now = new Date();
+      const lastSynced = data.lastSyncedAt ? new Date(data.lastSyncedAt) : now;
+      const balance = data.balance ?? 0;
+      const equity = data.equity ?? balance;
+      const accountType = data.accountType || (data.id.startsWith('VR') ? 'demo' : 'real');
+      const currency = data.currency || 'USD';
+      const isVirtual = data.isVirtual ?? data.id.startsWith('VR');
+
+      return await prisma.derivAccount.upsert({
+        where: { id: data.id },
+        create: {
+          id: data.id,
+          userId: data.userId,
+          accountType,
+          currency,
+          balance,
+          equity,
+          isVirtual,
+          isDisabled: data.isDisabled ?? false,
+          status: data.status || 'ACTIVE',
+          lastSyncedAt: lastSynced,
+          createdAt: now,
+          updatedAt: now,
+        },
+        update: {
+          accountType,
+          currency,
+          balance,
+          equity,
+          isVirtual,
+          status: data.status || 'ACTIVE',
+          lastSyncedAt: lastSynced,
+          updatedAt: now,
+        },
+      });
+    } catch (err: any) {
+      logger.warn('Prisma upsertDerivAccount fallback:', { error: err.message });
+      return null;
+    }
+  },
+
+  /**
+   * Idempotently captures an account snapshot (balance & equity)
+   */
+  async recordAccountSnapshot(data: {
+    derivAccountId: string;
+    userId: string;
+    balance: number;
+    equity?: number;
+    currency?: string;
+    timestamp?: Date;
+  }): Promise<any | null> {
+    if (!prisma || !process.env.DATABASE_URL) return null;
+    try {
+      const ts = data.timestamp || new Date();
+      // Format hour-level idempotency key e.g. CR12345_2026-08-20T04
+      const hourKey = ts.toISOString().substring(0, 13);
+      const snapshotKey = `${data.derivAccountId}_${hourKey}`;
+      const equity = data.equity ?? data.balance;
+      const currency = data.currency || 'USD';
+
+      return await prisma.derivAccountSnapshot.upsert({
+        where: {
+          derivAccountId_snapshotKey: {
+            derivAccountId: data.derivAccountId,
+            snapshotKey,
+          },
+        },
+        create: {
+          derivAccountId: data.derivAccountId,
+          userId: data.userId,
+          balance: data.balance,
+          equity,
+          currency,
+          snapshotKey,
+          timestamp: ts,
+        },
+        update: {
+          balance: data.balance,
+          equity,
+          currency,
+          timestamp: ts,
+        },
+      });
+    } catch (err: any) {
+      logger.warn('Prisma recordAccountSnapshot fallback:', { error: err.message });
+      return null;
+    }
+  },
+
+  /**
+   * Maps an external Deriv account ID to an internal user and active session
+   */
+  async mapDerivAccountToUserSession(derivAccountId: string, userId: string): Promise<boolean> {
+    if (!prisma || !process.env.DATABASE_URL) return false;
+    try {
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          derivAccountId,
+          accountType: derivAccountId.startsWith('VR') ? 'demo' : 'real',
+          updatedAt: new Date(),
+        },
+      });
+      return true;
+    } catch (err: any) {
+      logger.warn('Prisma mapDerivAccountToUserSession fallback:', { error: err.message });
+      return false;
     }
   },
 };

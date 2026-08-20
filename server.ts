@@ -65,6 +65,7 @@ import {
   getUserDerivConnectionAsync,
   disconnectUserDeriv,
   syncUserDeriv,
+  syncUserDerivAsync,
   getAdminDerivDiagnostics,
   connectUserWithApiToken,
   connectUserWithApiTokenAsync,
@@ -1070,20 +1071,30 @@ export async function createApp() {
         user: null,
       }));
     }
-    const derivAcct = req.sessionUser.derivAccountId || (req.sessionUser as any).derivAccountId || req.sessionUser.userId;
-    const fullName = req.sessionUser.fullName || (req.sessionUser as any).fullName;
+    const userId = req.sessionUser.userId;
+    const record = getUserDerivConnection(userId);
+    const hasRecord = record && record.connectionStatus !== 'DISCONNECTED';
+
+    const derivAcct = hasRecord ? record.derivAccountId || userId : (req.sessionUser.derivAccountId || userId);
+    const email = hasRecord ? record.email || req.sessionUser.email : req.sessionUser.email;
+    const fullName = hasRecord ? record.fullName || req.sessionUser.fullName : req.sessionUser.fullName;
+    const balance = hasRecord ? record.balance ?? 0 : (req.sessionUser.balance ?? 0);
+    const currency = hasRecord ? record.currency || 'USD' : (req.sessionUser.currency || 'USD');
+    const accountType = hasRecord ? record.accountType || 'real' : (req.sessionUser.accountType || 'real');
+
     res.json(createSuccessResponse({
       authenticated: true,
       user: {
-        userId: req.sessionUser.userId,
-        email: req.sessionUser.email,
+        userId,
+        email,
         role: req.sessionUser.role,
         derivAccountId: derivAcct,
         displayName: fullName || derivAcct,
         fullName: fullName || undefined,
-        balance: req.sessionUser.balance ?? (req.sessionUser as any).balance ?? 0,
-        accountType: req.sessionUser.accountType || (req.sessionUser as any).accountType || (derivAcct.startsWith('VR') ? 'demo' : 'real'),
-        currency: req.sessionUser.currency || (req.sessionUser as any).currency || 'USD',
+        balance,
+        accountType,
+        currency,
+        connectionStatus: record ? record.connectionStatus : 'DISCONNECTED',
       },
       csrfToken: req.sessionUser.csrfToken,
       isElevated: req.sessionUser.isElevated,
@@ -1342,17 +1353,31 @@ export async function createApp() {
     }
   });
 
-  // Trigger manual Deriv account metadata & balance sync
-  app.post('/api/auth/deriv/sync', (req: Request, res: Response) => {
+  // Trigger manual Deriv account metadata & balance sync with authoritative reconciliation
+  app.all(['/api/auth/deriv/sync', '/api/deriv/sync'], async (req: Request, res: Response) => {
     try {
-      const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string);
+      const cookieUserId = req.cookies?.deriv_session_user_id;
+      const bodyUserId = req.body?.userId || req.body?.loginid || req.body?.accountId;
+      const headerUserId = req.headers['x-user-id'] as string;
+      const sessionUserId = req.sessionUser?.userId;
+
+      const userId = sessionUserId || headerUserId || bodyUserId || cookieUserId;
       if (!userId) {
-        return res.status(401).json(createErrorResponse('Authentication required', 'UNAUTHENTICATED'));
+        return res.status(401).json(createErrorResponse('Authentication required for Deriv synchronization', 'UNAUTHENTICATED'));
       }
-      const metadata = syncUserDeriv(userId);
+
+      const metadata = await syncUserDerivAsync(userId);
+
+      logAuditEvent('ACCOUNT_CONNECTED', userId, {
+        event: 'DERIV_ACCOUNT_SYNCED',
+        derivAccountId: metadata.derivAccountId,
+        status: metadata.connectionStatus,
+      });
+
       res.json(createSuccessResponse(metadata));
     } catch (err: any) {
-      res.status(500).json(createErrorResponse('Failed to sync Deriv connection', 'DERIV_SYNC_ERROR'));
+      console.error('[DERIV_SYNC_ENDPOINT_ERROR]', err);
+      res.status(500).json(createErrorResponse(err?.message || 'Failed to sync Deriv connection', 'DERIV_SYNC_ERROR'));
     }
   });
 

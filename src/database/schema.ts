@@ -119,6 +119,32 @@ export interface VerificationRecord {
 // 2. BROKER & ACCOUNT CONNECTIONS
 // ==========================================
 
+export interface DerivAccount {
+  id: string; // External Deriv loginid e.g. CR123456 / VRTC123456 (Primary Key)
+  userId: string; // FK -> User.id (One-to-Many)
+  accountType: 'demo' | 'real';
+  currency: string;
+  balance: number;
+  equity?: number;
+  isVirtual: boolean;
+  isDisabled: boolean;
+  status: 'ACTIVE' | 'DISABLED' | 'SUSPENDED';
+  lastSyncedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DerivAccountSnapshot {
+  id: string; // UUID Primary Key
+  derivAccountId: string; // FK -> DerivAccount.id
+  userId: string; // FK -> User.id
+  balance: number;
+  equity?: number;
+  currency: string;
+  snapshotKey: string; // Idempotency key: `${derivAccountId}_${hourKey}`
+  timestamp: string;
+}
+
 export interface BrokerConnection {
   id: string; // Primary Key
   userId: string; // FK -> User.id

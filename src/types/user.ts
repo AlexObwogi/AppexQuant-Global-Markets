@@ -72,6 +72,7 @@ export interface UserProfile {
   balance?: number;
   accountType?: string;
   fullName?: string;
+  syncStatus?: 'IDLE' | 'SYNCING' | 'SYNCED' | 'SYNC_FAILED';
   preferences: {
     theme: 'dark' | 'light' | 'system';
     currency: string;

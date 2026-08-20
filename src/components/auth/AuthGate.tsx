@@ -40,6 +40,7 @@ import {
   X
 } from 'lucide-react';
 import { AppexQuantLogo } from '../common/AppexQuantLogo.tsx';
+import { DerivSyncHydrationGuard } from './DerivSyncHydrationGuard.tsx';
 
 const CSS_ANIMATIONS = `
   @keyframes drawRing {
@@ -346,6 +347,65 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const [authStatusMessage, setAuthStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
+
+  // Synchronize authoritative Deriv account data and manage reactive sync status
+  const syncAccountHydration = useCallback(
+    async (targetAccountId: string) => {
+      if (!targetAccountId) return;
+      dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNCING' });
+      setSyncErrorMessage(null);
+
+      try {
+        const res = await apiFetch('/api/auth/deriv/sync', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': targetAccountId,
+          },
+          body: JSON.stringify({ userId: targetAccountId, loginid: targetAccountId }),
+        });
+
+        if (res.ok) {
+          const json = await res.json().catch(() => null);
+          if (json && json.success && json.data) {
+            const metadata = json.data;
+            if (metadata.connectionStatus === 'CONNECTED' || typeof metadata.balance === 'number') {
+              if (typeof metadata.balance === 'number') {
+                dispatch({
+                  type: 'UPDATE_ACCOUNT_BALANCE',
+                  payload: {
+                    balance: metadata.balance,
+                    currency: metadata.currency || 'USD',
+                    loginid: metadata.derivAccountId || targetAccountId,
+                  },
+                });
+              }
+              dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNCED' });
+              return;
+            }
+          }
+        }
+        setSyncErrorMessage('Deriv account synchronization failed to verify authoritative balance snapshot.');
+        dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNC_FAILED' });
+      } catch (err: any) {
+        console.error('[AuthGate] Account hydration failed:', err);
+        setSyncErrorMessage(err?.message || 'Network error during Deriv account hydration.');
+        dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNC_FAILED' });
+      }
+    },
+    [apiFetch, dispatch]
+  );
+
+  const handleSignOut = useCallback(() => {
+    localStorage.removeItem('deriv_access_token');
+    localStorage.removeItem('deriv_oauth_token');
+    localStorage.removeItem('deriv_session');
+    sessionStorage.removeItem('deriv_session');
+    derivAuthService.logout();
+    dispatch({ type: 'SET_USER_PROFILE', payload: null });
+    dispatch({ type: 'SET_ROUTE', payload: 'landing' });
+  }, [dispatch]);
 
   // Active milestone and radiant sun-burst tracking at 30%, 60%, 90%, 100%
   const [activeMilestoneStage, setActiveMilestoneStage] = useState(0);
@@ -412,6 +472,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           currency,
           balance: balanceAmount,
           accountType: isDemo ? 'demo' : 'real',
+          syncStatus: 'SYNCING',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           preferences: {
@@ -441,6 +502,9 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         },
       });
 
+      // Trigger authoritative backend data hydration & persistence immediately
+      syncAccountHydration(accountId);
+
       // Dispatch connection notification strictly once per session
       const notifKey = `appex_conn_notified_${accountId}`;
       if (typeof window !== 'undefined' && !sessionStorage.getItem(notifKey)) {
@@ -455,7 +519,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         });
       }
     },
-    [dispatch, state.theme]
+    [dispatch, state.theme, syncAccountHydration]
   );
 
   // Connect to official secure broker platform
@@ -753,6 +817,16 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   // Render protected app workspace ONLY when on an app route AND authenticated
   if (!isLandingRoute && isAuthenticated) {
+    const currentSyncStatus = state.user?.syncStatus;
+    if (currentSyncStatus === 'SYNCING' || currentSyncStatus === 'SYNC_FAILED') {
+      return (
+        <DerivSyncHydrationGuard
+          onRetrySync={() => syncAccountHydration(state.user?.derivAccountId || state.user?.id || '')}
+          onSignOut={handleSignOut}
+          syncErrorMessage={syncErrorMessage}
+        />
+      );
+    }
     return <>{children}</>;
   }
 

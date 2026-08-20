@@ -131,14 +131,21 @@ export const Sidebar: React.FC = () => {
       {/* Footer Profile Baseline */}
       <div className="pt-6 border-t border-border-color mt-auto">
         <div className="flex items-center space-x-3 text-text-secondary">
-          <div className="w-8 h-8 rounded-full bg-bg-surface border border-accent-primary/30 flex items-center justify-center text-[10px] text-accent-primary font-bold">
-            AQ
+          <div className="w-8 h-8 rounded-full bg-bg-surface border border-accent-primary/30 flex items-center justify-center text-[10px] text-accent-primary font-bold uppercase">
+            {state.user?.displayName ? state.user.displayName.substring(0, 2).toUpperCase() : (state.user?.derivAccountId ? state.user.derivAccountId.substring(0, 2) : 'AQ')}
           </div>
-          <div className="flex flex-col">
-            <span className="text-xs font-semibold text-text-primary">
-              {state.user?.displayName || 'Unassigned User'}
+          <div className="flex flex-col min-w-0">
+            <span className="text-xs font-semibold text-text-primary truncate">
+              {state.user?.fullName || state.user?.displayName || state.user?.derivAccountId || 'Trader'}
             </span>
-            <span className="text-[10px] text-color-info font-mono font-bold">AppexQuant v1.0</span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[10px] text-slate-400 font-mono">
+                {state.user?.derivAccountId || 'AppexQuant'}
+              </span>
+              {state.user?.syncStatus === 'SYNCED' && (
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400" title="Synced" />
+              )}
+            </div>
           </div>
         </div>
       </div>

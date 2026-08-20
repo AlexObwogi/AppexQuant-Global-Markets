@@ -6,13 +6,12 @@
 import React, { useState, useEffect } from 'react';
 import { useGlobalState, AppViewRoute } from '../../state/GlobalStateContext.tsx';
 import { derivAuthService } from '../../services/deriv/authService.ts';
+import { useApiFetch } from '../../utils/apiFetch.ts';
 import { useMarketData } from '../../state/MarketDataContext.tsx';
 import { EnvironmentSelector } from '../common/EnvironmentSelector.tsx';
 import { ThemeSelector } from '../common/ThemeSelector.tsx';
-import { Menu, User, Eye, EyeOff, Flame } from 'lucide-react';
+import { Menu, User, Eye, EyeOff, Flame, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { DerivConnectionModal } from '../auth/DerivConnectionModal.tsx';
-
-
 import { formatCurrencyValue } from '../../utils/userStatusPresentation.ts';
 
 interface HeaderProps {
@@ -21,7 +20,9 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
   const { state, dispatch, selectedAccount } = useGlobalState();
+  const apiFetch = useApiFetch();
   const [showAdminModal, setShowAdminModal] = useState(false);
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
 
   const [authProfile, setAuthProfile] = useState(derivAuthService.getProfile());
   useEffect(() => {
@@ -30,6 +31,50 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
   }, []);
   const handleNavigate = (route: AppViewRoute) => {
     dispatch({ type: 'SET_ROUTE', payload: route });
+  };
+
+  const handleManualSync = async () => {
+    if (isManualSyncing || !state.session.isAuthenticated) return;
+    const targetAccountId = state.user?.derivAccountId || state.user?.id || state.session.userId;
+    if (!targetAccountId) return;
+
+    setIsManualSyncing(true);
+    dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNCING' });
+
+    try {
+      const res = await apiFetch('/api/auth/deriv/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': targetAccountId,
+        },
+        body: JSON.stringify({ userId: targetAccountId, loginid: targetAccountId }),
+      });
+
+      if (res.ok) {
+        const json = await res.json().catch(() => null);
+        if (json && json.success && json.data) {
+          const metadata = json.data;
+          if (typeof metadata.balance === 'number') {
+            dispatch({
+              type: 'UPDATE_ACCOUNT_BALANCE',
+              payload: {
+                balance: metadata.balance,
+                currency: metadata.currency || 'USD',
+                loginid: metadata.derivAccountId || targetAccountId,
+              },
+            });
+          }
+          dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNCED' });
+          return;
+        }
+      }
+      dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNC_FAILED' });
+    } catch {
+      dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNC_FAILED' });
+    } finally {
+      setIsManualSyncing(false);
+    }
   };
 
   const isBalanceHidden = state.isBalanceHidden;
@@ -109,6 +154,46 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
             <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
             <span>{statusText}</span>
           </div>
+
+          {/* REACTIVE DERIV HYDRATION SYNC INDICATOR */}
+          {isAuthenticated && (
+            <button
+              onClick={handleManualSync}
+              disabled={isManualSyncing || state.user?.syncStatus === 'SYNCING'}
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-mono font-bold uppercase transition-all cursor-pointer select-none active:scale-95 ${
+                state.user?.syncStatus === 'SYNCING'
+                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 animate-pulse'
+                  : state.user?.syncStatus === 'SYNC_FAILED'
+                  ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/40 shadow-xs'
+                  : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+              }`}
+              title={
+                state.user?.syncStatus === 'SYNCING'
+                  ? 'Synchronizing authoritative Deriv account snapshot...'
+                  : state.user?.syncStatus === 'SYNC_FAILED'
+                  ? 'Synchronization incomplete. Click to retry sync now.'
+                  : 'Deriv Account Snapshot Synced. Click to re-sync.'
+              }
+              aria-label="Deriv Sync Status"
+            >
+              {state.user?.syncStatus === 'SYNCING' || isManualSyncing ? (
+                <>
+                  <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
+                  <span className="hidden sm:inline">SYNCING</span>
+                </>
+              ) : state.user?.syncStatus === 'SYNC_FAILED' ? (
+                <>
+                  <AlertTriangle className="w-3 h-3 text-rose-400" />
+                  <span className="hidden sm:inline">SYNC FAILED</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  <span className="hidden sm:inline">SYNCED</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         {/* SINGLE CONSOLIDATED ENVIRONMENT SELECTOR ([ DEMO ▾ ]) */}

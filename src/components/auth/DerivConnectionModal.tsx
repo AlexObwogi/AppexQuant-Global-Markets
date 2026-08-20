@@ -14,7 +14,7 @@ interface ConnectionMeta {
   derivAccountId?: string;
   accountType?: 'demo' | 'real';
   currency?: string;
-  connectionStatus: 'CONNECTED' | 'CONNECTING' | 'DISCONNECTED' | 'RECONNECT_REQUIRED' | 'ERROR';
+  connectionStatus: 'CONNECTED' | 'CONNECTING' | 'SYNCING' | 'SYNC_FAILED' | 'DISCONNECTED' | 'RECONNECT_REQUIRED' | 'ERROR';
   scopes?: string[];
   lastSyncedAt?: string;
 }
@@ -73,6 +73,42 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
   useEffect(() => {
     fetchStatus();
   }, []);
+
+  useEffect(() => {
+    if (meta && meta.connectionStatus === 'SYNCING') {
+      const interval = setInterval(() => {
+        apiFetch('/api/auth/deriv/status')
+          .then((res) => {
+            if (res.ok) return res.json();
+          })
+          .then((json) => {
+            if (json && json.success && json.data) {
+              setMeta(json.data);
+              if (json.data.connected) {
+                dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'ONLINE' });
+                dispatch({
+                  type: 'SELECT_BROKER',
+                  payload: {
+                    id: `conn-deriv-${json.data.derivAccountId}`,
+                    brokerType: 'DERIV',
+                    brokerName: 'Deriv Limited',
+                    server: 'Deriv-Server',
+                    accountNumber: json.data.derivAccountId || '',
+                    status: 'CONNECTED',
+                    environment: json.data.accountType === 'real' ? 'REAL' : 'DEMO',
+                    apiPermissions: json.data.scopes || ['trade', 'account_manage'],
+                    isReadOnly: false,
+                    executionPermission: true,
+                  }
+                });
+              }
+            }
+          })
+          .catch(() => {});
+      }, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [meta]);
 
   const handleInitiateOAuth = (action: 'connect' | 'signup') => {
     if (action === 'signup') {
@@ -265,6 +301,57 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
           <div className="py-8 text-center space-y-2">
             <Loader2 className="w-6 h-6 text-accent-primary animate-spin mx-auto" />
             <p className="text-xs text-text-secondary">Checking Deriv connection status...</p>
+          </div>
+        ) : meta && meta.connectionStatus === 'SYNCING' ? (
+          /* SYNCING STATE */
+          <div className="py-8 text-center space-y-4">
+            <div className="relative w-12 h-12 mx-auto">
+              <Loader2 className="w-12 h-12 text-accent-primary animate-spin" />
+              <ShieldCheck className="w-5 h-5 text-accent-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-bold text-text-primary">Connection successful — synchronizing your Deriv account...</p>
+              <p className="text-xs text-text-secondary leading-relaxed px-4">
+                Fetching actual balance, profile data, and validating API permissions securely...
+              </p>
+            </div>
+            <div className="p-3 bg-bg-main border border-border-color rounded-xl text-[11px] text-text-secondary font-mono leading-relaxed max-w-xs mx-auto text-left">
+              • Connecting server-side WebSocket...<br/>
+              • Fetching balance & account profile...<br/>
+              • Hydrating account: <span className="text-text-primary font-bold">{meta.derivAccountId || 'Retrieving...'}</span>
+            </div>
+          </div>
+        ) : meta && meta.connectionStatus === 'SYNC_FAILED' ? (
+          /* SYNC_FAILED STATE */
+          <div className="py-6 space-y-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mx-auto animate-pulse">
+              <AlertCircle className="w-6 h-6 text-rose-500" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-bold text-rose-500">Synchronization Failed</p>
+              <p className="text-xs text-text-secondary leading-relaxed px-4">
+                We successfully authenticated your account, but could not retrieve your balance or profile details from Deriv's API.
+              </p>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-2 max-w-xs mx-auto">
+              <button
+                onClick={handleSync}
+                disabled={isSyncing}
+                className="bg-accent-primary hover:opacity-95 text-bg-main py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Syncing...' : 'Retry Sync'}</span>
+              </button>
+              <button
+                onClick={handleDisconnect}
+                disabled={isDisconnecting}
+                className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-rose-500/20 disabled:opacity-50"
+              >
+                <Unplug className="w-3.5 h-3.5" />
+                <span>Disconnect</span>
+              </button>
+            </div>
           </div>
         ) : meta && meta.connected ? (
           /* CONNECTED STATE */

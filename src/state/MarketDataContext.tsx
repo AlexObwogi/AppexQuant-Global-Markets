@@ -1,9 +1,10 @@
 /**
- * AppexQuant Markets Global - Authoritative Market Data Context
- * Single source of truth for live ticks, active symbols, historical candles, watchlist, and freshness.
+ * AppexQuant Markets Global - Centralized Authoritative Market Data Context & WebSocket Manager
+ * Single source of truth for live ticks, active symbols, historical candles, watchlist,
+ * centralized WebSocket subscription deduplication, and per-feed freshness/stale tracking.
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
 import { MarketInstrument, InstrumentCategory } from '../types/market.ts';
 import { derivWs, DerivConnectionState } from '../services/deriv/DerivWebSocketManager.ts';
 import { derivAuthService } from '../services/deriv/authService.ts';
@@ -26,14 +27,24 @@ export interface MarketDataContextType {
   searchQuery: string;
   connectionState: DerivConnectionState;
   
+  // Per-feed and global freshness/stale tracking
   dataFreshness: DataFreshness;
+  isStale: Record<string, boolean>;
+  feedStatus: Record<string, DataFreshness>;
+  feedLatencyMs: Record<string, number>;
+  lastTickReceivedAt: Record<string, number>;
+  isSymbolStale: (symbol: string) => boolean;
+  getSymbolFreshness: (symbol: string) => DataFreshness;
+  getSymbolLatency: (symbol: string) => number;
+  getLatestTick: (symbol: string) => NormalizedTick | undefined;
+
   contracts: Record<string, DerivContractCategory[]>;
   isLoadingSymbols: boolean;
   balance: number | null;
   currency: string;
   loginid: string;
   
-  // Actions
+  // Actions & Centralized Subscription Management
   setSelectedSymbol: (symbol: string) => void;
   setSelectedCategory: (cat: InstrumentCategory | 'ALL') => void;
   setSelectedTimeframe: (tf: string) => void;
@@ -41,7 +52,10 @@ export interface MarketDataContextType {
   toggleWatchlist: (symbol: string) => void;
   fetchCandles: (symbol: string, timeframe: string) => Promise<NormalizedCandle[]>;
   fetchContractsFor: (symbol: string) => Promise<DerivContractCategory[]>;
+  subscribeSymbol: (symbol: string, callback?: (tick: NormalizedTick) => void) => () => void;
+  unsubscribeSymbol: (symbol: string, callback?: (tick: NormalizedTick) => void) => void;
   reconnect: () => void;
+  refreshSymbols: () => Promise<void>;
 }
 
 const WATCHLIST_STORAGE_KEY = 'apx_watchlist_v1';
@@ -57,6 +71,10 @@ export const TIMEFRAME_TO_SECONDS: Record<string, number> = {
   '1W': 604800,
 };
 
+// Thresholds for stale detection in milliseconds
+const FRESHNESS_LIVE_THRESHOLD_MS = 4000;
+const FRESHNESS_RECENT_THRESHOLD_MS = 10000;
+
 const MarketDataContext = createContext<MarketDataContextType | undefined>(undefined);
 
 export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -70,100 +88,25 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   const [candles, setCandles] = useState<Record<string, NormalizedCandle[]>>({});
   const [contracts, setContracts] = useState<Record<string, DerivContractCategory[]>>({});
   const [connectionState, setConnectionState] = useState<DerivConnectionState>('DISCONNECTED');
-  const [ setIsSimulated] = useState<boolean>(false);
   const [isLoadingSymbols, setIsLoadingSymbols] = useState<boolean>(true);
   const [balance, setBalance] = useState<number | null>(null);
   const [currency, setCurrency] = useState<string>('USD');
   const [loginid, setLoginid] = useState<string>('');
 
-  // WebSocket subscription service connecting to wss://ws.derivws.com/websockets/v3 for real-time balance
-  useEffect(() => {
-    let ws: WebSocket | null = null;
-    let isMounted = true;
+  // Per-feed latency and freshness state
+  const [feedStatus, setFeedStatus] = useState<Record<string, DataFreshness>>({});
+  const [isStaleMap, setIsStaleMap] = useState<Record<string, boolean>>({});
+  const [feedLatencyMs, setFeedLatencyMs] = useState<Record<string, number>>({});
+  const [lastTickReceivedAt, setLastTickReceivedAt] = useState<Record<string, number>>({});
 
-    const getToken = () => {
-      const authServiceToken = derivAuthService.getToken();
-      if (authServiceToken) return authServiceToken;
+  // Synchronous references for high-frequency access without React re-render lags
+  const ticksRef = useRef<Map<string, NormalizedTick>>(new Map());
+  const lastTickReceivedRef = useRef<Map<string, number>>(new Map());
+  const feedLatencyRef = useRef<Map<string, number>>(new Map());
 
-      const localToken = localStorage.getItem('deriv_oauth_token');
-      if (localToken) return localToken;
-
-      try {
-        const cookies = document.cookie.split(';');
-        for (const cookie of cookies) {
-          const [name, value] = cookie.trim().split('=');
-          if (name === 'deriv_session') {
-            const parsed = JSON.parse(decodeURIComponent(value));
-            if (parsed.accessToken || parsed.token) return parsed.accessToken || parsed.token;
-          }
-        }
-      } catch (e) {
-        // ignore
-      }
-      return null;
-    };
-
-    const token = getToken();
-
-    try {
-      ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=1089');
-
-      ws.onopen = () => {
-        if (!isMounted) return;
-        if (token) {
-          ws?.send(JSON.stringify({ authorize: token }));
-        }
-      };
-
-      ws.onmessage = (event) => {
-        if (!isMounted) return;
-        try {
-          const data = JSON.parse(event.data);
-          
-          if (data.msg_type === 'authorize' && data.authorize) {
-            const auth = data.authorize;
-            if (auth.balance !== undefined) setBalance(Number(auth.balance));
-            if (auth.currency) setCurrency(auth.currency);
-            if (auth.loginid) setLoginid(auth.loginid);
-            
-            // Subscribe to real-time balance stream
-            ws?.send(JSON.stringify({ balance: 1, subscribe: 1 }));
-          }
-
-          if (data.msg_type === 'balance' && data.balance) {
-            const balObj = data.balance;
-            if (balObj.balance !== undefined) setBalance(Number(balObj.balance));
-            if (balObj.currency) setCurrency(balObj.currency);
-            if (balObj.loginid) setLoginid(balObj.loginid);
-          }
-        } catch (e) {
-          console.warn('[MarketDataContext] Balance WebSocket message parse error:', e);
-        }
-      };
-
-      ws.onerror = (err) => {
-        console.warn('[MarketDataContext] Balance WebSocket error:', err);
-      };
-    } catch (err) {
-      console.warn('[MarketDataContext] Failed to establish balance WebSocket:', err);
-    }
-
-    const unsubAuth = derivAuthService.onBalanceChange((b) => {
-      if (isMounted) {
-        setBalance(b.balance);
-        if (b.currency) setCurrency(b.currency);
-        if (b.loginid) setLoginid(b.loginid);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      unsubAuth();
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.close();
-      }
-    };
-  }, []);
+  // Centralized WebSocket subscription registry (prevents duplicate Deriv subscriptions)
+  // Map of symbol -> Set of consumer listener callbacks
+  const subscribersRef = useRef<Map<string, Set<(tick: NormalizedTick) => void>>>(new Map());
 
   // Watchlist stored in localStorage
   const [watchlist, setWatchlist] = useState<string[]>(() => {
@@ -180,112 +123,252 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     try {
       localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(watchlist));
     } catch (e) {
-      console.warn('Failed to save watchlist:', e);
+      console.warn('[MarketDataContext] Failed to save watchlist:', e);
     }
   }, [watchlist]);
 
-  // Connect to Deriv WebSocket on mount
+  // Centralized tick ingress handler: receives normalized ticks from Deriv WebSocket
+  const handleCentralIncomingTick = useCallback((tick: NormalizedTick) => {
+    if (!tick || !tick.symbol) return;
+    const now = Date.now();
+    const symbol = tick.symbol;
+
+    // Record reception timestamp
+    lastTickReceivedRef.current.set(symbol, now);
+    ticksRef.current.set(symbol, tick);
+
+    // Compute tick latency (epoch vs reception)
+    const tickEpochMs = tick.epoch ? tick.epoch * 1000 : now;
+    const latency = Math.max(0, now - tickEpochMs);
+    feedLatencyRef.current.set(symbol, latency);
+
+    // Update React states in batch
+    setTicks((prev) => ({
+      ...prev,
+      [symbol]: tick,
+    }));
+
+    setLastTickReceivedAt((prev) => ({
+      ...prev,
+      [symbol]: now,
+    }));
+
+    setFeedLatencyMs((prev) => ({
+      ...prev,
+      [symbol]: latency,
+    }));
+
+    setFeedStatus((prev) => ({
+      ...prev,
+      [symbol]: latency < FRESHNESS_LIVE_THRESHOLD_MS ? 'LIVE' : latency < FRESHNESS_RECENT_THRESHOLD_MS ? 'RECENT' : 'STALE',
+    }));
+
+    setIsStaleMap((prev) => ({
+      ...prev,
+      [symbol]: latency >= FRESHNESS_RECENT_THRESHOLD_MS,
+    }));
+
+    // Dispatch to registered subscriber callbacks (widgets, charts, orderbooks)
+    const subs = subscribersRef.current.get(symbol);
+    if (subs && subs.size > 0) {
+      subs.forEach((cb) => {
+        try {
+          cb(tick);
+        } catch (e) {
+          console.error(`[MarketDataContext] Subscriber callback error for ${symbol}:`, e);
+        }
+      });
+    }
+  }, []);
+
+  // Centralized Subscribe API (Reference-counted deduplication)
+  const subscribeSymbol = useCallback((symbol: string, callback?: (tick: NormalizedTick) => void): (() => void) => {
+    if (!symbol) return () => {};
+
+    let subs = subscribersRef.current.get(symbol);
+    const isFirstSubscriber = !subs || subs.size === 0;
+
+    if (!subs) {
+      subs = new Set();
+      subscribersRef.current.set(symbol, subs);
+    }
+
+    if (callback) {
+      subs.add(callback);
+      // If we already have a cached tick, immediately dispatch to subscriber to avoid blank initial state
+      const cached = ticksRef.current.get(symbol);
+      if (cached) {
+        try {
+          callback(cached);
+        } catch (e) {
+          console.error(`[MarketDataContext] Immediate tick dispatch error for ${symbol}:`, e);
+        }
+      }
+    }
+
+    // Only subscribe to Deriv WS once per symbol across the entire application
+    if (isFirstSubscriber) {
+      derivWs.subscribeTick(symbol, handleCentralIncomingTick);
+    }
+
+    // Return idempotently managed cleanup function
+    return () => {
+      const currentSubs = subscribersRef.current.get(symbol);
+      if (currentSubs) {
+        if (callback) currentSubs.delete(callback);
+        if (currentSubs.size === 0) {
+          derivWs.unsubscribeTick(symbol, handleCentralIncomingTick);
+          subscribersRef.current.delete(symbol);
+        }
+      }
+    };
+  }, [handleCentralIncomingTick]);
+
+  const unsubscribeSymbol = useCallback((symbol: string, callback?: (tick: NormalizedTick) => void) => {
+    const subs = subscribersRef.current.get(symbol);
+    if (subs) {
+      if (callback) subs.delete(callback);
+      if (subs.size === 0) {
+        derivWs.unsubscribeTick(symbol, handleCentralIncomingTick);
+        subscribersRef.current.delete(symbol);
+      }
+    }
+  }, [handleCentralIncomingTick]);
+
+  // Synchronous accessor for latest normalized tick
+  const getLatestTick = useCallback((symbol: string): NormalizedTick | undefined => {
+    return ticksRef.current.get(symbol) || ticks[symbol];
+  }, [ticks]);
+
+  // Refresh active symbols from Deriv API
+  const refreshSymbols = useCallback(async () => {
+    setIsLoadingSymbols(true);
+    try {
+      const rawSymbols = await derivWs.fetchActiveSymbols();
+      if (rawSymbols && rawSymbols.length > 0) {
+        const normalized = normalizeDerivActiveSymbols(rawSymbols);
+        setInstruments(normalized);
+      }
+    } catch (err) {
+      console.warn('[MarketDataContext] Failed to load active symbols from Deriv, maintaining fallbacks:', err);
+    } finally {
+      setIsLoadingSymbols(false);
+    }
+  }, []);
+
+  // Connect to Deriv WebSocket on mount & initialize active symbols
   useEffect(() => {
     const unsubStatus = derivWs.onStatusChange((status) => {
       setConnectionState(status);
-      
+      if (status !== 'CONNECTED') {
+        // Mark feeds as disconnected / stale when WS is offline
+        const now = Date.now();
+        const newStatus: Record<string, DataFreshness> = {};
+        const newStale: Record<string, boolean> = {};
+        ticksRef.current.forEach((_, sym) => {
+          newStatus[sym] = 'DISCONNECTED';
+          newStale[sym] = true;
+        });
+        setFeedStatus(newStatus);
+        setIsStaleMap(newStale);
+      }
     });
 
-    derivWs.connect().then(async () => {
-      setIsLoadingSymbols(true);
-      try {
-        const rawSymbols = await derivWs.fetchActiveSymbols();
-        if (rawSymbols && rawSymbols.length > 0) {
-          const normalized = normalizeDerivActiveSymbols(rawSymbols);
-          setInstruments(normalized);
-        }
-      } catch (err) {
-        console.warn('[MarketData] Failed to load active symbols from Deriv, using fallback:', err);
-      } finally {
-        setIsLoadingSymbols(false);
+    const unsubBalance = derivWs.onBalanceChange((bal) => {
+      if (bal) {
+        if (bal.balance !== undefined) setBalance(Number(bal.balance));
+        if (bal.currency) setCurrency(bal.currency);
+        if (bal.loginid) setLoginid(bal.loginid);
       }
+    });
+
+    const unsubAuth = derivAuthService.onBalanceChange((b) => {
+      if (b) {
+        setBalance(b.balance);
+        if (b.currency) setCurrency(b.currency);
+        if (b.loginid) setLoginid(b.loginid);
+      }
+    });
+
+    derivWs.connect().then(() => {
+      refreshSymbols();
     }).catch((err) => {
-      console.warn('[MarketData] Connection initialization error:', err);
+      console.warn('[MarketDataContext] Connection initialization error:', err);
       setIsLoadingSymbols(false);
     });
 
     return () => {
       unsubStatus();
+      unsubBalance();
+      unsubAuth();
     };
-  }, []);
+  }, [refreshSymbols]);
 
-  // Tick listener for selectedSymbol, watchlist, and active instruments
+  // Central subscription coordinator for core symbols (selected symbol, watchlist, major instruments)
+  // Ensures core symbols are pre-subscribed with zero duplicate requests
   useEffect(() => {
-    const activeSymbols = instruments.map((i) => i.symbol);
-    const symbolsToSubscribe = Array.from(new Set([selectedSymbol, ...watchlist, ...activeSymbols]));
+    const activeSymbols = instruments.slice(0, 12).map((i) => i.symbol);
+    const symbolsToMaintain = Array.from(new Set([selectedSymbol, ...watchlist, ...activeSymbols]));
 
-    const handleTick = (tick: NormalizedTick) => {
-      setTicks((prev) => ({
-        ...prev,
-        [tick.symbol]: tick,
-      }));
-    };
-
-    symbolsToSubscribe.forEach((sym) => {
-      derivWs.subscribeTick(sym, handleTick);
-    });
-
-    // Fallback ticker loop ensuring live price movement during initial connection or standby
-    const tickerInterval = setInterval(() => {
-      const now = Date.now();
-      setTicks((prev) => {
-        const next = { ...prev };
-        let updated = false;
-
-        symbolsToSubscribe.forEach((sym) => {
-          const existing = next[sym];
-          const inst = instruments.find((i) => i.symbol === sym);
-          const basePrice = existing?.quote || inst?.bid || (sym.includes('BTC') ? 65000 : sym.includes('R_') ? 2045 : 1.0850);
-
-          // Generate active tick updates if no WebSocket tick was received in the last 2.5 seconds
-          if (!existing || now - (existing.lastUpdated?.getTime() || 0) > 2500) {
-            const pip = inst?.pipSize || 0.0001;
-            const delta = (Math.random() - 0.49) * pip * 6;
-            const newQuote = Number((basePrice + delta).toFixed(5));
-            const newBid = Number((newQuote - pip).toFixed(5));
-            const newAsk = Number((newQuote + pip).toFixed(5));
-            const prevQuote = existing?.prevQuote || basePrice;
-            const change = newQuote - prevQuote;
-            const changePct = prevQuote ? Number(((change / prevQuote) * 100).toFixed(2)) : 0;
-
-            next[sym] = {
-              symbol: sym,
-              quote: newQuote,
-              bid: newBid,
-              ask: newAsk,
-              epoch: Math.floor(now / 1000),
-              change,
-              changePct,
-              prevQuote,
-              lastUpdated: new Date(now),
-            };
-            updated = true;
-          }
-        });
-
-        return updated ? next : prev;
-      });
-    }, 1200);
+    const cleanups = symbolsToMaintain.map((sym) => subscribeSymbol(sym));
 
     return () => {
-      clearInterval(tickerInterval);
-      symbolsToSubscribe.forEach((sym) => {
-        derivWs.unsubscribeTick(sym, handleTick);
-      });
+      cleanups.forEach((unsub) => unsub());
     };
-  }, [selectedSymbol, watchlist, instruments, connectionState]);
+  }, [selectedSymbol, watchlist, instruments, subscribeSymbol]);
 
-  // Selected Instrument lookup
+  // Stale detection heartbeat (evaluates every 1 second)
+  useEffect(() => {
+    const staleInterval = setInterval(() => {
+      const now = Date.now();
+      const newStatusMap: Record<string, DataFreshness> = {};
+      const newStaleMap: Record<string, boolean> = {};
+      const newLatencyMap: Record<string, number> = {};
+
+      if (connectionState !== 'CONNECTED') {
+        Object.keys(ticks).forEach((sym) => {
+          newStatusMap[sym] = 'DISCONNECTED';
+          newStaleMap[sym] = true;
+        });
+        setFeedStatus(newStatusMap);
+        setIsStaleMap(newStaleMap);
+        return;
+      }
+
+      Object.keys(ticks).forEach((sym) => {
+        const lastTime = lastTickReceivedRef.current.get(sym) || 0;
+        const diffMs = now - lastTime;
+        newLatencyMap[sym] = diffMs;
+
+        if (lastTime === 0) {
+          newStatusMap[sym] = 'UNAVAILABLE';
+          newStaleMap[sym] = true;
+        } else if (diffMs <= FRESHNESS_LIVE_THRESHOLD_MS) {
+          newStatusMap[sym] = 'LIVE';
+          newStaleMap[sym] = false;
+        } else if (diffMs <= FRESHNESS_RECENT_THRESHOLD_MS) {
+          newStatusMap[sym] = 'RECENT';
+          newStaleMap[sym] = false;
+        } else {
+          newStatusMap[sym] = 'STALE';
+          newStaleMap[sym] = true;
+        }
+      });
+
+      setFeedStatus(newStatusMap);
+      setIsStaleMap(newStaleMap);
+      setFeedLatencyMs((prev) => ({ ...prev, ...newLatencyMap }));
+    }, 1000);
+
+    return () => clearInterval(staleInterval);
+  }, [connectionState, ticks]);
+
+  // Selected Instrument lookup with live merged quote
   const selectedInstrument = useMemo(() => {
     const found = instruments.find((i) => i.symbol === selectedSymbol);
     if (!found) return instruments[0] || null;
 
-    // Attach latest live tick quote/bid/ask if available
+    // Attach latest verified live tick quote/bid/ask
     const tick = ticks[selectedSymbol];
     if (tick) {
       return {
@@ -299,21 +382,42 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     return found;
   }, [instruments, selectedSymbol, ticks]);
 
-  // Calculate Data Freshness
+  // Calculate Data Freshness for currently selected symbol
   const dataFreshness = useMemo<DataFreshness>(() => {
     if (connectionState !== 'CONNECTED') return 'DISCONNECTED';
     
     const tick = ticks[selectedSymbol];
     if (!tick) return 'UNAVAILABLE';
 
-    const now = Date.now();
-    const tickTime = tick.lastUpdated ? tick.lastUpdated.getTime() : 0;
-    const diffSec = (now - tickTime) / 1000;
+    const lastTime = lastTickReceivedRef.current.get(selectedSymbol) || (tick.lastUpdated ? tick.lastUpdated.getTime() : 0);
+    const diffMs = Date.now() - lastTime;
 
-    if (diffSec <= 3) return 'LIVE';
-    if (diffSec <= 10) return 'RECENT';
+    if (diffMs <= FRESHNESS_LIVE_THRESHOLD_MS) return 'LIVE';
+    if (diffMs <= FRESHNESS_RECENT_THRESHOLD_MS) return 'RECENT';
     return 'STALE';
   }, [connectionState, ticks, selectedSymbol]);
+
+  const isSymbolStale = useCallback((symbol: string): boolean => {
+    if (connectionState !== 'CONNECTED') return true;
+    if (isStaleMap[symbol] !== undefined) return isStaleMap[symbol];
+    const lastTime = lastTickReceivedRef.current.get(symbol) || 0;
+    return lastTime === 0 || Date.now() - lastTime > FRESHNESS_RECENT_THRESHOLD_MS;
+  }, [connectionState, isStaleMap]);
+
+  const getSymbolFreshness = useCallback((symbol: string): DataFreshness => {
+    if (connectionState !== 'CONNECTED') return 'DISCONNECTED';
+    if (feedStatus[symbol]) return feedStatus[symbol];
+    const lastTime = lastTickReceivedRef.current.get(symbol) || 0;
+    if (lastTime === 0) return 'UNAVAILABLE';
+    const diffMs = Date.now() - lastTime;
+    if (diffMs <= FRESHNESS_LIVE_THRESHOLD_MS) return 'LIVE';
+    if (diffMs <= FRESHNESS_RECENT_THRESHOLD_MS) return 'RECENT';
+    return 'STALE';
+  }, [connectionState, feedStatus]);
+
+  const getSymbolLatency = useCallback((symbol: string): number => {
+    return feedLatencyRef.current.get(symbol) || feedLatencyMs[symbol] || 0;
+  }, [feedLatencyMs]);
 
   // Actions
   const setSelectedSymbol = useCallback((symbol: string) => {
@@ -340,10 +444,9 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
         return fetchedCandles;
       }
     } catch (err) {
-      console.warn(`[MarketData] Failed to fetch candles for ${symbol}:`, err);
+      console.warn(`[MarketDataContext] Failed to fetch candles for ${symbol}:`, err);
     }
 
-    // Return cached candles or empty array if fetch fails
     return candles[cacheKey] || [];
   }, [candles]);
 
@@ -366,65 +469,87 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   }, []);
 
   const value = useMemo(() => ({
-        instruments,
-        availableInstruments: instruments,
-        selectedSymbol,
-        selectedInstrument,
-        selectedCategory,
-        selectedTimeframe,
-        ticks,
-        candles,
-        candleHistory: candles,
-        watchlist,
-        searchQuery,
-        connectionState,
-        
-        dataFreshness,
-        contracts,
-        isLoadingSymbols,
-        balance,
-        currency,
-        loginid,
-        setSelectedSymbol,
-        setSelectedCategory,
-        setSelectedTimeframe,
-        setSearchQuery,
-        toggleWatchlist,
-        fetchCandles,
-        fetchContractsFor,
-        reconnect,
+    instruments,
+    availableInstruments: instruments,
+    selectedSymbol,
+    selectedInstrument,
+    selectedCategory,
+    selectedTimeframe,
+    ticks,
+    candles,
+    candleHistory: candles,
+    watchlist,
+    searchQuery,
+    connectionState,
+    
+    dataFreshness,
+    isStale: isStaleMap,
+    feedStatus,
+    feedLatencyMs,
+    lastTickReceivedAt,
+    isSymbolStale,
+    getSymbolFreshness,
+    getSymbolLatency,
+    getLatestTick,
+
+    contracts,
+    isLoadingSymbols,
+    balance,
+    currency,
+    loginid,
+    setSelectedSymbol,
+    setSelectedCategory,
+    setSelectedTimeframe,
+    setSearchQuery,
+    toggleWatchlist,
+    fetchCandles,
+    fetchContractsFor,
+    subscribeSymbol,
+    unsubscribeSymbol,
+    reconnect,
+    refreshSymbols,
   }), [
-        instruments,
-        selectedSymbol,
-        selectedInstrument,
-        selectedCategory,
-        selectedTimeframe,
-        ticks,
-        candles,
-        watchlist,
-        searchQuery,
-        connectionState,
-        
-        dataFreshness,
-        contracts,
-        isLoadingSymbols,
-        balance,
-        currency,
-        loginid,
-        setSelectedSymbol,
-        setSelectedCategory,
-        setSelectedTimeframe,
-        setSearchQuery,
-        toggleWatchlist,
-        fetchCandles,
-        fetchContractsFor,
-        reconnect,
+    instruments,
+    selectedSymbol,
+    selectedInstrument,
+    selectedCategory,
+    selectedTimeframe,
+    ticks,
+    candles,
+    watchlist,
+    searchQuery,
+    connectionState,
+    
+    dataFreshness,
+    isStaleMap,
+    feedStatus,
+    feedLatencyMs,
+    lastTickReceivedAt,
+    isSymbolStale,
+    getSymbolFreshness,
+    getSymbolLatency,
+    getLatestTick,
+
+    contracts,
+    isLoadingSymbols,
+    balance,
+    currency,
+    loginid,
+    setSelectedSymbol,
+    setSelectedCategory,
+    setSelectedTimeframe,
+    setSearchQuery,
+    toggleWatchlist,
+    fetchCandles,
+    fetchContractsFor,
+    subscribeSymbol,
+    unsubscribeSymbol,
+    reconnect,
+    refreshSymbols,
   ]);
 
   return (
-    <MarketDataContext.Provider
-      value={value}
-    >
+    <MarketDataContext.Provider value={value}>
       {children}
     </MarketDataContext.Provider>
   );
@@ -437,3 +562,4 @@ export const useMarketData = (): MarketDataContextType => {
   }
   return context;
 };
+

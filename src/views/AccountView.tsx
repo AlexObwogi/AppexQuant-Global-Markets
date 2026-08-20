@@ -39,7 +39,7 @@ interface ConnectionMeta {
   derivAccountId?: string;
   accountType?: 'demo' | 'real';
   currency?: string;
-  connectionStatus: 'CONNECTED' | 'CONNECTING' | 'DISCONNECTED' | 'RECONNECT_REQUIRED' | 'ERROR';
+  connectionStatus: 'CONNECTED' | 'CONNECTING' | 'SYNCING' | 'SYNC_FAILED' | 'DISCONNECTED' | 'RECONNECT_REQUIRED' | 'ERROR';
   scopes?: string[];
   lastSyncedAt?: string;
   accountList?: Array<{
@@ -157,6 +157,42 @@ export const AccountView: React.FC = () => {
   useEffect(() => {
     fetchDerivStatus();
   }, []);
+
+  useEffect(() => {
+    if (meta && meta.connectionStatus === 'SYNCING') {
+      const interval = setInterval(() => {
+        apiFetch('/api/auth/deriv/status')
+          .then((res) => {
+            if (res.ok) return res.json();
+          })
+          .then((json) => {
+            if (json && json.success && json.data) {
+              setMeta(json.data);
+              if (json.data.connected) {
+                dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'ONLINE' });
+                dispatch({
+                  type: 'SELECT_BROKER',
+                  payload: {
+                    id: `conn-deriv-${json.data.derivAccountId}`,
+                    brokerType: 'DERIV',
+                    brokerName: 'Deriv Limited',
+                    server: 'Deriv-Server',
+                    accountNumber: json.data.derivAccountId || '',
+                    status: 'CONNECTED',
+                    environment: json.data.accountType === 'real' ? 'REAL' : 'DEMO',
+                    apiPermissions: json.data.scopes || ['trade', 'account_manage'],
+                    isReadOnly: false,
+                    executionPermission: true,
+                  }
+                });
+              }
+            }
+          })
+          .catch(() => {});
+      }, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [meta]);
 
   // Initiate Deriv OAuth PKCE flow
   const handleInitiateOAuth = () => {
@@ -396,6 +432,36 @@ export const AccountView: React.FC = () => {
               <div className="py-12 flex flex-col items-center justify-center space-y-3">
                 <Loader2 className="w-8 h-8 text-accent-primary animate-spin" />
                 <span className="text-xs text-text-secondary">Verifying secure integration state with backend server...</span>
+              </div>
+            ) : meta && meta.connectionStatus === 'SYNCING' ? (
+              <div className="py-12 flex flex-col items-center justify-center space-y-3 text-center">
+                <Loader2 className="w-10 h-10 text-accent-primary animate-spin" />
+                <span className="text-sm font-bold text-text-primary">Connection successful — synchronizing your Deriv account...</span>
+                <span className="text-xs text-text-secondary leading-relaxed px-6">
+                  Retrieving real-time balances, trade scopes, and currency parameters securely...
+                </span>
+              </div>
+            ) : meta && meta.connectionStatus === 'SYNC_FAILED' ? (
+              <div className="py-10 space-y-4 text-center">
+                <div className="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mx-auto animate-pulse">
+                  <AlertCircle className="w-6 h-6 text-rose-500" />
+                </div>
+                <div className="space-y-1 border-b border-border-color/40 pb-4 max-w-sm mx-auto">
+                  <p className="text-sm font-bold text-rose-500">Synchronization Failed</p>
+                  <p className="text-xs text-text-secondary leading-relaxed px-4">
+                    We successfully authenticated your account, but could not retrieve your balance or profile details from Deriv's API.
+                  </p>
+                </div>
+                <div className="flex justify-center gap-2 max-w-xs mx-auto pt-2">
+                  <Button onClick={handleSync} isLoading={isSyncing} size="sm" variant="primary">
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <span>Retry Sync</span>
+                  </Button>
+                  <Button onClick={handleDisconnect} isLoading={isDisconnecting} size="sm" variant="secondary">
+                    <Unplug className="w-3.5 h-3.5" />
+                    <span>Disconnect</span>
+                  </Button>
+                </div>
               </div>
             ) : meta?.connected ? (
               <div className="space-y-6 animate-in fade-in duration-200">

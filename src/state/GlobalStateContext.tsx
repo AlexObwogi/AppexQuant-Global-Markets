@@ -144,6 +144,7 @@ export type GlobalAction =
   | { type: 'ADD_NOTIFICATION'; payload: Omit<ToastNotification, 'id' | 'timestamp'> }
   | { type: 'DISMISS_NOTIFICATION'; payload: string }
   | { type: 'SET_USER_PROFILE'; payload: UserProfile | null }
+  | { type: 'SET_SYNC_STATUS'; payload: 'IDLE' | 'SYNCING' | 'SYNCED' | 'SYNC_FAILED' }
   | { type: 'SET_SESSION_ELEVATION'; payload: { isElevated: boolean; elevatedUntil: string | null } }
   | { type: 'UPDATE_ACCOUNT_BALANCE'; payload: { balance: number; currency?: string; loginid?: string } };
 
@@ -233,6 +234,16 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
         },
       };
     }
+
+    case 'SET_SYNC_STATUS':
+      if (!state.user) return state;
+      return {
+        ...state,
+        user: {
+          ...state.user,
+          syncStatus: action.payload,
+        },
+      };
 
     case 'SET_SESSION_ELEVATION':
       return {

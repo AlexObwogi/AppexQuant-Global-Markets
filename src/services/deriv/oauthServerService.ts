@@ -8,8 +8,9 @@
 import crypto from 'crypto';
 import NodeWebSocket from 'ws';
 import { syncUserToSupabase, syncDerivConnectionToSupabase } from '../../lib/supabase.ts';
+import { dbQueries } from '../../lib/db/prisma.ts';
 import { logger } from '../../observability/logger.ts';
-import { buildAuthUrl, DERIV_OAUTH_SCOPE, exchangeCodeForToken, fetchUserProfile as serviceFetchUserProfile } from '../oauthService.ts';
+import { buildAuthUrl, DERIV_OAUTH_SCOPE, exchangeCodeForToken } from '../oauthService.ts';
 
 export interface DerivAccountProfileData {
   email?: string;
@@ -39,7 +40,7 @@ export interface DerivConnectionRecord {
   balance?: number;
   accountType: 'demo' | 'real';
   currency: string;
-  connectionStatus: 'CONNECTED' | 'CONNECTING' | 'DISCONNECTED' | 'RECONNECT_REQUIRED' | 'ERROR';
+  connectionStatus: 'CONNECTED' | 'CONNECTING' | 'SYNCING' | 'SYNC_FAILED' | 'DISCONNECTED' | 'RECONNECT_REQUIRED' | 'ERROR';
   scopes: string[];
   accessToken: string; // SERVER-SIDE ONLY - Never returned to frontend
   refreshToken?: string;
@@ -57,7 +58,7 @@ export interface SafeDerivConnectionMetadata {
   balance?: number;
   accountType?: 'demo' | 'real';
   currency?: string;
-  connectionStatus: 'CONNECTED' | 'CONNECTING' | 'DISCONNECTED' | 'RECONNECT_REQUIRED' | 'ERROR';
+  connectionStatus: 'CONNECTED' | 'CONNECTING' | 'SYNCING' | 'SYNC_FAILED' | 'DISCONNECTED' | 'RECONNECT_REQUIRED' | 'ERROR';
   scopes?: string[];
   lastSyncedAt?: string;
   accountList?: Array<{
@@ -446,7 +447,7 @@ export async function handleDerivOAuthCallback(params: {
       balance,
       accountType,
       currency,
-      connectionStatus: 'CONNECTED',
+      connectionStatus: 'SYNCING', // Differentiate authenticated vs fully synced
       scopes: profile?.scopes || ['trade', 'account_manage'],
       accessToken: token1,
       createdAt: nowIso,
@@ -456,15 +457,20 @@ export async function handleDerivOAuthCallback(params: {
 
     derivConnectionsStore.set(rawAccountId, connectionRecord);
 
+    // Spawn background sync to query real balance and profile metadata using persistent WS connection
+    syncUserDerivAsync(rawAccountId).catch((err) => {
+      console.error('[BACKGROUND_SYNC_SCENARIO_A_FAILED]', err);
+    });
+
     const safeMetadata: SafeDerivConnectionMetadata = {
-      connected: true,
+      connected: false, // Not fully synced yet
       derivAccountId: rawAccountId,
       email,
       fullName,
       balance,
       accountType,
       currency,
-      connectionStatus: 'CONNECTED',
+      connectionStatus: 'SYNCING',
       scopes: connectionRecord.scopes,
       lastSyncedAt: nowIso,
       accountList: profile?.account_list,
@@ -608,8 +614,8 @@ export async function handleDerivOAuthCallback(params: {
       };
     }
 
-    // Immediately fetch authentic Deriv account profile details using serviceFetchUserProfile
-    const profile = await serviceFetchUserProfile(resolvedAccessToken, oauthConfig.clientId).catch(() => null);
+    // Immediately fetch authentic Deriv account profile details using fetchDerivAccountProfile
+    const profile = await fetchDerivAccountProfile(resolvedAccessToken, oauthConfig.clientId).catch(() => null);
 
     const rawAccountId = profile?.loginid || tokenData.account_id || tokenData.acct1 || tokenData.acct || tokenData.loginid || tokenData.accounts?.[0]?.loginid || transaction.userId;
     if (!rawAccountId) {
@@ -639,7 +645,7 @@ export async function handleDerivOAuthCallback(params: {
       balance,
       accountType,
       currency,
-      connectionStatus: 'CONNECTED',
+      connectionStatus: 'SYNCING', // Mark as SYNCING to trigger hydration pipeline
       scopes: Array.isArray(tokenData.scopes)
         ? tokenData.scopes
         : tokenData.scope
@@ -659,36 +665,20 @@ export async function handleDerivOAuthCallback(params: {
     derivConnectionsStore.set(effectiveUserId, connectionRecord);
     derivConnectionsStore.set(transaction.userId, connectionRecord);
 
-    // Sync to Supabase in background if Supabase is connected
-    syncUserToSupabase({
-      id: effectiveUserId,
-      email,
-      derivAccountId: rawAccountId,
-      accountType,
-      role: 'USER',
-    }).catch(() => {});
-
-    syncDerivConnectionToSupabase({
-      userId: effectiveUserId,
-      derivAccountId: rawAccountId,
-      accountType,
-      currency,
-      connectionStatus: 'CONNECTED',
-      scopes: connectionRecord.scopes,
-      accessToken: tokenData.access_token,
-      refreshToken: tokenData.refresh_token,
-      tokenExpiry: connectionRecord.tokenExpiry,
-    }).catch(() => {});
+    // Spawn background sync to query real balance and profile metadata using persistent WS connection
+    syncUserDerivAsync(effectiveUserId).catch((err) => {
+      console.error('[BACKGROUND_SYNC_SCENARIO_B_FAILED]', err);
+    });
 
     const safeMetadata: SafeDerivConnectionMetadata = {
-      connected: true,
+      connected: false, // Not fully synced yet
       derivAccountId: connectionRecord.derivAccountId,
       email: connectionRecord.email,
       fullName: connectionRecord.fullName,
       balance: connectionRecord.balance,
       accountType: connectionRecord.accountType,
       currency: connectionRecord.currency,
-      connectionStatus: connectionRecord.connectionStatus,
+      connectionStatus: 'SYNCING',
       scopes: connectionRecord.scopes,
       lastSyncedAt: connectionRecord.lastSyncedAt,
       accountList: profile?.account_list,
@@ -868,15 +858,127 @@ export function disconnectUserDeriv(userId: string): boolean {
 }
 
 /**
- * Sync Deriv Account Metadata
+ * Sync Deriv Account Metadata (Asynchronous Pipeline)
+ */
+export async function syncUserDerivAsync(userId: string): Promise<SafeDerivConnectionMetadata> {
+  const record = derivConnectionsStore.get(userId);
+  if (!record || record.connectionStatus === 'DISCONNECTED') {
+    return {
+      connected: false,
+      connectionStatus: 'DISCONNECTED',
+    };
+  }
+
+  // Set state to SYNCING
+  record.connectionStatus = 'SYNCING';
+  record.updatedAt = new Date().toISOString();
+  derivConnectionsStore.set(userId, record);
+
+  try {
+    const config = getDerivOAuthConfig();
+    const profile = await fetchDerivAccountProfile(record.accessToken, config.clientId);
+
+    if (!profile || !profile.loginid) {
+      throw new Error('Failed to retrieve profile or loginid from Deriv WebSocket');
+    }
+
+    // Deep structural data validation and hydration
+    const email = profile.email || record.email || '';
+    const fullName = profile.fullname || record.fullName || '';
+    const balance = typeof profile.balance === 'number' ? profile.balance : 0;
+    const currency = profile.currency || record.currency || 'USD';
+    const isVirtual = Boolean(profile.is_virtual);
+    const accountType: 'demo' | 'real' = isVirtual ? 'demo' : 'real';
+
+    // Update connection record with fetched authoritative values
+    record.connectionStatus = 'CONNECTED';
+    record.derivAccountId = profile.loginid;
+    record.email = email;
+    record.fullName = fullName;
+    record.balance = balance;
+    record.currency = currency;
+    record.accountType = accountType;
+    record.scopes = profile.scopes || record.scopes || ['trade', 'account_manage'];
+    record.lastSyncedAt = new Date().toISOString();
+    record.updatedAt = new Date().toISOString();
+
+    derivConnectionsStore.set(userId, record);
+    derivConnectionsStore.set(profile.loginid, record);
+
+    // Persist to Prisma Database (Idempotent upsert of DerivAccount and Snapshot)
+    dbQueries.upsertDerivAccount({
+      id: profile.loginid,
+      userId,
+      accountType,
+      currency,
+      balance,
+      equity: balance,
+      isVirtual,
+      status: 'ACTIVE',
+      lastSyncedAt: record.lastSyncedAt,
+    }).catch((err) => {
+      logger.warn('[DerivSync] Prisma upsertDerivAccount error:', { error: err?.message });
+    });
+
+    dbQueries.recordAccountSnapshot({
+      derivAccountId: profile.loginid,
+      userId,
+      balance,
+      equity: balance,
+      currency,
+      timestamp: new Date(),
+    }).catch((err) => {
+      logger.warn('[DerivSync] Prisma recordAccountSnapshot error:', { error: err?.message });
+    });
+
+    dbQueries.mapDerivAccountToUserSession(profile.loginid, userId).catch(() => {});
+
+    // Sync to Supabase in the background
+    syncUserToSupabase({
+      id: userId,
+      email,
+      derivAccountId: profile.loginid,
+      accountType,
+      role: (email === 'obwogialex728@gmail.com' || profile.loginid.toLowerCase().includes('admin')) ? 'ADMIN' : 'USER',
+    }).catch(() => {});
+
+    syncDerivConnectionToSupabase({
+      userId,
+      derivAccountId: profile.loginid,
+      accountType,
+      currency,
+      connectionStatus: 'CONNECTED',
+      scopes: record.scopes,
+      accessToken: record.accessToken,
+      refreshToken: record.refreshToken,
+      tokenExpiry: record.tokenExpiry,
+    }).catch(() => {});
+
+  } catch (err: any) {
+    console.error('[DERIV_SYNC_FAILED]', err?.message || err);
+    record.connectionStatus = 'SYNC_FAILED';
+    record.updatedAt = new Date().toISOString();
+    derivConnectionsStore.set(userId, record);
+  }
+
+  return getUserDerivConnection(userId);
+}
+
+/**
+ * Sync Deriv Account Metadata (Synchronous wrapper kicking off background async sync)
  */
 export function syncUserDeriv(userId: string): SafeDerivConnectionMetadata {
   const record = derivConnectionsStore.get(userId);
   if (record && record.connectionStatus !== 'DISCONNECTED') {
-    record.connectionStatus = 'CONNECTED';
+    record.connectionStatus = 'SYNCING';
     record.lastSyncedAt = new Date().toISOString();
     record.updatedAt = new Date().toISOString();
     derivConnectionsStore.set(userId, record);
+    
+    // Fire-and-forget async sync in background
+    syncUserDerivAsync(userId).catch((err) => {
+      console.error('[BACKGROUND_SYNC_TRIGGER_ERROR]', err);
+    });
   }
   return getUserDerivConnection(userId);
 }

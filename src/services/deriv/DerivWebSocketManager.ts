@@ -38,6 +38,10 @@ export class DerivWebSocketManager {
     this.balanceCallbacks.add(cb);
     return () => this.balanceCallbacks.delete(cb);
   }
+
+  public onBalanceChange(cb: (balanceObj: any) => void): () => void {
+    return this.onBalance(cb);
+  }
   
   private pingInterval: NodeJS.Timeout | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;

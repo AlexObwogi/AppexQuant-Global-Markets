@@ -121,20 +121,43 @@ model Session {
 }
 
 model DerivAccount {
-  id            String   @id @db.VarChar(64)
-  userId        String   @map("user_id") @db.VarChar(64)
-  accountType   String   @default("demo") @map("account_type") @db.VarChar(20)
-  currency      String   @default("USD") @db.VarChar(10)
-  balance       Decimal  @default(0) @db.Decimal(18, 4)
-  isVirtual     Boolean  @default(false) @map("is_virtual")
-  isDisabled    Boolean  @default(false) @map("is_disabled")
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id            String                 @id @db.VarChar(64) // External Deriv loginid e.g. CR123456 / VRTC123456
+  userId        String                 @map("user_id") @db.VarChar(64)
+  accountType   String                 @default("demo") @map("account_type") @db.VarChar(20)
+  currency      String                 @default("USD") @db.VarChar(10)
+  balance       Decimal                @default(0) @db.Decimal(18, 4)
+  equity        Decimal?               @default(0) @db.Decimal(18, 4)
+  isVirtual     Boolean                @default(false) @map("is_virtual")
+  isDisabled    Boolean                @default(false) @map("is_disabled")
+  status        String                 @default("ACTIVE") @db.VarChar(20)
+  lastSyncedAt  DateTime?              @map("last_synced_at") @db.Timestamptz(6)
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snapshots     DerivAccountSnapshot[]
 
   @@index([userId, accountType])
+  @@index([userId, updatedAt])
   @@map("deriv_accounts")
+}
+
+model DerivAccountSnapshot {
+  id             String       @id @default(uuid()) @db.VarChar(64)
+  derivAccountId String       @map("deriv_account_id") @db.VarChar(64)
+  userId         String       @map("user_id") @db.VarChar(64)
+  balance        Decimal      @db.Decimal(18, 4)
+  equity         Decimal?     @db.Decimal(18, 4)
+  currency       String       @default("USD") @db.VarChar(10)
+  snapshotKey    String       @map("snapshot_key") @db.VarChar(64) // Idempotent key: e.g. `${derivAccountId}_${timestampHour}`
+  timestamp      DateTime     @default(now()) @db.Timestamptz(6)
+
+  account        DerivAccount @relation(fields: [derivAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([derivAccountId, snapshotKey])
+  @@index([derivAccountId, timestamp])
+  @@index([userId, timestamp])
+  @@map("deriv_account_snapshots")
 }
 
 model Order {

@@ -295,13 +295,13 @@ function cleanupExpiredTransactions() {
  */
 export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: string) {
   const clientId =
+    process.env.DERIV_APP_ID ||
     process.env.CLIENT_ID ||
     process.env.DERIV_CLIENT_ID ||
-    process.env.DERIV_APP_ID ||
     process.env.VITE_DERIV_APP_ID ||
     '1089';
 
-  const clientSecret = process.env.CLIENT_SECRET || process.env.DERIV_CLIENT_SECRET || '';
+  const clientSecret = process.env.DERIV_CLIENT_SECRET || process.env.CLIENT_SECRET || '';
 
   const proto = requestProtocol || (requestHost?.includes('localhost') ? 'http' : 'https');
   const host = requestHost || (process.env.APP_URL ? new URL(process.env.APP_URL).host : 'localhost:3000');
@@ -487,7 +487,6 @@ export async function handleDerivOAuthCallback(params: {
 
   if (!transaction) {
     const errDetail = 'OAuth transaction state expired or could not be verified from cookie/memory.';
-    console.error('[DERIV_OAUTH_STATE_MISMATCH]', { stateReceived: state, hasCookieState: Boolean(cookieState), timestamp: new Date().toISOString() });
     logger.warn('[DerivOAuth] State mismatch or expired transaction', { stateReceived: state, hasCookieState: Boolean(cookieState) });
     return {
       success: false,
@@ -502,7 +501,7 @@ export async function handleDerivOAuthCallback(params: {
   }
 
   if (!code) {
-    console.error('[DERIV_OAUTH_MISSING_CODE]', { state, destination: transaction.destination });
+    logger.warn('[DerivOAuth] Missing authorization code', { state, destination: transaction.destination });
     return {
       success: false,
       destination: transaction.destination || '/?auth_error=missing_code',
@@ -1143,7 +1142,7 @@ export async function syncUserDerivAsync(userId: string, providedToken?: string)
 
     return hydrationResult.metadata;
   } catch (err: any) {
-    console.error('[DERIV_SYNC_FAILED]', err?.message || err);
+    logger.warn('[DerivSync] User sync failed:', { error: String(err?.message || err) });
     if (record) {
       record.connectionStatus = 'SYNC_FAILED';
       record.updatedAt = new Date().toISOString();
@@ -1169,7 +1168,7 @@ export function syncUserDeriv(userId: string): SafeDerivConnectionMetadata {
     
     // Fire-and-forget async sync in background
     syncUserDerivAsync(userId).catch((err) => {
-      console.error('[BACKGROUND_SYNC_TRIGGER_ERROR]', err);
+      logger.warn('[DerivSync] Background trigger notice:', { error: String(err?.message || err) });
     });
   }
   return getUserDerivConnection(userId);

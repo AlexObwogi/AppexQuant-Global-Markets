@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "timestamp": "2026-08-20T15:12:43.550Z",
+  "files": {
+    "server.ts": "e7f820ac249cdc83b084397fdd5c7a617ae58839fd975edafd2e3b6b63cb5e35",
+    "src/services/security.ts": "d136f2f765087512e18a4b60555e4029a6956c8c2fb6d355228e0ec1d6b16c65",
+    "src/db/connection.ts": "4bfcaaf7ac8fd64f6b06b2e8492a771c7e66f3411222773f83d1884e48ed26aa",
+    "src/services/deriv/oauthServerService.ts": "1ed6524bf3f7f4590033cd9bb28e51d72cc183b1026c0a94f2c470997c080629"
+  }
+}

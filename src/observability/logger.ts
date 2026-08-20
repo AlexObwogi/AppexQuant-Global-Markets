@@ -15,7 +15,14 @@ const SENSITIVE_KEYS = [
   'authorization',
 ];
 
+function sanitizeString(str: string): string {
+  return str.trim().replace(/\r?\n+/g, ' ');
+}
+
 function sanitizeObject(obj: unknown): unknown {
+  if (typeof obj === 'string') {
+    return sanitizeString(obj);
+  }
   if (!obj || typeof obj !== 'object') return obj;
 
   if (Array.isArray(obj)) {
@@ -27,6 +34,8 @@ function sanitizeObject(obj: unknown): unknown {
     const lowerKey = key.toLowerCase();
     if (SENSITIVE_KEYS.some((k) => lowerKey.includes(k))) {
       sanitized[key] = '***[REDACTED_SECRET]***';
+    } else if (typeof val === 'string') {
+      sanitized[key] = sanitizeString(val);
     } else if (typeof val === 'object' && val !== null) {
       sanitized[key] = sanitizeObject(val);
     } else {

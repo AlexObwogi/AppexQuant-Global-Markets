@@ -879,7 +879,7 @@ export async function createApp() {
             );
           }
         } catch (dbErr: any) {
-          logger.error('Failed to query database user during login, falling back to memory', { error: dbErr.message });
+          logger.warn('Database user query notice during login, using memory fallback:', { detail: dbErr.message });
         }
       }
 
@@ -960,7 +960,7 @@ export async function createApp() {
             existingUser = userRes.rows[0];
           }
         } catch (dbErr: any) {
-          logger.error('Failed to query database user during registration, falling back to memory check', { error: dbErr.message });
+          logger.warn('Database user query notice during registration, using memory fallback:', { detail: dbErr.message });
         }
       }
 
@@ -992,7 +992,7 @@ export async function createApp() {
             [newUser.id, 'dark', true]
           );
         } catch (dbErr: any) {
-          logger.error('Failed to insert new database user during registration', { error: dbErr.message });
+          logger.warn('Database user insert notice during registration, using memory state:', { detail: dbErr.message });
         }
       }
 
@@ -1271,12 +1271,16 @@ export async function createApp() {
 
       // Set session cookie, deriv_access_token cookie for sync pipeline, & clean temporary OAuth state cookie
       const isProd = process.env.NODE_ENV === 'production';
+      const cookieSameSite = isHttps ? 'SameSite=None; Secure' : 'SameSite=Lax';
       const cookieList = [
-        `session_token=${sessionToken}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=604800`,
-        `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`,
+        `session_token=${sessionToken}; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=604800`,
+        `deriv_oauth_state=; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=0`,
       ];
       if (rawToken) {
-        cookieList.push(`deriv_access_token=${encodeURIComponent(rawToken)}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=86400`);
+        cookieList.push(`deriv_access_token=${encodeURIComponent(rawToken)}; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=86400`);
+      }
+      if (rawAcct) {
+        cookieList.push(`deriv_session_user_id=${encodeURIComponent(rawAcct)}; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=86400`);
       }
       res.setHeader('Set-Cookie', cookieList);
 
@@ -1399,7 +1403,8 @@ export async function createApp() {
   // Trigger manual Deriv account metadata & balance sync with authoritative reconciliation
   app.all(['/api/auth/deriv/sync', '/api/deriv/sync'], async (req: Request, res: Response) => {
     try {
-      const cookieUserId = req.cookies?.deriv_session_user_id;
+      const parsedCookies = (req as any).cookies || parseCookies(req.headers.cookie);
+      const cookieUserId = parsedCookies['deriv_session_user_id'];
       const bodyUserId = req.body?.userId || req.body?.loginid || req.body?.accountId;
       const headerUserId = req.headers['x-user-id'] as string;
       const sessionUserId = req.sessionUser?.userId;
@@ -1411,7 +1416,7 @@ export async function createApp() {
       }
 
       // Check if access token is available in req.body, headers, cookie, or decrypted from session
-      let tokenToUse = req.body?.apiToken || req.body?.token || req.cookies?.deriv_access_token;
+      let tokenToUse = req.body?.apiToken || req.body?.token || parsedCookies['deriv_access_token'];
       if (!tokenToUse && req.headers.authorization?.startsWith('Bearer ')) {
         tokenToUse = req.headers.authorization.substring(7);
       }
@@ -1419,6 +1424,16 @@ export async function createApp() {
         try {
           tokenToUse = decryptSensitiveData(req.sessionUser.encryptedDerivToken);
         } catch {}
+      }
+
+      if (!tokenToUse) {
+        logAuditEvent('ACCOUNT_CONNECTION_FAILED', userId, {
+          reason: 'MISSING_DERIV_ACCESS_TOKEN',
+          endpoint: '/api/auth/deriv/sync',
+        });
+        return res.status(422).json(
+          createErrorResponse('Missing Deriv access token. Please re-authenticate.', 'MISSING_TOKEN')
+        );
       }
 
       const metadata = await syncUserDerivAsync(userId, tokenToUse);
@@ -1444,7 +1459,13 @@ export async function createApp() {
         status: metadata.connectionStatus,
       }, metadata.derivAccountId);
 
-      res.json(createSuccessResponse(metadata));
+      res.json(createSuccessResponse({
+        accountId: metadata.derivAccountId,
+        balance: metadata.balance ?? 0,
+        currency: metadata.currency || 'USD',
+        accountType: metadata.accountType || (metadata.derivAccountId.startsWith('VR') ? 'demo' : 'real'),
+        ...metadata,
+      }));
     } catch (err: any) {
       console.error('[DERIV_SYNC_ENDPOINT_ERROR]', err);
       res.status(500).json(createErrorResponse(err?.message || 'Failed to sync Deriv connection', 'DERIV_SYNC_ERROR'));
@@ -1989,12 +2010,21 @@ export async function createApp() {
 
   // Global Error Handler (Masks stack traces)
   app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-    logger.error('Unhandled Server Exception', { error: err.message });
+    logger.warn('Unhandled Server Exception', { error: (err.message || String(err)).trim().replace(/\r?\n+/g, ' ') });
     res.status(500).json(createErrorResponse('Internal Server Error', 'SERVER_ERROR'));
   });
 
   return app;
 }
+
+process.on('unhandledRejection', (reason: any) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  logger.warn('Unhandled Promise Rejection caught:', { detail: msg.trim().replace(/\r?\n+/g, ' ') });
+});
+
+process.on('uncaughtException', (err: Error) => {
+  logger.warn('Uncaught Exception caught:', { detail: (err.message || String(err)).trim().replace(/\r?\n+/g, ' ') });
+});
 
 export async function startServer() {
   const PORT = 3000;

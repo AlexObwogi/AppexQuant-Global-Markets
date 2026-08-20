@@ -21,7 +21,8 @@ export function getDatabasePool(): pkg.Pool {
     let connectionString = process.env.DATABASE_URL;
     
     if (!connectionString) {
-      logger.info('DATABASE_URL unconfigured. Operating database engine in memory-fallback mode.');
+      logger.info('DATABASE_URL environment variable is not defined. Operating in fallback mode.');
+      connectionString = 'postgresql://localhost:5432/fallback';
     }
 
     // High-concurrency connection pooling parameters
@@ -30,9 +31,11 @@ export function getDatabasePool(): pkg.Pool {
     const connectionTimeout = parseInt(process.env.DB_CONN_TIMEOUT_MS || '3000', 10);
     const statementTimeout = parseInt(process.env.DB_STATEMENT_TIMEOUT_MS || '10000', 10);
 
+    const isProd = process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
+
     pool = new Pool({
-      connectionString: connectionString || 'postgres://appexquant:appexquant_secure_pass@localhost:5432/appexquant_markets',
-      ssl: process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
+      connectionString: connectionString || undefined,
+      ssl: isProd ? { rejectUnauthorized: false } : undefined,
       max: maxConnections,
       min: 0,
       idleTimeoutMillis: idleTimeout,
@@ -64,8 +67,8 @@ export function getPoolStats(): PoolStats | null {
 }
 
 export async function testDatabaseConnection(): Promise<{ success: boolean; latencyMs?: number; error?: string; stats?: PoolStats | null }> {
-  if (!process.env.DATABASE_URL) {
-    return { success: false, error: 'DATABASE_URL environment variable is not defined. Operating in memory-fallback mode.' };
+  if (!process.env.DATABASE_URL || !process.env.DATABASE_URL.trim()) {
+    return { success: false, error: 'DATABASE_URL environment variable is missing. Direct PostgreSQL connection is required.' };
   }
   const dbPool = getDatabasePool();
   const start = Date.now();

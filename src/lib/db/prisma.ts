@@ -11,27 +11,13 @@
  */
 
 import { logger } from '../../observability/logger.ts';
-import { prisma, isDatabaseAvailable, setDatabaseAvailable } from '../../services/db/prismaSingleton.ts';
+import {
+  directPrisma,
+  isDirectDatabaseAvailable,
+  setDirectDatabaseAvailable,
+} from './directPrismaClient.ts';
 
-export { prisma };
-
-function isAuthOrConnectionError(err: any): boolean {
-  if (!err) return false;
-  const msg = String(err.message || err);
-  const code = String(err.code || '');
-  return (
-    code === 'P1000' ||
-    code === 'P1001' ||
-    code === 'P1002' ||
-    code === 'P1003' ||
-    code === 'P1017' ||
-    msg.includes('Authentication failed') ||
-    msg.includes('credentials') ||
-    msg.includes('password authentication failed') ||
-    msg.includes('ECONNREFUSED') ||
-    msg.includes('ENOTFOUND')
-  );
-}
+export { directPrisma as prisma };
 
 export interface LeanSession {
   id: string;
@@ -70,16 +56,16 @@ export interface LeanLeaderboardEntry {
 }
 
 /**
- * High-frequency query helpers with lean projection (strips unnecessary blobs / large text)
+ * High-frequency query helpers executing directly against PostgreSQL via directPrisma.
  */
 export const dbQueries = {
   /**
    * Fast session validation using composite index [userId, expiresAt]
    */
   async findActiveSession(token: string): Promise<LeanSession | null> {
-    if (!prisma || !isDatabaseAvailable()) return null;
+    if (!isDirectDatabaseAvailable()) return null;
     try {
-      return await prisma.session.findUnique({
+      return await directPrisma.session.findUnique({
         where: { token },
         select: {
           id: true,
@@ -100,10 +86,9 @@ export const dbQueries = {
         },
       });
     } catch (err: any) {
-      if (isAuthOrConnectionError(err)) {
-        setDatabaseAvailable(false);
-      }
-      logger.warn('Prisma session check fallback:', { error: err.message });
+      setDirectDatabaseAvailable(false);
+      const cleanMsg = (err?.message || String(err)).split('\n').filter((l: string) => !l.includes('invocation') && !l.includes('→') && l.trim().length > 0).pop() || 'Database query failed';
+      logger.warn('Prisma session lookup fallback:', { detail: cleanMsg.trim() });
       return null;
     }
   },
@@ -112,9 +97,9 @@ export const dbQueries = {
    * Lean top leaderboard query with selective projection and indexed sort
    */
   async getTopLeaderboard(window: string = 'MONTHLY', limit: number = 20): Promise<LeanLeaderboardEntry[] | null> {
-    if (!prisma || !isDatabaseAvailable()) return null;
+    if (!isDirectDatabaseAvailable()) return null;
     try {
-      const records = await prisma.leaderboardEntry.findMany({
+      const records = await directPrisma.leaderboardEntry.findMany({
         where: { window },
         orderBy: { rank: 'asc' },
         take: limit,
@@ -147,10 +132,9 @@ export const dbQueries = {
         maxDrawdownPercentage: Number(r.maxDrawdownPercentage),
       }));
     } catch (err: any) {
-      if (isAuthOrConnectionError(err)) {
-        setDatabaseAvailable(false);
-      }
-      logger.warn('Prisma leaderboard query fallback:', { error: err.message });
+      setDirectDatabaseAvailable(false);
+      const cleanMsg = (err?.message || String(err)).split('\n').filter((l: string) => !l.includes('invocation') && !l.includes('→') && l.trim().length > 0).pop() || 'Database query failed';
+      logger.warn('Prisma leaderboard query fallback:', { detail: cleanMsg.trim() });
       return null;
     }
   },
@@ -159,9 +143,9 @@ export const dbQueries = {
    * High-speed user profile query using unique index on email or id
    */
   async findUserById(id: string): Promise<any | null> {
-    if (!prisma || !isDatabaseAvailable()) return null;
+    if (!isDirectDatabaseAvailable()) return null;
     try {
-      return await prisma.user.findUnique({
+      return await directPrisma.user.findUnique({
         where: { id },
         select: {
           id: true,
@@ -194,10 +178,9 @@ export const dbQueries = {
         },
       });
     } catch (err: any) {
-      if (isAuthOrConnectionError(err)) {
-        setDatabaseAvailable(false);
-      }
-      logger.warn('Prisma findUserById fallback:', { error: err.message });
+      setDirectDatabaseAvailable(false);
+      const cleanMsg = (err?.message || String(err)).split('\n').filter((l: string) => !l.includes('invocation') && !l.includes('→') && l.trim().length > 0).pop() || 'Database query failed';
+      logger.warn('Prisma findUserById fallback:', { detail: cleanMsg.trim() });
       return null;
     }
   },
@@ -217,7 +200,7 @@ export const dbQueries = {
     status?: string;
     lastSyncedAt?: Date | string;
   }): Promise<any | null> {
-    if (!prisma || !isDatabaseAvailable()) return null;
+    if (!isDirectDatabaseAvailable()) return null;
     try {
       const now = new Date();
       const lastSynced = data.lastSyncedAt ? new Date(data.lastSyncedAt) : now;
@@ -227,7 +210,7 @@ export const dbQueries = {
       const currency = data.currency || 'USD';
       const isVirtual = data.isVirtual ?? data.id.startsWith('VR');
 
-      return await prisma.derivAccount.upsert({
+      return await directPrisma.derivAccount.upsert({
         where: { id: data.id },
         create: {
           id: data.id,
@@ -255,10 +238,9 @@ export const dbQueries = {
         },
       });
     } catch (err: any) {
-      if (isAuthOrConnectionError(err)) {
-        setDatabaseAvailable(false);
-      }
-      logger.warn('Prisma upsertDerivAccount fallback:', { error: err.message });
+      setDirectDatabaseAvailable(false);
+      const cleanMsg = (err?.message || String(err)).split('\n').filter((l: string) => !l.includes('invocation') && !l.includes('→') && l.trim().length > 0).pop() || 'Database query failed';
+      logger.warn('Prisma upsertDerivAccount fallback:', { detail: cleanMsg.trim() });
       return null;
     }
   },
@@ -274,16 +256,15 @@ export const dbQueries = {
     currency?: string;
     timestamp?: Date;
   }): Promise<any | null> {
-    if (!prisma || !isDatabaseAvailable()) return null;
+    if (!isDirectDatabaseAvailable()) return null;
     try {
       const ts = data.timestamp || new Date();
-      // Format hour-level idempotency key e.g. CR12345_2026-08-20T04
       const hourKey = ts.toISOString().substring(0, 13);
       const snapshotKey = `${data.derivAccountId}_${hourKey}`;
       const equity = data.equity ?? data.balance;
       const currency = data.currency || 'USD';
 
-      return await prisma.derivAccountSnapshot.upsert({
+      return await directPrisma.derivAccountSnapshot.upsert({
         where: {
           derivAccountId_snapshotKey: {
             derivAccountId: data.derivAccountId,
@@ -307,10 +288,9 @@ export const dbQueries = {
         },
       });
     } catch (err: any) {
-      if (isAuthOrConnectionError(err)) {
-        setDatabaseAvailable(false);
-      }
-      logger.warn('Prisma recordAccountSnapshot fallback:', { error: err.message });
+      setDirectDatabaseAvailable(false);
+      const cleanMsg = (err?.message || String(err)).split('\n').filter((l: string) => !l.includes('invocation') && !l.includes('→') && l.trim().length > 0).pop() || 'Database query failed';
+      logger.warn('Prisma recordAccountSnapshot fallback:', { detail: cleanMsg.trim() });
       return null;
     }
   },
@@ -319,9 +299,9 @@ export const dbQueries = {
    * Maps an external Deriv account ID to an internal user and active session
    */
   async mapDerivAccountToUserSession(derivAccountId: string, userId: string): Promise<boolean> {
-    if (!prisma || !isDatabaseAvailable()) return false;
+    if (!isDirectDatabaseAvailable()) return false;
     try {
-      await prisma.user.update({
+      await directPrisma.user.update({
         where: { id: userId },
         data: {
           derivAccountId,
@@ -331,10 +311,9 @@ export const dbQueries = {
       });
       return true;
     } catch (err: any) {
-      if (isAuthOrConnectionError(err)) {
-        setDatabaseAvailable(false);
-      }
-      logger.warn('Prisma mapDerivAccountToUserSession fallback:', { error: err.message });
+      setDirectDatabaseAvailable(false);
+      const cleanMsg = (err?.message || String(err)).split('\n').filter((l: string) => !l.includes('invocation') && !l.includes('→') && l.trim().length > 0).pop() || 'Database query failed';
+      logger.warn('Prisma mapDerivAccountToUserSession fallback:', { detail: cleanMsg.trim() });
       return false;
     }
   },

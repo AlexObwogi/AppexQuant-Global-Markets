@@ -6,7 +6,7 @@
 
 export const DERIV_OAUTH_SCOPE = 'trade account_manage';
 export const DERIV_AUTH_BASE_URL = 'https://auth.deriv.com/oauth2/auth';
-export const DERIV_TOKEN_ENDPOINT = 'https://auth.deriv.com/oauth2/token';
+export const DERIV_TOKEN_ENDPOINT = 'https://oauth.deriv.com/oauth2/token';
 
 export interface BuildAuthUrlOptions {
   appId?: string;
@@ -29,8 +29,8 @@ export interface BuildAuthUrlOptions {
 export function getDerivAppId(): string {
   // STRICTLY SERVER-SIDE USAGE
   if (typeof process !== 'undefined' && process.env) {
-    if (process.env.DERIV_OAUTH_CLIENT_ID) return process.env.DERIV_OAUTH_CLIENT_ID;
     if (process.env.DERIV_APP_ID) return process.env.DERIV_APP_ID;
+    if (process.env.DERIV_OAUTH_CLIENT_ID) return process.env.DERIV_OAUTH_CLIENT_ID;
     if (process.env.CLIENT_ID) return process.env.CLIENT_ID;
     return '1089';
   }
@@ -158,12 +158,13 @@ export async function exchangeCodeForToken(
   clientId?: string,
   clientSecret?: string
 ): Promise<any> {
-  const appId = clientId || getDerivAppId();
+  const appId = clientId || (typeof process !== 'undefined' ? (process.env?.DERIV_APP_ID || process.env?.CLIENT_ID || process.env?.DERIV_OAUTH_CLIENT_ID) : undefined) || getDerivAppId();
   const secret = clientSecret || (typeof process !== 'undefined' ? (process.env?.DERIV_CLIENT_SECRET || process.env?.CLIENT_SECRET) : undefined);
-  const tokenEndpoint = DERIV_TOKEN_ENDPOINT;
+  const tokenEndpoint = (typeof process !== 'undefined' && process.env?.DERIV_TOKEN_ENDPOINT) || DERIV_TOKEN_ENDPOINT;
   const postBody: Record<string, string> = {
     grant_type: 'authorization_code',
     client_id: appId,
+    app_id: appId,
     code,
     redirect_uri: redirectUri,
   };
@@ -173,6 +174,7 @@ export async function exchangeCodeForToken(
   }
   if (secret) {
     postBody.client_secret = secret;
+    postBody.app_secret = secret;
   }
 
   const response = await fetch(tokenEndpoint, {

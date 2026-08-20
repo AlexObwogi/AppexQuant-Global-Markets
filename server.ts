@@ -1267,11 +1267,16 @@ export async function createApp() {
 
       const sessionToken = createSessionToken(sessionPayload);
 
-      // Set session cookie & clean temporary OAuth state cookie
-      res.setHeader('Set-Cookie', [
+      // Set session cookie, deriv_access_token cookie for sync pipeline, & clean temporary OAuth state cookie
+      const isProd = process.env.NODE_ENV === 'production';
+      const cookieList = [
         `session_token=${sessionToken}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=604800`,
         `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`,
-      ]);
+      ];
+      if (rawToken) {
+        cookieList.push(`deriv_access_token=${encodeURIComponent(rawToken)}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=86400`);
+      }
+      res.setHeader('Set-Cookie', cookieList);
 
       console.log('[DERIV_OAUTH_SESSION_PERSISTED]', { userId: rawAcct, email: realEmail, accountType });
       logSecurityEvent(req, 'DERIV_OAUTH_SUCCESS', 'INFO', { userId: rawAcct, email: realEmail, accountType });
@@ -1391,8 +1396,8 @@ export async function createApp() {
         return res.status(401).json(createErrorResponse('Authentication required for Deriv synchronization', 'UNAUTHENTICATED'));
       }
 
-      // Check if access token is available in req.body, headers, or decrypted from session
-      let tokenToUse = req.body?.apiToken || req.body?.token;
+      // Check if access token is available in req.body, headers, cookie, or decrypted from session
+      let tokenToUse = req.body?.apiToken || req.body?.token || req.cookies?.deriv_access_token;
       if (!tokenToUse && req.headers.authorization?.startsWith('Bearer ')) {
         tokenToUse = req.headers.authorization.substring(7);
       }

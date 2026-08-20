@@ -155,17 +155,25 @@ export async function exchangeCodeForToken(
   code: string,
   codeVerifier: string,
   redirectUri: string,
-  clientId?: string
+  clientId?: string,
+  clientSecret?: string
 ): Promise<any> {
   const appId = clientId || getDerivAppId();
+  const secret = clientSecret || (typeof process !== 'undefined' ? (process.env?.DERIV_CLIENT_SECRET || process.env?.CLIENT_SECRET) : undefined);
   const tokenEndpoint = DERIV_TOKEN_ENDPOINT;
   const postBody: Record<string, string> = {
     grant_type: 'authorization_code',
     client_id: appId,
     code,
-    code_verifier: codeVerifier,
     redirect_uri: redirectUri,
   };
+
+  if (codeVerifier) {
+    postBody.code_verifier = codeVerifier;
+  }
+  if (secret) {
+    postBody.client_secret = secret;
+  }
 
   const response = await fetch(tokenEndpoint, {
     method: 'POST',

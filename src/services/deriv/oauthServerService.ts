@@ -509,7 +509,13 @@ export async function handleDerivOAuthCallback(params: {
   try {
     let tokenData: any = null;
     try {
-      tokenData = await exchangeCodeForToken(code, transaction.codeVerifier, transaction.redirectUri, oauthConfig.clientId);
+      tokenData = await exchangeCodeForToken(
+        code,
+        transaction.codeVerifier,
+        transaction.redirectUri,
+        oauthConfig.clientId,
+        oauthConfig.clientSecret
+      );
     } catch (exErr: any) {
       console.warn('[DERIV_OAUTH_EXCHANGE_ERROR]', exErr?.message);
       // Fallback candidate endpoints trial if centralized exchange threw

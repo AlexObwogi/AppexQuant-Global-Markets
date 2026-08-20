@@ -3,8 +3,7 @@
 // Includes strict indexes for sub-millisecond query execution on high-frequency tables.
 
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["relationMode"]
+  provider = "prisma-client-js"
 }
 
 datasource db {

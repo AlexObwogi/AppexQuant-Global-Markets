@@ -11,6 +11,7 @@ import { syncUserToSupabase, syncDerivConnectionToSupabase } from '../../lib/sup
 import { dbQueries } from '../../lib/db/prisma.ts';
 import { logger } from '../../observability/logger.ts';
 import { buildAuthUrl, DERIV_OAUTH_SCOPE, exchangeCodeForToken } from '../oauthService.ts';
+import { isValidDerivAccountId } from './syncStateMachine.ts';
 
 export interface DerivAccountProfileData {
   email?: string;
@@ -149,52 +150,57 @@ function attemptFetchProfileWithUrl(token: string, wsUrl: string): Promise<Deriv
 
       const timeout = setTimeout(() => {
         finish(null);
-      }, 10000);
+      }, 8000);
 
       const sendAuth = () => {
         try {
-          ws.send(JSON.stringify({ authorize: token.trim(), req_id: 1 }));
+          if (ws.readyState === 1) { // WebSocket.OPEN
+            ws.send(JSON.stringify({ authorize: token.trim(), req_id: 1 }));
+          }
+        } catch {
+          finish(null);
+        }
+      };
+
+      const handleRawData = (data: any) => {
+        try {
+          const raw = typeof data === 'string' ? data : data?.toString('utf8') || '';
+          const parsed = JSON.parse(raw);
+          if (parsed.msg_type === 'authorize' && parsed.authorize && parsed.authorize.loginid) {
+            finish(parsed.authorize as DerivAccountProfileData);
+          } else if (parsed.error) {
+            console.warn('[DerivWebSocket] Authorize response returned error:', parsed.error);
+            finish(null);
+          }
         } catch {
           finish(null);
         }
       };
 
       if (typeof (ws as any).on === 'function') {
-        (ws as any).on('open', sendAuth);
-        (ws as any).on('message', (data: any) => {
-          try {
-            const raw = typeof data === 'string' ? data : data?.toString('utf8') || '';
-            const parsed = JSON.parse(raw);
-            if (parsed.msg_type === 'authorize' && parsed.authorize) {
-              finish(parsed.authorize as DerivAccountProfileData);
-            } else if (parsed.error) {
-              finish(null);
-            }
-          } catch {
-            finish(null);
-          }
-        });
-        (ws as any).on('error', () => {
+        (ws as any).on('message', handleRawData);
+        (ws as any).on('error', (err: any) => {
+          console.warn('[DerivWebSocket] Socket error:', err?.message || err);
           finish(null);
         });
+        (ws as any).on('close', () => finish(null));
+        if (ws.readyState === 1) {
+          sendAuth();
+        } else {
+          (ws as any).on('open', sendAuth);
+        }
       } else {
-        ws.onopen = sendAuth;
-        ws.onmessage = (event: any) => {
-          try {
-            const raw = typeof event.data === 'string' ? event.data : event.data?.toString() || '';
-            const parsed = JSON.parse(raw);
-            if (parsed.msg_type === 'authorize' && parsed.authorize) {
-              finish(parsed.authorize as DerivAccountProfileData);
-            } else if (parsed.error) {
-              finish(null);
-            }
-          } catch {
-            finish(null);
-          }
-        };
-        ws.onerror = () => {
+        ws.onmessage = (event: any) => handleRawData(event.data);
+        ws.onerror = (err: any) => {
+          console.warn('[DerivWebSocket] Socket onerror:', err);
           finish(null);
         };
+        ws.onclose = () => finish(null);
+        if (ws.readyState === 1) {
+          sendAuth();
+        } else {
+          ws.onopen = sendAuth;
+        }
       }
     } catch {
       resolve(null);
@@ -843,9 +849,21 @@ export async function hydrateDerivAccount(params: HydrateDerivAccountParams): Pr
     };
   }
 
-  // Fallback: If WebSocket didn't return profile, check if fallbackAccount has a valid Deriv loginid (e.g. CR... or VR...)
-  const fallbackLoginId = fallbackAccount?.loginid;
-  const isValidDerivId = fallbackLoginId && (fallbackLoginId.startsWith('CR') || fallbackLoginId.startsWith('VR') || fallbackLoginId.startsWith('MF') || fallbackLoginId.startsWith('MLT'));
+  // Fallback: If WebSocket didn't return profile, check fallbackAccount or userId or Prisma DB
+  let fallbackLoginId = fallbackAccount?.loginid;
+  if (!fallbackLoginId && isValidDerivAccountId(userId)) {
+    fallbackLoginId = userId;
+  }
+  if (!fallbackLoginId) {
+    try {
+      const dbUser = await dbQueries.findUserById(userId);
+      if (dbUser?.derivAccountId && isValidDerivAccountId(dbUser.derivAccountId)) {
+        fallbackLoginId = dbUser.derivAccountId;
+      }
+    } catch {}
+  }
+
+  const isValidDerivId = fallbackLoginId && isValidDerivAccountId(fallbackLoginId);
 
   if (isValidDerivId) {
     const derivAccountId = fallbackLoginId;
@@ -1095,6 +1113,16 @@ export async function syncUserDerivAsync(userId: string, providedToken?: string)
     derivConnectionsStore.set(userId, record);
   }
 
+  let fallbackLoginId = record?.derivAccountId || (isValidDerivAccountId(userId) ? userId : undefined);
+  if (!fallbackLoginId) {
+    try {
+      const dbUser = await dbQueries.findUserById(userId);
+      if (dbUser?.derivAccountId && isValidDerivAccountId(dbUser.derivAccountId)) {
+        fallbackLoginId = dbUser.derivAccountId;
+      }
+    } catch {}
+  }
+
   try {
     const hydrationResult = await hydrateDerivAccount({
       userId,
@@ -1102,15 +1130,15 @@ export async function syncUserDerivAsync(userId: string, providedToken?: string)
       refreshToken: record?.refreshToken,
       tokenExpiry: record?.tokenExpiry,
       scopes: record?.scopes,
-      fallbackAccount: record ? {
-        loginid: record.derivAccountId,
-        email: record.email,
-        fullName: record.fullName,
-        balance: record.balance,
-        currency: record.currency,
-        accountType: record.accountType,
-        scopes: record.scopes,
-      } : undefined,
+      fallbackAccount: {
+        loginid: fallbackLoginId,
+        email: record?.email,
+        fullName: record?.fullName,
+        balance: record?.balance,
+        currency: record?.currency,
+        accountType: record?.accountType,
+        scopes: record?.scopes,
+      },
     });
 
     return hydrationResult.metadata;

@@ -11,9 +11,27 @@
  */
 
 import { logger } from '../../observability/logger.ts';
-import { prisma } from '../../services/db/prismaSingleton.ts';
+import { prisma, isDatabaseAvailable, setDatabaseAvailable } from '../../services/db/prismaSingleton.ts';
 
 export { prisma };
+
+function isAuthOrConnectionError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err.message || err);
+  const code = String(err.code || '');
+  return (
+    code === 'P1000' ||
+    code === 'P1001' ||
+    code === 'P1002' ||
+    code === 'P1003' ||
+    code === 'P1017' ||
+    msg.includes('Authentication failed') ||
+    msg.includes('credentials') ||
+    msg.includes('password authentication failed') ||
+    msg.includes('ECONNREFUSED') ||
+    msg.includes('ENOTFOUND')
+  );
+}
 
 export interface LeanSession {
   id: string;
@@ -59,7 +77,7 @@ export const dbQueries = {
    * Fast session validation using composite index [userId, expiresAt]
    */
   async findActiveSession(token: string): Promise<LeanSession | null> {
-    if (!prisma || !process.env.DATABASE_URL) return null;
+    if (!prisma || !isDatabaseAvailable()) return null;
     try {
       return await prisma.session.findUnique({
         where: { token },
@@ -82,6 +100,9 @@ export const dbQueries = {
         },
       });
     } catch (err: any) {
+      if (isAuthOrConnectionError(err)) {
+        setDatabaseAvailable(false);
+      }
       logger.warn('Prisma session check fallback:', { error: err.message });
       return null;
     }
@@ -91,9 +112,9 @@ export const dbQueries = {
    * Lean top leaderboard query with selective projection and indexed sort
    */
   async getTopLeaderboard(window: string = 'MONTHLY', limit: number = 20): Promise<LeanLeaderboardEntry[] | null> {
-    if (!prisma || !process.env.DATABASE_URL) return null;
+    if (!prisma || !isDatabaseAvailable()) return null;
     try {
-      return await prisma.leaderboardEntry.findMany({
+      const records = await prisma.leaderboardEntry.findMany({
         where: { window },
         orderBy: { rank: 'asc' },
         take: limit,
@@ -117,7 +138,18 @@ export const dbQueries = {
           isVerified: true,
         },
       });
+      return records.map((r: any) => ({
+        ...r,
+        winRate: Number(r.winRate),
+        profitFactor: Number(r.profitFactor),
+        totalProfitUsd: Number(r.totalProfitUsd),
+        roiPercentage: Number(r.roiPercentage),
+        maxDrawdownPercentage: Number(r.maxDrawdownPercentage),
+      }));
     } catch (err: any) {
+      if (isAuthOrConnectionError(err)) {
+        setDatabaseAvailable(false);
+      }
       logger.warn('Prisma leaderboard query fallback:', { error: err.message });
       return null;
     }
@@ -127,7 +159,7 @@ export const dbQueries = {
    * High-speed user profile query using unique index on email or id
    */
   async findUserById(id: string): Promise<any | null> {
-    if (!prisma || !process.env.DATABASE_URL) return null;
+    if (!prisma || !isDatabaseAvailable()) return null;
     try {
       return await prisma.user.findUnique({
         where: { id },
@@ -162,6 +194,9 @@ export const dbQueries = {
         },
       });
     } catch (err: any) {
+      if (isAuthOrConnectionError(err)) {
+        setDatabaseAvailable(false);
+      }
       logger.warn('Prisma findUserById fallback:', { error: err.message });
       return null;
     }
@@ -182,7 +217,7 @@ export const dbQueries = {
     status?: string;
     lastSyncedAt?: Date | string;
   }): Promise<any | null> {
-    if (!prisma || !process.env.DATABASE_URL) return null;
+    if (!prisma || !isDatabaseAvailable()) return null;
     try {
       const now = new Date();
       const lastSynced = data.lastSyncedAt ? new Date(data.lastSyncedAt) : now;
@@ -220,6 +255,9 @@ export const dbQueries = {
         },
       });
     } catch (err: any) {
+      if (isAuthOrConnectionError(err)) {
+        setDatabaseAvailable(false);
+      }
       logger.warn('Prisma upsertDerivAccount fallback:', { error: err.message });
       return null;
     }
@@ -236,7 +274,7 @@ export const dbQueries = {
     currency?: string;
     timestamp?: Date;
   }): Promise<any | null> {
-    if (!prisma || !process.env.DATABASE_URL) return null;
+    if (!prisma || !isDatabaseAvailable()) return null;
     try {
       const ts = data.timestamp || new Date();
       // Format hour-level idempotency key e.g. CR12345_2026-08-20T04
@@ -269,6 +307,9 @@ export const dbQueries = {
         },
       });
     } catch (err: any) {
+      if (isAuthOrConnectionError(err)) {
+        setDatabaseAvailable(false);
+      }
       logger.warn('Prisma recordAccountSnapshot fallback:', { error: err.message });
       return null;
     }
@@ -278,7 +319,7 @@ export const dbQueries = {
    * Maps an external Deriv account ID to an internal user and active session
    */
   async mapDerivAccountToUserSession(derivAccountId: string, userId: string): Promise<boolean> {
-    if (!prisma || !process.env.DATABASE_URL) return false;
+    if (!prisma || !isDatabaseAvailable()) return false;
     try {
       await prisma.user.update({
         where: { id: userId },
@@ -290,6 +331,9 @@ export const dbQueries = {
       });
       return true;
     } catch (err: any) {
+      if (isAuthOrConnectionError(err)) {
+        setDatabaseAvailable(false);
+      }
       logger.warn('Prisma mapDerivAccountToUserSession fallback:', { error: err.message });
       return false;
     }

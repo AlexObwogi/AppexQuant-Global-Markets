@@ -7,10 +7,12 @@ import { testDatabaseConnection } from './connection.ts';
 import { runDatabaseMigrations } from './migrations.ts';
 import { seedDatabase } from './seed.ts';
 import { logger } from '../observability/logger.ts';
+import { setDatabaseAvailable } from '../services/db/prismaSingleton.ts';
 
 export async function initializeDatabaseSystem(): Promise<void> {
   const connTest = await testDatabaseConnection();
   if (connTest.success) {
+    setDatabaseAvailable(true);
     logger.info(`PostgreSQL database connected successfully (Latency: ${connTest.latencyMs}ms). Initializing schema & seed data...`);
     const migResult = await runDatabaseMigrations();
     if (migResult.success) {
@@ -19,6 +21,7 @@ export async function initializeDatabaseSystem(): Promise<void> {
       logger.error('Database migration failed during startup', { error: migResult.error });
     }
   } else {
-    logger.info('Database engine active in memory-fallback mode (External PostgreSQL standby).');
+    setDatabaseAvailable(false);
+    logger.info('Database engine active in memory-fallback mode (External PostgreSQL standby).', { error: connTest.error });
   }
 }

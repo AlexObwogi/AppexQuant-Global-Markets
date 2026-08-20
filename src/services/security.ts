@@ -327,6 +327,7 @@ export function parseCookies(cookieHeader?: string): Record<string, string> {
 // Session Authenticator Middleware
 export function sessionMiddleware(req: Request, res: Response, next: NextFunction): void {
   const cookies = parseCookies(req.headers.cookie);
+  (req as any).cookies = cookies;
   const authHeader = req.headers.authorization;
   const token = cookies['session_token'] || (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined);
 

@@ -34,6 +34,9 @@ export async function POST(request: Request): Promise<Response> {
     const cookies = parseCookieHeader(cookieHeader);
 
     let accessToken = cookies['deriv_access_token'];
+    if (accessToken && accessToken.startsWith('usr-')) {
+      accessToken = undefined;
+    }
 
     let body: any = {};
     try {
@@ -41,7 +44,10 @@ export async function POST(request: Request): Promise<Response> {
     } catch {}
 
     if (!accessToken && body) {
-      accessToken = body.apiToken || body.token || body.deriv_access_token;
+      const candidate = body.apiToken || body.token || body.deriv_access_token;
+      if (candidate && !candidate.startsWith('usr-')) {
+        accessToken = candidate;
+      }
     }
 
     const cookieUserId = cookies['deriv_session_user_id'];
@@ -114,6 +120,7 @@ export async function POST(request: Request): Promise<Response> {
       currency,
       accountType,
       connectionStatus: metadata.connectionStatus,
+      data: metadata,
     });
   } catch (err: any) {
     logger.error('[DERIV_SYNC_ROUTE_ERROR]', { error: err?.message || String(err) });

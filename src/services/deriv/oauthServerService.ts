@@ -97,7 +97,10 @@ export async function fetchDerivAccountProfile(
   retries: number = 3
 ): Promise<DerivAccountProfileData | null> {
   const cleanToken = token ? token.trim() : '';
-  if (!cleanToken) return null;
+  if (!cleanToken || cleanToken.startsWith('usr-')) {
+    console.warn('[DerivOAuth] Invalid token supplied for profile fetch (cannot be internal user ID):', cleanToken);
+    return null;
+  }
 
   const candidateEndpoints = [
     `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId.trim() || '1089')}&l=EN&brand=deriv`,

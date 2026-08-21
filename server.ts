@@ -1415,14 +1415,22 @@ export async function createApp() {
         return res.status(401).json(createErrorResponse('Authentication required for Deriv synchronization', 'UNAUTHENTICATED'));
       }
 
-      // Check if access token is available in req.body, headers, cookie, or decrypted from session
       let tokenToUse = req.body?.apiToken || req.body?.token || parsedCookies['deriv_access_token'];
+      if (tokenToUse && tokenToUse.startsWith('usr-')) {
+        tokenToUse = undefined;
+      }
       if (!tokenToUse && req.headers.authorization?.startsWith('Bearer ')) {
-        tokenToUse = req.headers.authorization.substring(7);
+        const bearer = req.headers.authorization.substring(7);
+        if (!bearer.startsWith('usr-')) {
+          tokenToUse = bearer;
+        }
       }
       if (!tokenToUse && req.sessionUser?.encryptedDerivToken) {
         try {
-          tokenToUse = decryptSensitiveData(req.sessionUser.encryptedDerivToken);
+          const decrypted = decryptSensitiveData(req.sessionUser.encryptedDerivToken);
+          if (decrypted && !decrypted.startsWith('usr-')) {
+            tokenToUse = decrypted;
+          }
         } catch {}
       }
 

@@ -371,16 +371,26 @@ export class DerivWebSocketManager {
       sub = { callbacks: new Set() };
       this.tickSubscriptions.set(symbol, sub);
 
+      const doSubscribe = () => {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.sendRequest({ ticks: symbol })
+            .then((res) => {
+              if (res.subscription?.id && sub) {
+                sub.subId = res.subscription.id;
+              }
+            })
+            .catch((err) => {
+              console.error(`[DerivWS] Deriv API subscription failed for ${symbol}: ${err.message || err}`);
+            });
+        }
+      };
+
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.sendRequest({ ticks: symbol })
-          .then((res) => {
-            if (res.subscription?.id && sub) {
-              sub.subId = res.subscription.id;
-            }
-          })
-          .catch((err) => {
-            console.error(`[DerivWS] Deriv API subscription failed for ${symbol}: ${err.message || err}`);
-          });
+        doSubscribe();
+      } else {
+        this.connect().then(doSubscribe).catch((err) => {
+          console.warn(`[DerivWS] Failed to connect for public tick subscription ${symbol}:`, err);
+        });
       }
     }
     sub.callbacks.add(callback);

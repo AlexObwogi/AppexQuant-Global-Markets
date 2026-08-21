@@ -100,6 +100,15 @@ export async function GET(request: Request): Promise<Response> {
           destination,
           accountType: rawAccount?.accountType,
           currency: rawAccount?.currency,
+          data: {
+            token: accessToken,
+            accessToken,
+            accountId,
+            derivAccountId: accountId,
+            currency: rawAccount?.currency,
+            accountType: rawAccount?.accountType,
+            balance: rawAccount?.balance,
+          }
         }),
         { status: 200, headers }
       );

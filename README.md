@@ -1,4 +1,4 @@
-# AppExQuant Markets Global
+# AppexQuant Global Markets
 
 > **Institutional Quantitative Technology Platform for Market Intelligence, Strategy, Risk, Execution, Analytics, and Automation.**
 
@@ -11,9 +11,9 @@
 
 ## Overview
 
-**AppExQuant Markets Global** is a professional-grade quantitative technology platform designed for advanced algorithmic trading, market structure analysis (SMC/ICT), automated execution, institutional risk management, and multi-asset portfolio analytics.
+**AppexQuant Global Markets** is a professional-grade quantitative technology platform designed for advanced algorithmic trading, market structure analysis (SMC/ICT), automated execution, institutional risk management, and multi-asset portfolio analytics.
 
-Built with a modular, broker-agnostic architecture, AppExQuant decouples raw market data processing, quantitative feature engineering, strategy generation, risk validation, and trade execution into isolated, testable domain pipelines.
+Built with a modular, broker-agnostic architecture, AppexQuant decouples raw market data processing, quantitative feature engineering, strategy generation, risk validation, and trade execution into isolated, testable domain pipelines.
 
 ---
 
@@ -105,4 +105,4 @@ We welcome institutional contributors, quantitative researchers, and systems eng
 ## License Status
 
 **License Status: Not Yet Decided**
-AppExQuant Markets Global is currently proprietary software infrastructure. Public open-source licensing terms will be formalized prior to general availability.
+AppexQuant Global Markets is currently proprietary software infrastructure. Public open-source licensing terms will be formalized prior to general availability.

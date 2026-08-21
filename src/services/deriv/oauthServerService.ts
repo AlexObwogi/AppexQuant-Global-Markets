@@ -851,24 +851,31 @@ export async function hydrateDerivAccount(params: HydrateDerivAccountParams): Pr
     };
   }
 
-  // Fallback: If WebSocket didn't return profile, check fallbackAccount or userId or Prisma DB
+  // Fallback: If WebSocket didn't return profile, check fallbackAccount or Prisma DB (NEVER use internal usr- IDs)
   let fallbackLoginId = fallbackAccount?.loginid;
-  if (!fallbackLoginId && isValidDerivAccountId(userId)) {
+  
+  if (!fallbackLoginId && userId && !userId.startsWith('usr-') && !userId.startsWith('user-') && isValidDerivAccountId(userId)) {
     fallbackLoginId = userId;
   }
+  
   if (!fallbackLoginId) {
     try {
       const dbUser = await dbQueries.findUserById(userId);
-      if (dbUser?.derivAccountId && isValidDerivAccountId(dbUser.derivAccountId)) {
+      if (dbUser?.derivAccountId && isValidDerivAccountId(dbUser.derivAccountId) && !dbUser.derivAccountId.startsWith('usr-') && !dbUser.derivAccountId.startsWith('user-')) {
         fallbackLoginId = dbUser.derivAccountId;
       }
     } catch {}
   }
 
-  const isValidDerivId = fallbackLoginId && isValidDerivAccountId(fallbackLoginId);
+  const isValidDerivId = Boolean(
+    fallbackLoginId && 
+    isValidDerivAccountId(fallbackLoginId) && 
+    !fallbackLoginId.startsWith('usr-') && 
+    !fallbackLoginId.startsWith('user-')
+  );
 
   if (isValidDerivId) {
-    const derivAccountId = fallbackLoginId;
+    const derivAccountId = fallbackLoginId as string;
     const isVirtual = derivAccountId.startsWith('VR');
     const accountType: 'demo' | 'real' = isVirtual ? 'demo' : 'real';
     const currency = fallbackAccount?.currency || 'USD';

@@ -192,7 +192,12 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
     setIsSyncing(true);
     setErrorMessage(null);
     try {
-      const res = await apiFetch('/api/auth/deriv/sync', { method: 'POST' });
+      const savedToken = localStorage.getItem('deriv_access_token') || localStorage.getItem('deriv_oauth_token') || '';
+      const res = await apiFetch('/api/auth/deriv/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiToken: savedToken, token: savedToken }),
+      });
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.data) {

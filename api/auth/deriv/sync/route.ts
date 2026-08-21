@@ -1,4 +1,4 @@
-import { syncUserDerivAsync } from '../../../../src/services/deriv/oauthServerService.ts';
+import { syncUserDerivAsync, getDerivConnectionRecord } from '../../../../src/services/deriv/oauthServerService.ts';
 import { isValidDerivAccountId } from '../../../../src/services/deriv/syncStateMachine.ts';
 import { logAuditEvent } from '../../../../src/observability/audit.ts';
 import { logger } from '../../../../src/observability/logger.ts';
@@ -33,7 +33,7 @@ export async function POST(request: Request): Promise<Response> {
     const cookieHeader = request.headers.get('cookie');
     const cookies = parseCookieHeader(cookieHeader);
 
-    let accessToken = cookies['deriv_access_token'];
+    let accessToken = cookies['deriv_access_token'] || cookies['deriv_oauth_token'];
     if (accessToken && accessToken.startsWith('usr-')) {
       accessToken = undefined;
     }
@@ -51,9 +51,16 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const cookieUserId = cookies['deriv_session_user_id'];
-    const bodyUserId = body.userId || body.loginid || body.accountId;
+    const bodyUserId = body.userId;
     const headerUserId = request.headers.get('x-user-id');
-    const userId = cookieUserId || bodyUserId || headerUserId || 'usr-sync-session';
+    const userId = cookieUserId || (bodyUserId && !bodyUserId.startsWith('CR') && !bodyUserId.startsWith('VR') ? bodyUserId : null) || headerUserId || 'usr-sync-session';
+
+    if (!accessToken && userId) {
+      const record = getDerivConnectionRecord(userId);
+      if (record?.accessToken && !record.accessToken.startsWith('usr-')) {
+        accessToken = record.accessToken;
+      }
+    }
 
     if (!accessToken) {
       logAuditEvent('ACCOUNT_CONNECTION_FAILED', userId, {

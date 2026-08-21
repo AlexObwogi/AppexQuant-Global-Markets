@@ -1434,6 +1434,13 @@ export async function createApp() {
         } catch {}
       }
 
+      if (!tokenToUse && userId) {
+        const record = getDerivConnectionRecord(userId);
+        if (record?.accessToken && !record.accessToken.startsWith('usr-')) {
+          tokenToUse = record.accessToken;
+        }
+      }
+
       if (!tokenToUse) {
         logAuditEvent('ACCOUNT_CONNECTION_FAILED', userId, {
           reason: 'MISSING_DERIV_ACCESS_TOKEN',

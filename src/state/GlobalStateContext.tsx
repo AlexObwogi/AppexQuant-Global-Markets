@@ -18,6 +18,8 @@ import { derivWs } from '../services/deriv/DerivWebSocketManager.ts';
 export type AppViewRoute =
   | 'landing'
   | 'dashboard'
+  | 'dashboard/error'
+  | 'error'
   | 'markets'
   | 'signals'
   | 'strategies'
@@ -76,8 +78,11 @@ const getInitialRoute = (): AppViewRoute => {
     if (!rawPath || rawPath === 'landing' || rawPath === 'index.html') {
       return 'landing';
     }
+    if (rawPath === 'dashboard/error' || rawPath === 'error' || rawPath.startsWith('dashboard/error')) {
+      return 'dashboard/error';
+    }
     const validRoutes: AppViewRoute[] = [
-      'landing', 'dashboard', 'markets', 'signals', 'strategies', 'backtest', 
+      'landing', 'dashboard', 'dashboard/error', 'error', 'markets', 'signals', 'strategies', 'backtest', 
       'trade', 'eas', 'analytics', 'calendar', 'news', 'community', 
       'leaderboard', 'account', 'legal', 'admin', 'health', 'automation', 
       'education', 'p2p', 'ai-analysis', 'strategy-lab'

@@ -65,6 +65,7 @@ import {
   handleDerivOAuthCallback,
   getUserDerivConnection,
   getUserDerivConnectionAsync,
+  getDerivConnectionRecord,
   getUserDerivDiagnostics,
   disconnectUserDeriv,
   syncUserDeriv,
@@ -1120,6 +1121,8 @@ export async function createApp() {
       `session_token=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`,
       `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`,
       `deriv_oauth_token=; Path=/; SameSite=None; Secure; Max-Age=0`,
+      `deriv_access_token=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`,
+      `deriv_session_user_id=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`,
     ]);
     logSecurityEvent(req, 'USER_LOGOUT', 'INFO', { userId: req.sessionUser?.userId });
     res.json(createSuccessResponse({ message: 'Logged out successfully' }));
@@ -1145,7 +1148,7 @@ export async function createApp() {
 
       res.setHeader('Set-Cookie', `deriv_oauth_state=${cookieValue}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=600`);
 
-      logSecurityEvent(req, 'DERIV_OAUTH_INITIATED', 'INFO', { action, state });
+      logSecurityEvent(req, 'DERIV_OAUTH_INITIATED', 'INFO', { action });
 
       if (req.method === 'POST' || req.headers.accept?.includes('application/json') || req.query.json === 'true') {
         return res.json(createSuccessResponse({ authUrl, state }));
@@ -1211,7 +1214,7 @@ export async function createApp() {
       const requestHost = req.headers.host || 'localhost:3000';
       const requestProtocol = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
 
-      console.log('[DERIV_OAUTH_CALLBACK_RECEIVED]', { hasCode: Boolean(code), hasToken1: Boolean(token1), state, host: requestHost });
+      console.log('[DERIV_OAUTH_CALLBACK_RECEIVED]', { hasCode: Boolean(code), hasToken1: Boolean(token1), host: requestHost });
 
       const result = await handleDerivOAuthCallback({
         code,

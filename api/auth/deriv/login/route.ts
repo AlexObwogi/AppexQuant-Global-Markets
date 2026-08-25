@@ -1,5 +1,4 @@
 import { initiateDerivOAuth } from '../../../../src/services/deriv/oauthServerService.ts';
-import { logSecurityEvent } from '../../../../src/observability/audit.ts';
 import { logger } from '../../../../src/observability/logger.ts';
 
 function parseCookieHeader(cookieHeader: string | null): Record<string, string> {

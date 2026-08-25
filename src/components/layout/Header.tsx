@@ -42,7 +42,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
     dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNCING' });
 
     try {
-      const savedToken = localStorage.getItem('deriv_access_token') || localStorage.getItem('deriv_oauth_token') || '';
       const res = await apiFetch('/api/auth/deriv/sync', {
         method: 'POST',
         headers: {
@@ -51,8 +50,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
         body: JSON.stringify({
           userId: targetAccountId.startsWith('usr-') ? targetAccountId : undefined,
           loginid: targetAccountId.startsWith('CR') || targetAccountId.startsWith('VR') ? targetAccountId : targetAccountId,
-          apiToken: savedToken,
-          token: savedToken,
         }),
       });
 

@@ -205,24 +205,11 @@ export const AccountView: React.FC = () => {
 
   // Handle environment toggling
   const handleEnvToggle = async (targetEnv: 'demo' | 'real') => {
-    // Determine the expected token key based on environment
-    const tokenKey = targetEnv === 'demo' ? 'deriv_demo_token' : 'deriv_real_token';
-    const savedToken = localStorage.getItem(tokenKey);
-    
     // Update global state immediately for UI consistency
     dispatch({ type: 'SET_EXECUTION_ENVIRONMENT', payload: targetEnv === 'demo' ? 'DEMO' : 'LIVE' });
-
-    if (savedToken) {
-       // Silently switch using the stored token for this environment
-       setApiTokenInput(savedToken);
-       await performTokenLogin(savedToken);
-    } else {
-       // Ask user to provide token if we don't have it
-       setMeta(null);
-       setShowTokenInput(true);
-       setApiTokenInput('');
-       setMessage(`Please provide your Deriv ${targetEnv.toUpperCase()} API token to switch environments.`);
-    }
+    setShowTokenInput(true);
+    setApiTokenInput('');
+    setMessage(`Please provide your Deriv ${targetEnv.toUpperCase()} API token to switch environments or reconnect with OAuth.`);
   };
 
   const performTokenLogin = async (tokenStr: string) => {
@@ -239,12 +226,11 @@ export const AccountView: React.FC = () => {
         const json = await res.json();
         if (json.success && json.data) {
           const accType = json.data.accountType || 'demo';
-          // Save tokens for active WebSocket and persistence
-          localStorage.setItem('deriv_oauth_token', tokenStr);
-          localStorage.setItem('deriv_access_token', tokenStr);
-          localStorage.setItem(accType === 'demo' ? 'deriv_demo_token' : 'deriv_real_token', tokenStr);
-          await setEncryptedCookie('deriv_oauth_token', tokenStr);
-          await setEncryptedCookie('deriv_account_id', json.data.derivAccountId || 'unknown');
+          // Clean up legacy localStorage tokens
+          localStorage.removeItem('deriv_oauth_token');
+          localStorage.removeItem('deriv_access_token');
+          localStorage.removeItem('deriv_demo_token');
+          localStorage.removeItem('deriv_real_token');
           
           setMeta(json.data);
           dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'ONLINE' });
@@ -290,11 +276,9 @@ export const AccountView: React.FC = () => {
     setErrorMessage(null);
     setMessage(null);
     try {
-      const savedToken = localStorage.getItem('deriv_access_token') || localStorage.getItem('deriv_oauth_token') || '';
       const res = await apiFetch('/api/auth/deriv/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiToken: savedToken, token: savedToken }),
       });
       if (res.ok) {
         const json = await res.json();

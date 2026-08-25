@@ -363,7 +363,6 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       setSyncErrorMessage(null);
 
       try {
-        const savedToken = localStorage.getItem('deriv_access_token') || localStorage.getItem('deriv_oauth_token') || '';
         const res = await apiFetch('/api/auth/deriv/sync', {
           method: 'POST',
           headers: {
@@ -372,8 +371,6 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           body: JSON.stringify({
             userId: targetAccountId.startsWith('usr-') ? targetAccountId : undefined,
             loginid: targetAccountId.startsWith('CR') || targetAccountId.startsWith('VR') ? targetAccountId : targetAccountId,
-            apiToken: savedToken,
-            token: savedToken,
           }),
         });
 
@@ -411,14 +408,17 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
   );
 
   const handleSignOut = useCallback(() => {
-    localStorage.removeItem('deriv_access_token');
-    localStorage.removeItem('deriv_oauth_token');
     localStorage.removeItem('deriv_session');
     sessionStorage.removeItem('deriv_session');
+    sessionStorage.removeItem('deriv_user_loginid');
+    sessionStorage.removeItem('deriv_user_email');
+    sessionStorage.removeItem('deriv_user_currency');
+    sessionStorage.removeItem('deriv_user_balance');
+    apiFetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     derivAuthService.logout();
     dispatch({ type: 'SET_USER_PROFILE', payload: null });
     dispatch({ type: 'SET_ROUTE', payload: 'landing' });
-  }, [dispatch]);
+  }, [apiFetch, dispatch]);
 
   // Active milestone and radiant sun-burst tracking at 30%, 60%, 90%, 100%
   const [activeMilestoneStage, setActiveMilestoneStage] = useState(0);
@@ -448,7 +448,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       const email = userData.email || '';
       const isDemo = userData.accountType === 'demo' || accountId.startsWith('VR');
 
-      // Persist in client-side storage
+      // Persist in client-side storage (non-sensitive profile information only)
       if (typeof window !== 'undefined') {
         const sessionJson = JSON.stringify({
           userId: accountId,
@@ -467,10 +467,6 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         sessionStorage.setItem('deriv_user_balance', String(balanceAmount));
         sessionStorage.setItem('deriv_session', sessionJson);
         localStorage.setItem('deriv_session', sessionJson);
-        if (userData.token) {
-          localStorage.setItem('deriv_access_token', userData.token);
-          localStorage.setItem('deriv_oauth_token', userData.token);
-        }
       }
 
       dispatch({
@@ -602,9 +598,6 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
               throw new Error('No valid account identifier returned from broker authorization.');
             }
 
-            localStorage.setItem('deriv_access_token', token1);
-            if (acct1) localStorage.setItem('deriv_account_id', acct1);
-
             await apiFetch('/api/auth/deriv/token-login', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -614,7 +607,6 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
             establishUserSession({
               id: targetAccountId,
               accountId: targetAccountId,
-              token: token1,
               email: profile.email,
               fullName: profile.fullname,
               balance: profile.balance,
@@ -680,37 +672,10 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         }
       }
 
-      // Rehydrate ONLY if a valid, verified token exists in storage
-      if (typeof window !== 'undefined' && !isCancelled) {
-        const savedToken = localStorage.getItem('deriv_access_token') || localStorage.getItem('deriv_oauth_token');
-        if (savedToken) {
-          try {
-            const profile = await derivAuthService.authorize(savedToken);
-            if (profile && !isCancelled) {
-              await apiFetch('/api/auth/deriv/token-login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ apiToken: savedToken }),
-              }).catch(() => null);
-
-              establishUserSession({
-                id: profile.loginid,
-                accountId: profile.loginid,
-                token: savedToken,
-                email: profile.email,
-                fullName: profile.fullname,
-                balance: profile.balance,
-                currency: profile.currency || 'USD',
-                accountType: profile.is_virtual ? 'demo' : (profile.loginid.startsWith('VR') ? 'demo' : 'real'),
-              });
-              if (!isCancelled) setIsAuthorizing(false);
-              return;
-            }
-          } catch {
-            localStorage.removeItem('deriv_access_token');
-            localStorage.removeItem('deriv_oauth_token');
-          }
-        }
+      // Clear any legacy insecure token storage if found
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('deriv_access_token');
+        localStorage.removeItem('deriv_oauth_token');
       }
 
       if (!isCancelled) setIsAuthorizing(false);
@@ -817,18 +782,24 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
   }, [phase, reducedMotion]);
 
   // Protected Route Guard:
-  // If user tries to access any app route (e.g. /dashboard) while NOT authenticated,
+  // If user tries to access any protected app route (e.g. /dashboard) while NOT authenticated,
   // automatically redirect route to 'landing' so user sees the Landing Page first.
+  // Error routes (e.g. /dashboard/error or /error) are explicitly allowed through so users can inspect and resolve issues.
   const isLandingRoute = state.currentRoute === 'landing';
+  const isErrorRoute = state.currentRoute === 'dashboard/error' || state.currentRoute === 'error';
   const isAuthenticated = state.session.isAuthenticated;
 
   useEffect(() => {
-    if (!isLandingRoute && !isAuthenticated) {
+    if (!isLandingRoute && !isErrorRoute && !isAuthenticated) {
       dispatch({ type: 'SET_ROUTE', payload: 'landing' });
     }
-  }, [isLandingRoute, isAuthenticated, dispatch]);
+  }, [isLandingRoute, isErrorRoute, isAuthenticated, dispatch]);
 
-  // Render protected app workspace ONLY when on an app route AND authenticated
+  // Render error route directly, or render protected app workspace when authenticated
+  if (isErrorRoute) {
+    return <>{children}</>;
+  }
+
   if (!isLandingRoute && isAuthenticated) {
     const currentSyncStatus = state.user?.syncStatus;
     if (currentSyncStatus === 'SYNCING' || currentSyncStatus === 'SYNC_FAILED') {

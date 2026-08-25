@@ -31,6 +31,7 @@ import { AutomationControlCenterView } from './views/AutomationControlCenterView
 import { EducationView } from './views/EducationView.tsx';
 import { P2PView } from './views/P2PView.tsx';
 import { MarketAnalysisView } from './views/MarketAnalysisView.tsx';
+import { DashboardErrorView } from './views/DashboardErrorView.tsx';
 import { Lock, ShieldAlert } from 'lucide-react';
 import { Button } from './components/ui/Button.tsx';
 
@@ -64,6 +65,9 @@ function ActiveViewRenderer() {
   switch (state.currentRoute) {
     case 'dashboard':
       return <DashboardView />;
+    case 'dashboard/error':
+    case 'error':
+      return <DashboardErrorView />;
     case 'markets':
       return <MarketsView />;
     case 'signals':

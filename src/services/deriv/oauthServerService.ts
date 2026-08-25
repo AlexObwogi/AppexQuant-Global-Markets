@@ -297,14 +297,21 @@ function cleanupExpiredTransactions() {
  * Helper to get configured Deriv OAuth credentials
  */
 export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: string) {
-  const clientId =
+  const rawClientId =
     process.env.DERIV_APP_ID ||
+    process.env.VITE_DERIV_APP_ID ||
     process.env.CLIENT_ID ||
     process.env.DERIV_CLIENT_ID ||
-    process.env.VITE_DERIV_APP_ID ||
+    process.env.DERIV_OAUTH_CLIENT_ID ||
+    process.env.NEXT_PUBLIC_DERIV_APP_ID ||
     '1089';
 
-  const clientSecret = process.env.DERIV_CLIENT_SECRET || process.env.CLIENT_SECRET || '';
+  const cleanClientId = typeof rawClientId === 'string' ? rawClientId.trim() : '1089';
+  const clientId = (cleanClientId && cleanClientId !== 'undefined' && cleanClientId !== 'null' && cleanClientId !== '""' && cleanClientId !== "''")
+    ? cleanClientId
+    : '1089';
+
+  const clientSecret = (process.env.DERIV_CLIENT_SECRET || process.env.CLIENT_SECRET || '').trim();
 
   const proto = requestProtocol || (requestHost?.includes('localhost') ? 'http' : 'https');
   const host = requestHost || (process.env.APP_URL ? new URL(process.env.APP_URL).host : 'localhost:3000');
@@ -312,10 +319,10 @@ export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: stri
   let redirectUri = `${proto}://${host}/api/auth/deriv/callback`;
 
   const configuredUri = process.env.OAUTH_REDIRECT_URI || process.env.REDIRECT_URI || process.env.VITE_REDIRECT_URI;
-  if (configuredUri) {
-    redirectUri = configuredUri;
-  } else if (process.env.NEXT_PUBLIC_SITE_URL) {
-    redirectUri = `${process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '')}/api/auth/deriv/callback`;
+  if (configuredUri && typeof configuredUri === 'string' && configuredUri.trim()) {
+    redirectUri = configuredUri.trim();
+  } else if (process.env.NEXT_PUBLIC_SITE_URL && typeof process.env.NEXT_PUBLIC_SITE_URL === 'string' && process.env.NEXT_PUBLIC_SITE_URL.trim()) {
+    redirectUri = `${process.env.NEXT_PUBLIC_SITE_URL.trim().replace(/\/$/, '')}/api/auth/deriv/callback`;
   }
 
   const scopes = process.env.DERIV_SCOPES || 'trade account_manage';
@@ -325,7 +332,7 @@ export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: stri
     clientSecret,
     redirectUri,
     scopes,
-    authBaseUrl: process.env.DERIV_AUTH_URL || 'https://auth.deriv.com/oauth2/auth',
+    authBaseUrl: process.env.DERIV_AUTH_URL || 'https://oauth.deriv.com/oauth2/authorize',
     tokenEndpoint: process.env.DERIV_TOKEN_ENDPOINT || 'https://oauth.deriv.com/oauth2/token',
   };
 }
@@ -426,7 +433,7 @@ export async function handleDerivOAuthCallback(params: {
     logger.warn('[DerivOAuth] Callback received error from Deriv', { error, errorDescription, state });
     return {
       success: false,
-      destination: `/?auth_error=deriv_error&message=${encodeURIComponent(detailMsg)}`,
+      destination: `/dashboard/error?error=${encodeURIComponent(error)}&message=${encodeURIComponent(detailMsg)}`,
       errorMessage: `Deriv OAuth Authorization Error: ${detailMsg} (${error})`,
     };
   }
@@ -492,7 +499,7 @@ export async function handleDerivOAuthCallback(params: {
     logger.warn('[DerivOAuth] State mismatch or expired transaction', { stateReceived: state, hasCookieState: Boolean(cookieState) });
     return {
       success: false,
-      destination: '/?auth_error=invalid_state&message=OAuth%20session%20expired%20or%20state%20mismatch',
+      destination: '/dashboard/error?error=invalid_state&message=OAuth%20session%20expired%20or%20state%20mismatch',
       errorMessage: `Deriv OAuth State Error: ${errDetail} Please initiate login again from the application.`,
     };
   }
@@ -506,7 +513,7 @@ export async function handleDerivOAuthCallback(params: {
     logger.warn('[DerivOAuth] Missing authorization code', { state, destination: transaction.destination });
     return {
       success: false,
-      destination: transaction.destination || '/?auth_error=missing_code',
+      destination: '/dashboard/error?error=missing_code&message=Authorization%20code%20was%20missing%20in%20callback',
       errorMessage: 'Deriv OAuth Error: Authorization code was missing in callback query parameters.',
     };
   }

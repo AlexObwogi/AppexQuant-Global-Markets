@@ -5,7 +5,7 @@
  */
 
 export const DERIV_OAUTH_SCOPE = 'trade account_manage';
-export const DERIV_AUTH_BASE_URL = 'https://auth.deriv.com/oauth2/auth';
+export const DERIV_AUTH_BASE_URL = 'https://oauth.deriv.com/oauth2/authorize';
 export const DERIV_TOKEN_ENDPOINT = 'https://oauth.deriv.com/oauth2/token';
 
 export interface BuildAuthUrlOptions {
@@ -25,13 +25,25 @@ export interface BuildAuthUrlOptions {
 
 /**
  * Returns the effective Deriv App ID from environment variables or default fallback.
+ * Strictly avoids empty/undefined/null strings to prevent Deriv 'invalid_client' errors.
  */
 export function getDerivAppId(): string {
   // STRICTLY SERVER-SIDE USAGE
   if (typeof process !== 'undefined' && process.env) {
-    if (process.env.DERIV_APP_ID) return process.env.DERIV_APP_ID;
-    if (process.env.DERIV_OAUTH_CLIENT_ID) return process.env.DERIV_OAUTH_CLIENT_ID;
-    if (process.env.CLIENT_ID) return process.env.CLIENT_ID;
+    const raw =
+      process.env.DERIV_APP_ID ||
+      process.env.VITE_DERIV_APP_ID ||
+      process.env.CLIENT_ID ||
+      process.env.DERIV_CLIENT_ID ||
+      process.env.DERIV_OAUTH_CLIENT_ID ||
+      process.env.NEXT_PUBLIC_DERIV_APP_ID;
+
+    if (raw && typeof raw === 'string') {
+      const clean = raw.trim();
+      if (clean && clean !== 'undefined' && clean !== 'null' && clean !== '""' && clean !== "''") {
+        return clean;
+      }
+    }
     return '1089';
   }
   
@@ -41,7 +53,13 @@ export function getDerivAppId(): string {
       const getMetaEnv = new Function('return import.meta.env');
       const env = getMetaEnv();
       if (env) {
-        return env.VITE_DERIV_APP_ID || env.VITE_CLIENT_ID || '1089';
+        const raw = env.VITE_DERIV_APP_ID || env.VITE_CLIENT_ID || env.NEXT_PUBLIC_DERIV_APP_ID;
+        if (raw && typeof raw === 'string') {
+          const clean = raw.trim();
+          if (clean && clean !== 'undefined' && clean !== 'null' && clean !== '""' && clean !== "''") {
+            return clean;
+          }
+        }
       }
     } catch {
       // Fallback if compilation/runtime dynamic evaluation fails
@@ -57,9 +75,25 @@ export function getDerivAppId(): string {
 export function getDerivRedirectUri(): string {
   // STRICTLY SERVER-SIDE USAGE
   if (typeof process !== 'undefined' && process.env) {
-    if (process.env.DERIV_OAUTH_REDIRECT_URI) return process.env.DERIV_OAUTH_REDIRECT_URI;
-    if (process.env.DERIV_REDIRECT_URI) return process.env.DERIV_REDIRECT_URI;
-    if (process.env.REDIRECT_URI) return process.env.REDIRECT_URI;
+    const configured =
+      process.env.OAUTH_REDIRECT_URI ||
+      process.env.DERIV_OAUTH_REDIRECT_URI ||
+      process.env.DERIV_REDIRECT_URI ||
+      process.env.REDIRECT_URI ||
+      process.env.VITE_REDIRECT_URI;
+
+    if (configured && typeof configured === 'string' && configured.trim()) {
+      return configured.trim();
+    }
+
+    if (process.env.APP_URL && typeof process.env.APP_URL === 'string' && process.env.APP_URL.trim()) {
+      return `${process.env.APP_URL.trim().replace(/\/$/, '')}/api/auth/deriv/callback`;
+    }
+
+    if (process.env.NEXT_PUBLIC_SITE_URL && typeof process.env.NEXT_PUBLIC_SITE_URL === 'string' && process.env.NEXT_PUBLIC_SITE_URL.trim()) {
+      return `${process.env.NEXT_PUBLIC_SITE_URL.trim().replace(/\/$/, '')}/api/auth/deriv/callback`;
+    }
+
     return 'http://localhost:3000/api/auth/deriv/callback';
   }
   
@@ -70,13 +104,15 @@ export function getDerivRedirectUri(): string {
       const env = getMetaEnv();
       if (env) {
         const viteRedirect = env.VITE_REDIRECT_URI || env.VITE_DERIV_REDIRECT_URI;
-        if (viteRedirect) return viteRedirect;
+        if (viteRedirect && typeof viteRedirect === 'string' && viteRedirect.trim()) {
+          return viteRedirect.trim();
+        }
       }
     } catch {
       // Fallback
     }
     
-    if (window.location) {
+    if (window.location && window.location.origin) {
       return `${window.location.origin}/api/auth/deriv/callback`;
     }
   }
@@ -86,18 +122,22 @@ export function getDerivRedirectUri(): string {
 
 /**
  * Builds the authentic Deriv OAuth 2.0 authorization URL.
- * Strictly uses scope='trade account_manage' with space-separated encoding and l=en.
+ * Strictly passes app_id, client_id, and space-separated scopes.
  */
 export function buildAuthUrl(options: BuildAuthUrlOptions = {}): string {
-  const appId = options.appId || options.clientId || getDerivAppId();
-  const baseUrl = (typeof process !== 'undefined' && process.env?.DERIV_AUTH_URL) || DERIV_AUTH_BASE_URL;
-  const redirectUri = options.redirectUri || getDerivRedirectUri();
+  const rawAppId = options.appId || options.clientId || getDerivAppId();
+  const appId = (rawAppId && typeof rawAppId === 'string' && rawAppId.trim() && rawAppId.trim() !== 'undefined')
+    ? rawAppId.trim()
+    : '1089';
 
-  // Build query parameters ensuring strictly space-separated scope='trade account_manage' and l='en'
+  const baseUrl = (typeof process !== 'undefined' && process.env?.DERIV_AUTH_URL) || DERIV_AUTH_BASE_URL;
+  const redirectUri = (options.redirectUri || getDerivRedirectUri()).trim();
+
+  // Build query parameters ensuring strictly valid app_id / client_id and space-separated scope
   const params: Record<string, string> = {
-    response_type: 'code',
-    client_id: appId,
     app_id: appId,
+    client_id: appId,
+    response_type: 'code',
     l: (options.lang || 'en').toLowerCase(),
     brand: options.brand || 'deriv',
     redirect_uri: redirectUri,

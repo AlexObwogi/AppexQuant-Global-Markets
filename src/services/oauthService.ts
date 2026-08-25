@@ -5,8 +5,8 @@
  */
 
 export const DERIV_OAUTH_SCOPE = 'trade account_manage';
-export const DERIV_AUTH_BASE_URL = 'https://oauth.deriv.com/oauth2/authorize';
-export const DERIV_TOKEN_ENDPOINT = 'https://oauth.deriv.com/oauth2/token';
+export const DERIV_AUTH_BASE_URL = 'https://auth.deriv.com/oauth2/auth';
+export const DERIV_TOKEN_ENDPOINT = 'https://auth.deriv.com/oauth2/token';
 
 export interface BuildAuthUrlOptions {
   appId?: string;

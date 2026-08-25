@@ -90,13 +90,214 @@ const oauthTransactionsStore = new Map<string, OAuthTransaction>();
 const derivConnectionsStore = new Map<string, DerivConnectionRecord>();
 
 /**
- * Connects to Deriv WebSocket endpoint server-side and executes authorize API request
- * to fetch genuine account profile details (email, fullname, balance, currency, accounts).
- *
- * NOTE: trimmed to a single primary endpoint + 2 retries so the total worst-case wait
- * (2 attempts x 8s timeout = 16s) stays under typical serverless function limits.
- * If you're on a plan with a longer maxDuration, you can add back the legacy
- * binaryws.com endpoints as additional fallbacks.
+ * Discovers authenticated Deriv account(s) using official REST endpoints
+ * GET /trading/v1/options/accounts (or fallback REST endpoints)
+ * with Authorization: Bearer <ACCESS_TOKEN> and Deriv-App-ID: <APP_ID>
+ */
+export async function discoverDerivAccountsREST(
+  token: string,
+  appId: string = '1089'
+): Promise<{ accounts: DerivAccountProfileData[]; primaryAccount: DerivAccountProfileData | null }> {
+  const cleanToken = token ? token.trim() : '';
+  if (!cleanToken || cleanToken.startsWith('usr-')) {
+    return { accounts: [], primaryAccount: null };
+  }
+
+  const cleanAppId = appId.trim() || '1089';
+  const candidateUrls = [
+    'https://api.derivws.com/trading/v1/options/accounts',
+    'https://api.deriv.com/trading/v1/options/accounts',
+  ];
+
+  for (const url of candidateUrls) {
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${cleanToken}`,
+          'Deriv-App-ID': cleanAppId,
+          Accept: 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const rawList = Array.isArray(data) ? data : (data.accounts || (data.account_id ? [data] : []));
+        const accounts: DerivAccountProfileData[] = rawList
+          .map((item: any) => {
+            const loginid = item.account_id || item.loginid || item.id;
+            if (!loginid) return null;
+            const isVirtual = item.account_type === 'demo' || loginid.startsWith('VR') ? 1 : 0;
+            const balance = typeof item.balance === 'number' ? item.balance : parseFloat(item.balance || '0');
+            const currency = item.currency || 'USD';
+            return {
+              loginid,
+              balance: isNaN(balance) ? 0 : balance,
+              currency,
+              is_virtual: isVirtual,
+              email: item.email,
+              fullname: item.fullname || item.full_name,
+              country: item.country,
+              scopes: item.scopes,
+            } as DerivAccountProfileData;
+          })
+          .filter((a: any): a is DerivAccountProfileData => a !== null);
+
+        if (accounts.length > 0) {
+          const primaryAccount = accounts[0];
+          return { accounts, primaryAccount };
+        }
+      } else {
+        const errorText = await response.text().catch(() => '');
+        console.warn(`[DerivREST] Account discovery returned ${response.status} from ${url}:`, errorText);
+      }
+    } catch (err: any) {
+      console.warn(`[DerivREST] Account discovery request failed for ${url}:`, err?.message || String(err));
+    }
+  }
+
+  return { accounts: [], primaryAccount: null };
+}
+
+/**
+ * Requests an OTP (One-Time Password) for an authenticated Deriv Options account.
+ * Sequence: POST /trading/v1/options/accounts/{accountId}/otp
+ * Headers: Authorization: Bearer <ACCESS_TOKEN>, Deriv-App-ID: <APP_ID>
+ * Response: { otp: string, url: string }
+ */
+export async function requestDerivAccountOtp(
+  accountId: string,
+  token: string,
+  appId: string = '1089'
+): Promise<{ success: boolean; otp?: string; url?: string; accountId?: string; error?: string }> {
+  const cleanToken = token ? token.trim() : '';
+  const cleanAccountId = accountId ? accountId.trim() : '';
+  const cleanAppId = appId ? appId.trim() : '1089';
+
+  if (!cleanToken || !cleanAccountId) {
+    return { success: false, error: 'Missing access token or account ID for OTP request' };
+  }
+
+  const candidateUrls = [
+    `https://api.derivws.com/trading/v1/options/accounts/${encodeURIComponent(cleanAccountId)}/otp`,
+    `https://api.deriv.com/trading/v1/options/accounts/${encodeURIComponent(cleanAccountId)}/otp`,
+  ];
+
+  for (const url of candidateUrls) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${cleanToken}`,
+          'Deriv-App-ID': cleanAppId,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const otp = data.otp || data.token;
+        let readyWsUrl = data.url || data.websocket_url || data.ws_url;
+
+        // If Deriv returned an OTP and the URL lacks the query parameter, append it safely
+        if (otp && readyWsUrl && !readyWsUrl.includes('otp=')) {
+          const sep = readyWsUrl.includes('?') ? '&' : '?';
+          readyWsUrl = `${readyWsUrl}${sep}otp=${encodeURIComponent(otp)}`;
+        }
+
+        if (readyWsUrl) {
+          return {
+            success: true,
+            otp,
+            url: readyWsUrl,
+            accountId: cleanAccountId,
+          };
+        }
+      } else {
+        const errorBody = await response.text().catch(() => '');
+        console.warn(`[DerivOTP] OTP request returned ${response.status} from ${url}:`, errorBody);
+      }
+    } catch (err: any) {
+      console.warn(`[DerivOTP] OTP request failed on ${url}:`, err?.message || String(err));
+    }
+  }
+
+  return { success: false, error: `Failed to obtain WebSocket OTP for account ${cleanAccountId}` };
+}
+
+/**
+ * Validates connection to the authenticated WebSocket URL returned by the OTP endpoint.
+ * Connects to the returned URL without manually crafting authentication tokens.
+ */
+export function verifyDerivWebSocketWithOtp(
+  wsUrl: string,
+  timeoutMs: number = 8000
+): Promise<{ success: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    let ws: any;
+    try {
+      const WSImpl: any = (NodeWebSocket as any).default || NodeWebSocket;
+      ws = new WSImpl(wsUrl);
+    } catch (err: any) {
+      resolve({ success: false, error: `WebSocket construction error: ${err?.message || String(err)}` });
+      return;
+    }
+
+    let settled = false;
+
+    const finish = (success: boolean, error?: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        ws.close();
+      } catch {}
+      resolve({ success, error });
+    };
+
+    const timer = setTimeout(() => {
+      finish(false, `Timed out connecting to authenticated WebSocket: ${wsUrl}`);
+    }, timeoutMs);
+
+    ws.on('open', () => {
+      // Send a ping or balance check to verify handshake
+      try {
+        ws.send(JSON.stringify({ ping: 1 }));
+      } catch {}
+      finish(true);
+    });
+
+    ws.on('message', (data: any) => {
+      try {
+        const raw = typeof data === 'string' ? data : data?.toString('utf8') || '';
+        const parsed = JSON.parse(raw);
+        if (parsed.error && parsed.error.code === 'AuthorizationRequired') {
+          finish(false, `WebSocket rejected authorization: ${parsed.error.message}`);
+        } else {
+          finish(true);
+        }
+      } catch {
+        finish(true);
+      }
+    });
+
+    ws.on('error', (err: any) => {
+      const detail = err?.message || err?.code || String(err);
+      finish(false, `WebSocket error: ${detail}`);
+    });
+
+    ws.on('close', (code: number) => {
+      if (!settled && code !== 1000) {
+        finish(false, `WebSocket closed unexpectedly (code: ${code})`);
+      }
+    });
+  });
+}
+
+/**
+ * Authoritative Deriv Account Profile Fetcher
+ * Combines official REST account discovery with OTP-based WebSocket authorization.
  */
 export async function fetchDerivAccountProfile(
   token: string,
@@ -109,43 +310,61 @@ export async function fetchDerivAccountProfile(
     return null;
   }
 
+  // Step 1: Use official Deriv REST API to discover authorized trading accounts
+  const restResult = await discoverDerivAccountsREST(cleanToken, appId);
+  if (restResult.primaryAccount && restResult.primaryAccount.loginid) {
+    const primary = restResult.primaryAccount;
+
+    // Step 2: Request OTP for the discovered account
+    const otpResult = await requestDerivAccountOtp(primary.loginid, cleanToken, appId);
+    if (otpResult.success && otpResult.url) {
+      // Step 3: Verify the authenticated WebSocket connection with the OTP URL
+      const wsVerification = await verifyDerivWebSocketWithOtp(otpResult.url, 5000);
+      if (!wsVerification.success) {
+        console.warn('[DerivOAuth] Authenticated WebSocket handshake warning:', wsVerification.error);
+      }
+    }
+
+    if (restResult.accounts.length > 1) {
+      primary.account_list = restResult.accounts.map((a) => ({
+        loginid: a.loginid,
+        account_type: a.is_virtual ? 'demo' : 'real',
+        currency: a.currency,
+        is_virtual: a.is_virtual,
+        landing_company_name: a.landing_company_name || 'svg',
+      }));
+    }
+
+    return primary;
+  }
+
+  // Fallback Step: If REST discovery did not return accounts (e.g. legacy token), attempt legacy WebSocket authorize with timeout
   const candidateEndpoints = [
     `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId.trim() || '1089')}&l=EN&brand=deriv`,
     `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId.trim() || '1089')}&l=EN&brand=deriv`,
   ];
 
-  let lastErrorDetail: string | null = null;
-
   for (let attempt = 1; attempt <= retries; attempt++) {
     for (const wsUrl of candidateEndpoints) {
       try {
-        const { profile, errorDetail } = await attemptFetchProfileWithUrl(cleanToken, wsUrl);
+        const { profile } = await attemptFetchProfileWithUrl(cleanToken, wsUrl);
         if (profile && profile.loginid) {
           return profile;
         }
-        if (errorDetail) lastErrorDetail = errorDetail;
       } catch (err: any) {
-        lastErrorDetail = err?.message || String(err);
-        console.warn(`[DerivOAuth] Profile fetch attempt ${attempt} on ${wsUrl} failed:`, lastErrorDetail);
+        // Safe fallback continue
       }
     }
     if (attempt < retries) {
-      await new Promise((r) => setTimeout(r, attempt * 500));
+      await new Promise((r) => setTimeout(r, attempt * 400));
     }
-  }
-
-  if (lastErrorDetail) {
-    console.warn('[DerivOAuth] All profile fetch attempts exhausted. Last error:', lastErrorDetail);
   }
 
   return null;
 }
 
 /**
- * Opens a server-side WebSocket connection using the 'ws' package (NOT the native
- * globalThis.WebSocket). The native/undici WebSocket available in the Vercel Node
- * runtime produces opaque, detail-less ErrorEvent objects on failure and was the
- * root cause of silent sync failures - always use 'ws' here.
+ * Opens a server-side WebSocket connection using the 'ws' package for legacy fallback queries.
  */
 function attemptFetchProfileWithUrl(
   token: string,
@@ -175,7 +394,7 @@ function attemptFetchProfileWithUrl(
 
     const timeout = setTimeout(() => {
       finish(null, `Timed out waiting for authorize response from ${wsUrl}`);
-    }, 8000);
+    }, 6000);
 
     ws.on('open', () => {
       try {
@@ -192,7 +411,6 @@ function attemptFetchProfileWithUrl(
         if (parsed.msg_type === 'authorize' && parsed.authorize && parsed.authorize.loginid) {
           finish(parsed.authorize as DerivAccountProfileData);
         } else if (parsed.error) {
-          console.warn('[DerivWebSocket] Authorize response returned error:', parsed.error);
           finish(null, `Deriv authorize error: ${parsed.error?.code || ''} ${parsed.error?.message || ''}`.trim());
         }
       } catch (err: any) {
@@ -202,7 +420,6 @@ function attemptFetchProfileWithUrl(
 
     ws.on('error', (err: any) => {
       const detail = err?.message || err?.code || String(err);
-      console.warn('[DerivWebSocket] Socket error:', detail);
       finish(null, `Socket error: ${detail}`);
     });
 

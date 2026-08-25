@@ -74,6 +74,7 @@ import {
   connectUserWithApiToken,
   connectUserWithApiTokenAsync,
   switchUserDerivAccountAsync,
+  requestDerivAccountOtp,
 } from './src/services/deriv/oauthServerService.ts';
 import { isValidDerivAccountId } from './src/services/deriv/syncStateMachine.ts';
 import { initializeDatabaseSystem } from './src/db/initDb.ts';
@@ -1487,6 +1488,74 @@ export async function createApp() {
     } catch (err: any) {
       console.error('[DERIV_SYNC_ENDPOINT_ERROR]', err);
       res.status(500).json(createErrorResponse(err?.message || 'Failed to sync Deriv connection', 'DERIV_SYNC_ERROR'));
+    }
+  });
+
+  // Request a fresh OTP (One-Time Password) & Authenticated WebSocket URL for live trading
+  // Valid for 120 seconds per Deriv official documentation
+  app.post(['/api/auth/deriv/otp', '/api/deriv/otp', '/api/auth/deriv/ws-url'], async (req: Request, res: Response) => {
+    try {
+      const parsedCookies = (req as any).cookies || parseCookies(req.headers.cookie);
+      const cookieUserId = parsedCookies['deriv_session_user_id'];
+      const bodyUserId = req.body?.userId || req.body?.loginid || req.body?.accountId;
+      const headerUserId = req.headers['x-user-id'] as string;
+      const sessionUserId = req.sessionUser?.userId;
+      const sessionDerivAcct = req.sessionUser?.derivAccountId;
+
+      const userId = sessionDerivAcct || sessionUserId || headerUserId || bodyUserId || cookieUserId;
+      if (!userId) {
+        return res.status(401).json(createErrorResponse('Authentication required for Deriv OTP generation', 'UNAUTHENTICATED'));
+      }
+
+      let tokenToUse = req.body?.apiToken || req.body?.token || parsedCookies['deriv_access_token'];
+      if (tokenToUse && tokenToUse.startsWith('usr-')) {
+        tokenToUse = undefined;
+      }
+      if (!tokenToUse && req.headers.authorization?.startsWith('Bearer ')) {
+        const bearer = req.headers.authorization.substring(7);
+        if (!bearer.startsWith('usr-')) {
+          tokenToUse = bearer;
+        }
+      }
+      if (!tokenToUse && req.sessionUser?.encryptedDerivToken) {
+        try {
+          const decrypted = decryptSensitiveData(req.sessionUser.encryptedDerivToken);
+          if (decrypted && !decrypted.startsWith('usr-')) {
+            tokenToUse = decrypted;
+          }
+        } catch {}
+      }
+
+      const connectionRecord = getDerivConnectionRecord(userId);
+      if (!tokenToUse && connectionRecord?.accessToken && !connectionRecord.accessToken.startsWith('usr-')) {
+        tokenToUse = connectionRecord.accessToken;
+      }
+
+      if (!tokenToUse) {
+        return res.status(422).json(createErrorResponse('Missing Deriv access token. Please re-authenticate.', 'MISSING_TOKEN'));
+      }
+
+      const targetAccountId = req.body?.accountId || req.body?.loginid || connectionRecord?.derivAccountId || (isValidDerivAccountId(userId) ? userId : undefined);
+      if (!targetAccountId || !isValidDerivAccountId(targetAccountId)) {
+        return res.status(422).json(createErrorResponse('No valid Deriv account ID found for OTP request', 'INVALID_ACCOUNT_ID'));
+      }
+
+      const appId = (process.env.DERIV_APP_ID || process.env.CLIENT_ID || '1089').trim();
+      const otpResult = await requestDerivAccountOtp(targetAccountId, tokenToUse, appId);
+
+      if (!otpResult.success || !otpResult.url) {
+        return res.status(422).json(createErrorResponse(otpResult.error || 'Failed to generate Deriv OTP', 'OTP_GENERATION_FAILED'));
+      }
+
+      res.json(createSuccessResponse({
+        otp: otpResult.otp,
+        url: otpResult.url,
+        accountId: targetAccountId,
+        expiresIn: 120, // 120 seconds TTL
+      }));
+    } catch (err: any) {
+      console.error('[DERIV_OTP_ENDPOINT_ERROR]', err);
+      res.status(500).json(createErrorResponse(err?.message || 'Failed to request Deriv OTP', 'DERIV_OTP_ERROR'));
     }
   });
 

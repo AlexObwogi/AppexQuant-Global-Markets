@@ -28,11 +28,20 @@ export async function GET(request: Request): Promise<Response> {
     const userId = cookieUserId || headerUserId || 'usr-sync-session';
 
     const record = getUserDerivConnection(userId);
+    const fullRecord = getDerivConnectionRecord(userId);
     if (!record || record.connectionStatus === 'DISCONNECTED') {
       return new Response(
         JSON.stringify({
           success: true,
           data: {
+            authenticated: false,
+            accountDiscovered: false,
+            accountId: null,
+            tokenValid: false,
+            websocketConnected: false,
+            synced: false,
+            lastSync: null,
+            lastError: null,
             connected: false,
             connectionStatus: 'DISCONNECTED',
             accountType: 'real',
@@ -43,20 +52,29 @@ export async function GET(request: Request): Promise<Response> {
       );
     }
 
-    const hasValidAcct = isValidDerivAccountId(record.derivAccountId);
+    const hasValidAcct = Boolean(record.derivAccountId && isValidDerivAccountId(record.derivAccountId));
+    const tokenValid = Boolean(fullRecord?.accessToken && fullRecord.accessToken.length > 5);
     const connected = record.connectionStatus === 'CONNECTED' && hasValidAcct;
 
     return new Response(
       JSON.stringify({
         success: true,
         data: {
+          authenticated: tokenValid,
+          accountDiscovered: hasValidAcct,
+          accountId: hasValidAcct ? record.derivAccountId : null,
+          tokenValid,
+          websocketConnected: connected,
+          synced: Boolean(record.lastSyncedAt),
+          lastSync: record.lastSyncedAt || null,
+          lastError: null,
           connected,
           derivAccountId: hasValidAcct ? record.derivAccountId : undefined,
           accountType: record.accountType || (record.derivAccountId?.startsWith('VR') ? 'demo' : 'real'),
           currency: record.currency || 'USD',
           balance: record.balance ?? 0,
           connectionStatus: record.connectionStatus,
-          scopes: record.scopes || ['trade', 'read'],
+          scopes: record.scopes || ['trade', 'account_manage'],
           lastSyncedAt: record.lastSyncedAt,
         },
       }),

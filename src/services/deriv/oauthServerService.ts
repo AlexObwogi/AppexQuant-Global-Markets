@@ -104,56 +104,51 @@ export async function discoverDerivAccountsREST(
   }
 
   const cleanAppId = appId.trim() || '1089';
-  const candidateUrls = [
-    'https://api.derivws.com/trading/v1/options/accounts',
-    'https://api.deriv.com/trading/v1/options/accounts',
-  ];
+  const url = 'https://api.derivws.com/trading/v1/options/accounts';
 
-  for (const url of candidateUrls) {
-    try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${cleanToken}`,
-          'Deriv-App-ID': cleanAppId,
-          Accept: 'application/json',
-        },
-      });
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${cleanToken}`,
+        'Deriv-App-ID': cleanAppId,
+        Accept: 'application/json',
+      },
+    });
 
-      if (response.ok) {
-        const data = await response.json();
-        const rawList = Array.isArray(data) ? data : (data.accounts || (data.account_id ? [data] : []));
-        const accounts: DerivAccountProfileData[] = rawList
-          .map((item: any) => {
-            const loginid = item.account_id || item.loginid || item.id;
-            if (!loginid) return null;
-            const isVirtual = item.account_type === 'demo' || loginid.startsWith('VR') ? 1 : 0;
-            const balance = typeof item.balance === 'number' ? item.balance : parseFloat(item.balance || '0');
-            const currency = item.currency || 'USD';
-            return {
-              loginid,
-              balance: isNaN(balance) ? 0 : balance,
-              currency,
-              is_virtual: isVirtual,
-              email: item.email,
-              fullname: item.fullname || item.full_name,
-              country: item.country,
-              scopes: item.scopes,
-            } as DerivAccountProfileData;
-          })
-          .filter((a: any): a is DerivAccountProfileData => a !== null);
+    if (response.ok) {
+      const data = await response.json();
+      const rawList = Array.isArray(data) ? data : (data.accounts || (data.account_id ? [data] : []));
+      const accounts: DerivAccountProfileData[] = rawList
+        .map((item: any) => {
+          const loginid = item.account_id || item.loginid || item.id;
+          if (!loginid) return null;
+          const isVirtual = item.account_type === 'demo' || loginid.startsWith('VR') ? 1 : 0;
+          const balance = typeof item.balance === 'number' ? item.balance : parseFloat(item.balance || '0');
+          const currency = item.currency || 'USD';
+          return {
+            loginid,
+            balance: isNaN(balance) ? 0 : balance,
+            currency,
+            is_virtual: isVirtual,
+            email: item.email,
+            fullname: item.fullname || item.full_name,
+            country: item.country,
+            scopes: item.scopes,
+          } as DerivAccountProfileData;
+        })
+        .filter((a: any): a is DerivAccountProfileData => a !== null);
 
-        if (accounts.length > 0) {
-          const primaryAccount = accounts[0];
-          return { accounts, primaryAccount };
-        }
-      } else {
-        const errorText = await response.text().catch(() => '');
-        console.warn(`[DerivREST] Account discovery returned ${response.status} from ${url}:`, errorText);
+      if (accounts.length > 0) {
+        const primaryAccount = accounts[0];
+        return { accounts, primaryAccount };
       }
-    } catch (err: any) {
-      console.warn(`[DerivREST] Account discovery request failed for ${url}:`, err?.message || String(err));
+    } else {
+      const errorText = await response.text().catch(() => '');
+      console.warn(`[DerivREST] Account discovery returned ${response.status} from ${url}:`, errorText);
     }
+  } catch (err: any) {
+    console.warn(`[DerivREST] Account discovery request failed for ${url}:`, err?.message || String(err));
   }
 
   return { accounts: [], primaryAccount: null };
@@ -560,8 +555,8 @@ export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: stri
     clientSecret,
     redirectUri,
     scopes,
-    authBaseUrl: process.env.DERIV_AUTH_URL || 'https://oauth.deriv.com/oauth2/authorize',
-    tokenEndpoint: process.env.DERIV_TOKEN_ENDPOINT || 'https://oauth.deriv.com/oauth2/token',
+    authBaseUrl: process.env.DERIV_AUTH_URL || 'https://auth.deriv.com/oauth2/auth',
+    tokenEndpoint: process.env.DERIV_TOKEN_ENDPOINT || 'https://auth.deriv.com/oauth2/token',
   };
 }
 
@@ -1297,16 +1292,17 @@ export async function connectUserWithApiTokenAsync(userId: string, apiToken: str
 
 export function connectUserWithApiToken(userId: string, apiToken: string): SafeDerivConnectionMetadata {
   const trimmed = apiToken.trim();
-  const accountId = userId;
-  const accountType = accountId.startsWith('VR') ? 'demo' : 'real';
+  const isValidAcct = isValidDerivAccountId(userId);
+  const accountId = isValidAcct ? userId : undefined;
+  const accountType = accountId?.startsWith('VR') ? 'demo' : 'real';
 
   const record: DerivConnectionRecord = {
     userId,
     derivAccountId: accountId,
     accountType,
     currency: 'USD',
-    connectionStatus: 'CONNECTED',
-    scopes: ['trade', 'account_manage', 'payments'],
+    connectionStatus: isValidAcct ? 'CONNECTED' : 'DISCONNECTED',
+    scopes: ['trade', 'account_manage'],
     accessToken: trimmed,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -1314,7 +1310,18 @@ export function connectUserWithApiToken(userId: string, apiToken: string): SafeD
   };
 
   derivConnectionsStore.set(userId, record);
-  derivConnectionsStore.set(accountId, record);
+  if (accountId) {
+    derivConnectionsStore.set(accountId, record);
+  }
+
+  // Kick off background authoritative discovery
+  hydrateDerivAccount({
+    userId,
+    accessToken: trimmed,
+  }).catch((err) => {
+    logger.warn('[connectUserWithApiToken] Background hydration failed:', { error: err?.message || String(err) });
+  });
+
   return getUserDerivConnection(userId);
 }
 

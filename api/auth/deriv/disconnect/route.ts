@@ -46,14 +46,19 @@ export async function POST(request: Request): Promise<Response> {
     const realAccountId = record?.derivAccountId || (isValidDerivAccountId(userId) ? userId : undefined);
 
     const success = disconnectUserDeriv(userId);
+    if (realAccountId && realAccountId !== userId) {
+      disconnectUserDeriv(realAccountId);
+    }
 
-    logAuditEvent(
-      'ACCOUNT_DISCONNECTED',
-      userId,
-      { event: 'DERIV_ACCOUNT_DISCONNECTED', accountId: realAccountId },
-      realAccountId
-    );
-    logger.info('[DerivDisconnect] Disconnected Deriv account', { userId, accountId: realAccountId });
+    if (realAccountId) {
+      logAuditEvent(
+        'ACCOUNT_DISCONNECTED',
+        userId,
+        { event: 'DERIV_ACCOUNT_DISCONNECTED', accountId: realAccountId },
+        realAccountId
+      );
+      logger.info('[DerivDisconnect] Disconnected Deriv account', { userId, accountId: realAccountId });
+    }
 
     const headers = new Headers({ 'Content-Type': 'application/json' });
     const cookiesToClear = [

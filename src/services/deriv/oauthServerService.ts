@@ -178,53 +178,64 @@ export async function requestDerivAccountOtp(
     return { success: false, error: 'Missing access token or account ID for OTP request' };
   }
 
-  const candidateUrls = [
-    `https://api.derivws.com/trading/v1/options/accounts/${encodeURIComponent(cleanAccountId)}/otp`,
-    `https://api.deriv.com/trading/v1/options/accounts/${encodeURIComponent(cleanAccountId)}/otp`,
-  ];
+  const url = `https://api.derivws.com/trading/v1/options/accounts/${encodeURIComponent(cleanAccountId)}/otp`;
 
-  for (const url of candidateUrls) {
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${cleanToken}`,
-          'Deriv-App-ID': cleanAppId,
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-      });
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${cleanToken}`,
+        'Deriv-App-ID': cleanAppId,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+    });
 
-      if (response.ok) {
-        const data = await response.json();
-        const otp = data.otp || data.token;
-        let readyWsUrl = data.url || data.websocket_url || data.ws_url;
+    if (response.ok) {
+      const data = await response.json();
+      const otp = data.otp || data.token;
+      let readyWsUrl = data.url || data.websocket_url || data.ws_url;
 
-        // If Deriv returned an OTP and the URL lacks the query parameter, append it safely
-        if (otp && readyWsUrl && !readyWsUrl.includes('otp=')) {
-          const sep = readyWsUrl.includes('?') ? '&' : '?';
-          readyWsUrl = `${readyWsUrl}${sep}otp=${encodeURIComponent(otp)}`;
-        }
-
-        if (readyWsUrl) {
-          return {
-            success: true,
-            otp,
-            url: readyWsUrl,
-            accountId: cleanAccountId,
-          };
-        }
-      } else {
-        const errorBody = await response.text().catch(() => '');
-        console.warn(`[DerivOTP] OTP request returned ${response.status} from ${url}:`, errorBody);
+      // If Deriv returned an OTP and the URL lacks the query parameter, append it safely
+      if (otp && readyWsUrl && !readyWsUrl.includes('otp=')) {
+        const sep = readyWsUrl.includes('?') ? '&' : '?';
+        readyWsUrl = `${readyWsUrl}${sep}otp=${encodeURIComponent(otp)}`;
       }
-    } catch (err: any) {
-      console.warn(`[DerivOTP] OTP request failed on ${url}:`, err?.message || String(err));
+
+      if (readyWsUrl) {
+        return {
+          success: true,
+          otp,
+          url: readyWsUrl,
+          accountId: cleanAccountId,
+        };
+      }
+    } else {
+      const errorBody = await response.text().catch(() => '');
+      console.warn(`[DerivOTP] OTP request returned ${response.status} from ${url}:`, errorBody);
     }
+  } catch (err: any) {
+    console.warn(`[DerivOTP] OTP request failed on ${url}:`, err?.message || String(err));
   }
 
   return { success: false, error: `Failed to obtain WebSocket OTP for account ${cleanAccountId}` };
 }
+
+export const requestDerivOTP = async (
+  accountId: string,
+  token: string,
+  appId: string = '1089'
+): Promise<{ success: boolean; wsUrl?: string; otp?: string; accountId?: string; error?: string; expiresInSeconds?: number }> => {
+  const res = await requestDerivAccountOtp(accountId, token, appId);
+  return {
+    success: res.success,
+    wsUrl: res.url,
+    otp: res.otp,
+    accountId: res.accountId,
+    error: res.error,
+    expiresInSeconds: 300,
+  };
+};
 
 /**
  * Validates connection to the authenticated WebSocket URL returned by the OTP endpoint.

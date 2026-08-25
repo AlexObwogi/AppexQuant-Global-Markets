@@ -111,23 +111,19 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
   }, [meta]);
 
   const handleInitiateOAuth = (action: 'connect' | 'signup') => {
-    if (action === 'signup') {
-      window.open('https://deriv.com/signup/', '_blank');
-      onClose();
-      return;
-    }
     setErrorMessage(null);
-    setConnectStep('Connecting to Deriv...');
+    setConnectStep(action === 'signup' ? 'Initiating Deriv registration...' : 'Connecting to Deriv...');
 
     setTimeout(() => {
-      setConnectStep('Authorizing account...');
+      setConnectStep(action === 'signup' ? 'Preparing OAuth registration...' : 'Authorizing account...');
       setTimeout(() => {
         setConnectStep('Securing connection...');
         setTimeout(() => {
-          window.location.href = `/api/auth/deriv/login?action=connect&destination=/`;
-        }, 300);
-      }, 300);
-    }, 300);
+          const endpoint = action === 'signup' ? '/api/auth/deriv/signup' : '/api/auth/deriv/login';
+          window.location.href = `${endpoint}?action=${action}&destination=/`;
+        }, 250);
+      }, 250);
+    }, 250);
   };
 
   const handleTokenLogin = async (e: React.FormEvent) => {

@@ -195,11 +195,15 @@ export const AccountView: React.FC = () => {
   }, [meta]);
 
   // Initiate Deriv OAuth PKCE flow
-  const handleInitiateOAuth = () => {
+  const handleInitiateOAuth = (action: 'connect' | 'signup' = 'connect') => {
     setErrorMessage(null);
-    setMessage('Redirecting to official Deriv OAuth authorization...');
+    setMessage(
+      action === 'signup'
+        ? 'Redirecting to official Deriv account registration...'
+        : 'Redirecting to official Deriv OAuth authorization...'
+    );
     setTimeout(() => {
-      window.location.href = `/api/auth/deriv/login?action=connect&destination=/`;
+      window.location.href = `/api/auth/deriv/${action === 'signup' ? 'signup' : 'login'}?action=${action}&destination=/`;
     }, 200);
   };
 
@@ -555,21 +559,19 @@ export const AccountView: React.FC = () => {
 
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                   <Button 
-                    onClick={handleInitiateOAuth} 
+                    onClick={() => handleInitiateOAuth('connect')} 
                     variant="primary" 
                     className="w-full sm:w-auto font-bold text-xs px-5 py-2.5 flex items-center justify-center gap-1.5"
                   >
                     Login to Account
                   </Button>
 
-                  <a 
-                    href="https://deriv.com/signup/" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="w-full sm:w-auto font-bold text-xs px-5 py-2.5 rounded-lg bg-[#FF444F] hover:bg-[#E03B44] text-white transition-colors text-center inline-flex items-center justify-center gap-1.5"
+                  <button 
+                    onClick={() => handleInitiateOAuth('signup')}
+                    className="w-full sm:w-auto font-bold text-xs px-5 py-2.5 rounded-lg bg-[#FF444F] hover:bg-[#E03B44] text-white transition-colors text-center inline-flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     Create Account
-                  </a>
+                  </button>
                   
                   <Button 
                     onClick={() => setShowTokenInput(!showTokenInput)} 

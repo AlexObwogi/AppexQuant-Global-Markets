@@ -1332,20 +1332,54 @@ export async function createApp() {
   // Get current user's safe Deriv connection metadata (No secret tokens returned to normal users)
   app.get('/api/auth/deriv/status', async (req: Request, res: Response) => {
     try {
-      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId || (req.headers['x-user-id'] as string);
+      const parsedCookies = (req as any).cookies || parseCookies(req.headers.cookie);
+      const cookieUserId = parsedCookies['deriv_session_user_id'];
+      const headerUserId = req.headers['x-user-id'] as string;
+      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId || cookieUserId || headerUserId;
+
       if (!userId) {
-        return res.json(createSuccessResponse({ connected: false, connectionStatus: 'DISCONNECTED', derivAccountId: undefined }));
+        return res.json(createSuccessResponse({
+          authenticated: false,
+          oauthAuthenticated: false,
+          accountDiscovered: false,
+          loginid: null,
+          accountId: null,
+          websocketConnected: false,
+          lastError: null,
+          connected: false,
+          connectionStatus: 'DISCONNECTED',
+          derivAccountId: undefined,
+        }));
       }
+
       const metadata = await getUserDerivConnectionAsync(userId);
       const isVerifiedConnected = Boolean(metadata && metadata.connected && metadata.derivAccountId && isValidDerivAccountId(metadata.derivAccountId));
+
       if (!isVerifiedConnected) {
         return res.json(createSuccessResponse({
+          authenticated: false,
+          oauthAuthenticated: false,
+          accountDiscovered: false,
+          loginid: null,
+          accountId: null,
+          websocketConnected: false,
+          lastError: metadata?.connectionStatus === 'SYNC_FAILED' ? 'Account discovery failed' : null,
           connected: false,
           connectionStatus: metadata?.connectionStatus || 'DISCONNECTED',
           derivAccountId: undefined,
         }));
       }
-      res.json(createSuccessResponse(metadata));
+
+      res.json(createSuccessResponse({
+        authenticated: true,
+        oauthAuthenticated: true,
+        accountDiscovered: true,
+        loginid: metadata.derivAccountId,
+        accountId: metadata.derivAccountId,
+        websocketConnected: true,
+        lastError: null,
+        ...metadata,
+      }));
     } catch (err: any) {
       res.status(500).json(createErrorResponse('Failed to fetch Deriv connection status', 'DERIV_STATUS_ERROR'));
     }

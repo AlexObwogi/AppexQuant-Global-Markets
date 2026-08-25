@@ -303,7 +303,7 @@ export function verifyDerivWebSocketWithOtp(
 
 /**
  * Authoritative Deriv Account Profile Fetcher
- * Combines official REST account discovery with OTP-based WebSocket authorization.
+ * Connects directly to authenticated Deriv WebSocket using the current user's OAuth access token.
  */
 export async function fetchDerivAccountProfile(
   token: string,
@@ -311,66 +311,64 @@ export async function fetchDerivAccountProfile(
   retries: number = 2
 ): Promise<DerivAccountProfileData | null> {
   const cleanToken = token ? token.trim() : '';
-  if (!cleanToken || cleanToken.startsWith('usr-')) {
-    console.warn('[DerivOAuth] Invalid token supplied for profile fetch (cannot be internal user ID):', cleanToken);
+  if (!cleanToken || cleanToken.startsWith('usr-') || cleanToken.startsWith('user-')) {
+    logger.warn('[DerivOAuth] Invalid token supplied for profile fetch (cannot be internal user ID)', { tokenPrefix: cleanToken.substring(0, 4) });
     return null;
   }
 
-  // Step 1: Use official Deriv REST API to discover authorized trading accounts
-  const restResult = await discoverDerivAccountsREST(cleanToken, appId);
-  if (restResult.primaryAccount && restResult.primaryAccount.loginid) {
-    const primary = restResult.primaryAccount;
+  const cleanAppId = (appId || '1089').toString().trim().replace(/['"]/g, '') || '1089';
 
-    // Step 2: Request OTP for the discovered account
-    const otpResult = await requestDerivAccountOtp(primary.loginid, cleanToken, appId);
-    if (otpResult.success && otpResult.url) {
-      // Step 3: Verify the authenticated WebSocket connection with the OTP URL
-      const wsVerification = await verifyDerivWebSocketWithOtp(otpResult.url, 5000);
-      if (!wsVerification.success) {
-        console.warn('[DerivOAuth] Authenticated WebSocket handshake warning:', wsVerification.error);
-      }
-    }
-
-    if (restResult.accounts.length > 1) {
-      primary.account_list = restResult.accounts.map((a) => ({
-        loginid: a.loginid,
-        account_type: a.is_virtual ? 'demo' : 'real',
-        currency: a.currency,
-        is_virtual: a.is_virtual,
-        landing_company_name: a.landing_company_name || 'svg',
-      }));
-    }
-
-    return primary;
-  }
-
-  // Fallback Step: If REST discovery did not return accounts (e.g. legacy token), attempt legacy WebSocket authorize with timeout
-  const candidateEndpoints = [
-    `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId.trim() || '1089')}&l=EN&brand=deriv`,
-    `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId.trim() || '1089')}&l=EN&brand=deriv`,
+  const candidateEndpoints: string[] = [
+    `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(cleanAppId)}&l=EN&brand=deriv`,
+    `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(cleanAppId)}&l=EN&brand=deriv`,
+    `wss://frontend.derivws.com/websockets/v3?app_id=${encodeURIComponent(cleanAppId)}&l=EN&brand=deriv`,
   ];
+
+  if (cleanAppId !== '1089') {
+    candidateEndpoints.push(
+      'wss://ws.derivws.com/websockets/v3?app_id=1089&l=EN&brand=deriv',
+      'wss://ws.binaryws.com/websockets/v3?app_id=1089&l=EN&brand=deriv'
+    );
+  }
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     for (const wsUrl of candidateEndpoints) {
       try {
-        const { profile } = await attemptFetchProfileWithUrl(cleanToken, wsUrl);
-        if (profile && profile.loginid) {
+        const { profile, errorDetail } = await attemptFetchProfileWithUrl(cleanToken, wsUrl);
+        if (profile && profile.loginid && isValidDerivAccountId(profile.loginid)) {
+          logger.info('[DerivOAuth] Authoritative account discovery successful via WebSocket', {
+            loginid: profile.loginid,
+            isVirtual: profile.is_virtual,
+            currency: profile.currency,
+          });
           return profile;
         }
+        if (errorDetail) {
+          logger.warn(`[DerivOAuth] WebSocket profile query attempt notice for ${wsUrl}: ${errorDetail}`);
+        }
       } catch (err: any) {
-        // Safe fallback continue
+        logger.warn(`[DerivOAuth] WebSocket profile query exception for ${wsUrl}:`, { error: err?.message || String(err) });
       }
     }
     if (attempt < retries) {
-      await new Promise((r) => setTimeout(r, attempt * 400));
+      await new Promise((r) => setTimeout(r, attempt * 300));
     }
   }
+
+  // Fallback to REST only if WebSocket attempts did not return a profile
+  try {
+    const restResult = await discoverDerivAccountsREST(cleanToken, cleanAppId);
+    if (restResult.primaryAccount && restResult.primaryAccount.loginid && isValidDerivAccountId(restResult.primaryAccount.loginid)) {
+      return restResult.primaryAccount;
+    }
+  } catch {}
 
   return null;
 }
 
 /**
- * Opens a server-side WebSocket connection using the 'ws' package for legacy fallback queries.
+ * Opens a dedicated, server-side WebSocket connection using the 'ws' package to authorize and discover Deriv account.
+ * Destroys failed/timed-out sockets immediately to avoid socket leakage.
  */
 function attemptFetchProfileWithUrl(
   token: string,
@@ -379,8 +377,20 @@ function attemptFetchProfileWithUrl(
   return new Promise((resolve) => {
     let ws: any;
     try {
-      const WSImpl: any = (NodeWebSocket as any).default || NodeWebSocket;
-      ws = new WSImpl(wsUrl);
+      let WSImpl: any = NodeWebSocket;
+      if (WSImpl && WSImpl.default) {
+        WSImpl = WSImpl.default;
+      }
+      if (typeof WSImpl !== 'function' && (WSImpl as any)?.WebSocket) {
+        WSImpl = (WSImpl as any).WebSocket;
+      }
+      ws = new WSImpl(wsUrl, {
+        headers: {
+          'User-Agent': 'AppexQuant-Markets/1.0 (Deriv-OAuth-Discovery)',
+          'Origin': 'https://oauth.deriv.com',
+        },
+        handshakeTimeout: 6000,
+      });
     } catch (err: any) {
       resolve({ profile: null, errorDetail: `Failed to construct WebSocket: ${err?.message || String(err)}` });
       return;
@@ -393,7 +403,9 @@ function attemptFetchProfileWithUrl(
       settled = true;
       clearTimeout(timeout);
       try {
-        ws.close();
+        if (ws && (ws.readyState === 0 || ws.readyState === 1)) {
+          ws.close();
+        }
       } catch {}
       resolve({ profile, errorDetail });
     };
@@ -414,10 +426,47 @@ function attemptFetchProfileWithUrl(
       try {
         const raw = typeof data === 'string' ? data : data?.toString('utf8') || '';
         const parsed = JSON.parse(raw);
-        if (parsed.msg_type === 'authorize' && parsed.authorize && parsed.authorize.loginid) {
-          finish(parsed.authorize as DerivAccountProfileData);
-        } else if (parsed.error) {
-          finish(null, `Deriv authorize error: ${parsed.error?.code || ''} ${parsed.error?.message || ''}`.trim());
+
+        if (parsed.msg_type === 'authorize' && parsed.authorize) {
+          const auth = parsed.authorize;
+          const discoveredLoginId =
+            auth.loginid ||
+            (Array.isArray(auth.account_list) && auth.account_list.length > 0
+              ? auth.account_list[0].loginid
+              : undefined);
+
+          if (discoveredLoginId && isValidDerivAccountId(discoveredLoginId)) {
+            const rawBalance = typeof auth.balance === 'number' ? auth.balance : parseFloat(auth.balance || '0');
+            const isVirtual = typeof auth.is_virtual === 'number' ? auth.is_virtual : (discoveredLoginId.startsWith('VR') ? 1 : 0);
+
+            const profileData: DerivAccountProfileData = {
+              loginid: discoveredLoginId,
+              balance: isNaN(rawBalance) ? 0 : rawBalance,
+              currency: auth.currency || 'USD',
+              is_virtual: isVirtual,
+              email: auth.email || '',
+              fullname: auth.fullname || auth.full_name || '',
+              country: auth.country || '',
+              scopes: auth.scopes || ['trade', 'account_manage'],
+              userId: auth.user_id,
+              account_list: Array.isArray(auth.account_list)
+                ? auth.account_list.map((a: any) => ({
+                    loginid: a.loginid,
+                    account_type: a.account_type || (a.is_virtual ? 'demo' : 'real'),
+                    currency: a.currency || 'USD',
+                    is_virtual: a.is_virtual ? 1 : 0,
+                    landing_company_name: a.landing_company_name || 'svg',
+                  }))
+                : undefined,
+            };
+            finish(profileData);
+            return;
+          }
+        }
+
+        if (parsed.error) {
+          const errDetail = `Deriv authorize rejected: [${parsed.error.code || 'UNKNOWN'}] ${parsed.error.message || ''}`.trim();
+          finish(null, errDetail);
         }
       } catch (err: any) {
         finish(null, `Failed to parse WebSocket message: ${err?.message || String(err)}`);
@@ -430,7 +479,9 @@ function attemptFetchProfileWithUrl(
     });
 
     ws.on('close', (code: number, reason: Buffer) => {
-      finish(null, `Socket closed before authorize completed (code ${code}${reason?.length ? `, reason: ${reason.toString()}` : ''})`);
+      if (!settled) {
+        finish(null, `Socket closed before authorize completed (code ${code}${reason?.length ? `, reason: ${reason.toString()}` : ''})`);
+      }
     });
   });
 }
@@ -1079,116 +1130,7 @@ export async function hydrateDerivAccount(params: HydrateDerivAccountParams): Pr
     };
   }
 
-  // Fallback: If WebSocket didn't return profile, check fallbackAccount or Prisma DB (NEVER use internal usr- IDs)
-  let fallbackLoginId = fallbackAccount?.loginid;
-
-  if (!fallbackLoginId && userId && !userId.startsWith('usr-') && !userId.startsWith('user-') && isValidDerivAccountId(userId)) {
-    fallbackLoginId = userId;
-  }
-
-  if (!fallbackLoginId) {
-    try {
-      const dbUser = await dbQueries.findUserById(userId);
-      if (dbUser?.derivAccountId && isValidDerivAccountId(dbUser.derivAccountId) && !dbUser.derivAccountId.startsWith('usr-') && !dbUser.derivAccountId.startsWith('user-')) {
-        fallbackLoginId = dbUser.derivAccountId;
-      }
-    } catch {}
-  }
-
-  const isValidDerivId = Boolean(
-    fallbackLoginId &&
-    isValidDerivAccountId(fallbackLoginId) &&
-    !fallbackLoginId.startsWith('usr-') &&
-    !fallbackLoginId.startsWith('user-')
-  );
-
-  if (isValidDerivId) {
-    const derivAccountId = fallbackLoginId as string;
-    const isVirtual = derivAccountId.startsWith('VR');
-    const accountType: 'demo' | 'real' = isVirtual ? 'demo' : 'real';
-    const currency = fallbackAccount?.currency || 'USD';
-    const balance = typeof fallbackAccount?.balance === 'number' ? fallbackAccount.balance : 0;
-    const email = fallbackAccount?.email || '';
-    const fullName = fallbackAccount?.fullName || '';
-    const scopes = params.scopes || fallbackAccount?.scopes || ['trade', 'account_manage'];
-
-    const connectionRecord: DerivConnectionRecord = {
-      userId,
-      derivAccountId,
-      email,
-      fullName,
-      balance,
-      accountType,
-      currency,
-      connectionStatus: 'CONNECTED',
-      scopes,
-      accessToken: cleanToken,
-      refreshToken,
-      tokenExpiry,
-      createdAt: nowIso,
-      updatedAt: nowIso,
-      lastSyncedAt: nowIso,
-    };
-
-    derivConnectionsStore.set(userId, connectionRecord);
-    derivConnectionsStore.set(derivAccountId, connectionRecord);
-
-    try {
-      await dbQueries.upsertDerivAccount({
-        id: derivAccountId,
-        userId,
-        accountType,
-        currency,
-        balance,
-        equity: balance,
-        isVirtual,
-        status: 'ACTIVE',
-        lastSyncedAt: nowIso,
-      });
-
-      await dbQueries.recordAccountSnapshot({
-        derivAccountId,
-        userId,
-        balance,
-        equity: balance,
-        currency,
-        timestamp: new Date(),
-      });
-    } catch (dbErr: any) {
-      logger.warn('[hydrateDerivAccount] Prisma fallback persistence warning:', { error: dbErr?.message });
-    }
-
-    const metadata: SafeDerivConnectionMetadata = {
-      connected: true,
-      derivAccountId,
-      email,
-      fullName,
-      balance,
-      accountType,
-      currency,
-      connectionStatus: 'CONNECTED',
-      scopes,
-      lastSyncedAt: nowIso,
-      accountList: fallbackAccount?.accountList,
-    };
-
-    return {
-      success: true,
-      metadata,
-      rawAccountDetails: {
-        derivAccountId,
-        email,
-        fullName,
-        balance,
-        accountType,
-        currency,
-        token: cleanToken,
-        accountList: fallbackAccount?.accountList,
-      },
-    };
-  }
-
-  // If we couldn't resolve profile and have no valid Deriv account ID:
+  // If authoritative WebSocket discovery did not resolve a valid profile with loginid:
   const failedRecord: DerivConnectionRecord = {
     userId,
     derivAccountId: '',

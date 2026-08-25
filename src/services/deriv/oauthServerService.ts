@@ -368,7 +368,8 @@ export async function fetchDerivAccountProfile(
 
 /**
  * Opens a dedicated, server-side WebSocket connection using the 'ws' package to authorize and discover Deriv account.
- * Destroys failed/timed-out sockets immediately to avoid socket leakage.
+ * Explicitly logs connection state changes (CONNECTING, OPEN, SEND_AUTHORIZE, AUTHORIZED, ERROR, CLOSE, TIMEOUT)
+ * and destroys failed/timed-out sockets immediately to avoid socket leakage.
  */
 function attemptFetchProfileWithUrl(
   token: string,
@@ -376,6 +377,9 @@ function attemptFetchProfileWithUrl(
 ): Promise<{ profile: DerivAccountProfileData | null; errorDetail?: string }> {
   return new Promise((resolve) => {
     let ws: any;
+    const sanitizedUrl = wsUrl.replace(/(token=)[^&]+/gi, '$1***');
+    logger.info(`[DerivWS-Discovery] State: CONNECTING -> Initiating WebSocket connection to ${sanitizedUrl}`);
+
     try {
       let WSImpl: any = NodeWebSocket;
       if (WSImpl && WSImpl.default) {
@@ -392,7 +396,9 @@ function attemptFetchProfileWithUrl(
         handshakeTimeout: 6000,
       });
     } catch (err: any) {
-      resolve({ profile: null, errorDetail: `Failed to construct WebSocket: ${err?.message || String(err)}` });
+      const constructError = `Failed to construct WebSocket: ${err?.message || String(err)}`;
+      logger.error(`[DerivWS-Discovery] State: ERROR -> Construction failed for ${sanitizedUrl}`, { error: constructError });
+      resolve({ profile: null, errorDetail: constructError });
       return;
     }
 
@@ -404,6 +410,7 @@ function attemptFetchProfileWithUrl(
       clearTimeout(timeout);
       try {
         if (ws && (ws.readyState === 0 || ws.readyState === 1)) {
+          logger.info(`[DerivWS-Discovery] State: CLOSING -> Terminating WebSocket connection to ${sanitizedUrl}`);
           ws.close();
         }
       } catch {}
@@ -411,14 +418,19 @@ function attemptFetchProfileWithUrl(
     };
 
     const timeout = setTimeout(() => {
-      finish(null, `Timed out waiting for authorize response from ${wsUrl}`);
+      logger.warn(`[DerivWS-Discovery] State: TIMEOUT -> 6000ms elapsed waiting for authorize response from ${sanitizedUrl}`);
+      finish(null, `Timed out waiting for authorize response from ${sanitizedUrl}`);
     }, 6000);
 
     ws.on('open', () => {
+      logger.info(`[DerivWS-Discovery] State: OPEN -> WebSocket connection established to ${sanitizedUrl}. Sending authorize request...`);
       try {
         ws.send(JSON.stringify({ authorize: token.trim(), req_id: 1 }));
+        logger.info(`[DerivWS-Discovery] State: SEND_AUTHORIZE -> Authorize payload dispatched to ${sanitizedUrl}`);
       } catch (err: any) {
-        finish(null, `Failed to send authorize request: ${err?.message || String(err)}`);
+        const sendError = `Failed to send authorize request: ${err?.message || String(err)}`;
+        logger.error(`[DerivWS-Discovery] State: SEND_ERROR -> ${sendError}`);
+        finish(null, sendError);
       }
     });
 
@@ -426,6 +438,9 @@ function attemptFetchProfileWithUrl(
       try {
         const raw = typeof data === 'string' ? data : data?.toString('utf8') || '';
         const parsed = JSON.parse(raw);
+        const msgType = parsed.msg_type || (parsed.error ? 'error' : 'unknown');
+
+        logger.info(`[DerivWS-Discovery] State: MESSAGE_RECEIVED -> Received message of type "${msgType}" from ${sanitizedUrl}`);
 
         if (parsed.msg_type === 'authorize' && parsed.authorize) {
           const auth = parsed.authorize;
@@ -459,28 +474,39 @@ function attemptFetchProfileWithUrl(
                   }))
                 : undefined,
             };
+            logger.info(`[DerivWS-Discovery] State: AUTHORIZED -> Discovered valid Deriv account ${discoveredLoginId} (Currency: ${profileData.currency}, Virtual: ${isVirtual})`);
             finish(profileData);
             return;
+          } else {
+            logger.warn(`[DerivWS-Discovery] State: INVALID_LOGINID -> Authorize message received but missing valid loginid`, { auth });
           }
         }
 
         if (parsed.error) {
-          const errDetail = `Deriv authorize rejected: [${parsed.error.code || 'UNKNOWN'}] ${parsed.error.message || ''}`.trim();
+          const errCode = parsed.error.code || 'UNKNOWN';
+          const errMsg = parsed.error.message || '';
+          const errDetail = `Deriv authorize rejected: [${errCode}] ${errMsg}`.trim();
+          logger.warn(`[DerivWS-Discovery] State: AUTHORIZE_REJECTED -> ${errDetail}`);
           finish(null, errDetail);
         }
       } catch (err: any) {
-        finish(null, `Failed to parse WebSocket message: ${err?.message || String(err)}`);
+        const parseError = `Failed to parse WebSocket message: ${err?.message || String(err)}`;
+        logger.error(`[DerivWS-Discovery] State: PARSE_ERROR -> ${parseError}`);
+        finish(null, parseError);
       }
     });
 
     ws.on('error', (err: any) => {
       const detail = err?.message || err?.code || String(err);
+      logger.error(`[DerivWS-Discovery] State: SOCKET_ERROR -> WebSocket encountered error on ${sanitizedUrl}: ${detail}`);
       finish(null, `Socket error: ${detail}`);
     });
 
     ws.on('close', (code: number, reason: Buffer) => {
+      const reasonStr = reason?.length ? reason.toString() : 'None';
+      logger.info(`[DerivWS-Discovery] State: CLOSED -> WebSocket closed on ${sanitizedUrl} (Code: ${code}, Reason: ${reasonStr})`);
       if (!settled) {
-        finish(null, `Socket closed before authorize completed (code ${code}${reason?.length ? `, reason: ${reason.toString()}` : ''})`);
+        finish(null, `Socket closed before authorize completed (code ${code}${reason?.length ? `, reason: ${reasonStr}` : ''})`);
       }
     });
   });
@@ -716,22 +742,32 @@ export async function handleDerivOAuthCallback(params: {
 
   // Scenario A: Direct token callback (token1 & acct1 present in query params from legacy redirect)
   if (token1 && acct1) {
-    console.log('[DERIV_OAUTH_DIRECT_TOKEN_CALLBACK]', { acct1, cur1 });
+    logger.info('[DerivOAuth] Processing direct token callback for account discovery', { acct1, cur1 });
     const hydrationResult = await hydrateDerivAccount({
       userId: acct1,
       accessToken: token1,
       appId: oauthConfig.clientId,
-      fallbackAccount: {
+      fallbackAccount: isValidDerivAccountId(acct1) ? {
         loginid: acct1,
         currency: cur1 || 'USD',
         accountType: acct1.startsWith('VR') ? 'demo' : 'real',
         scopes: ['trade', 'account_manage', 'payments'],
-      },
+      } : undefined,
     });
 
-    const targetLoginId = hydrationResult.metadata?.derivAccountId || acct1;
-    const targetAccountType: 'demo' | 'real' = hydrationResult.metadata?.accountType || (targetLoginId.startsWith('VR') ? 'demo' : 'real');
-    const targetCurrency = hydrationResult.metadata?.currency || cur1 || 'USD';
+    if (!hydrationResult.success || !hydrationResult.metadata?.connected || !hydrationResult.metadata?.derivAccountId) {
+      const discError = hydrationResult.error || 'Failed to discover or verify Deriv trading account identifier from direct callback.';
+      logger.error('[DerivOAuth] Direct token callback failed at account discovery stage:', { error: discError, acct1 });
+      return {
+        success: false,
+        destination: `/?auth_error=discovery_failed&message=${encodeURIComponent(discError)}`,
+        errorMessage: `Deriv Account Discovery Failure: ${discError}`,
+      };
+    }
+
+    const targetLoginId = hydrationResult.metadata.derivAccountId;
+    const targetAccountType: 'demo' | 'real' = hydrationResult.metadata.accountType || (targetLoginId.startsWith('VR') ? 'demo' : 'real');
+    const targetCurrency = hydrationResult.metadata.currency || cur1 || 'USD';
 
     return {
       success: true,

@@ -113,7 +113,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
 
   const handleInitiateOAuth = (action: 'connect' | 'signup') => {
     setErrorMessage(null);
-    setConnectStep(action === 'signup' ? 'Initiating Deriv registration...' : 'Connecting to Deriv...');
+    setConnectStep(action === 'signup' ? 'Initiating registration...' : 'Connecting...');
 
     setTimeout(() => {
       setConnectStep(action === 'signup' ? 'Preparing OAuth registration...' : 'Authorizing account...');
@@ -130,7 +130,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
   const handleTokenLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!apiTokenInput.trim()) {
-      setErrorMessage('Please enter a valid Deriv API token.');
+      setErrorMessage('Please enter a valid API token.');
       return;
     }
     setIsSubmittingToken(true);
@@ -152,8 +152,8 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
             payload: {
               id: `conn-deriv-${json.data.derivAccountId}`,
               brokerType: 'DERIV',
-              brokerName: 'Deriv Limited',
-              server: 'Deriv-Server',
+              brokerName: 'Institutional Broker',
+              server: 'Broker-Server',
               accountNumber: json.data.derivAccountId || '',
               status: 'CONNECTED',
               environment: json.data.accountType === 'real' ? 'REAL' : 'DEMO',
@@ -165,7 +165,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
           dispatch({
             type: 'ADD_NOTIFICATION',
             payload: {
-              title: 'Deriv Account Connected',
+              title: 'Broker Account Connected',
               message: `Successfully connected to account ${json.data.derivAccountId}`,
               type: 'success',
             },
@@ -176,7 +176,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
           setErrorMessage(json.error?.message || 'Token authentication failed.');
         }
       } else {
-        setErrorMessage('Invalid Deriv API token or unauthorized request.');
+        setErrorMessage('Invalid API token or unauthorized request.');
       }
     } catch {
       setErrorMessage('Failed to connect with API token.');
@@ -247,15 +247,15 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
           dispatch({
             type: 'ADD_NOTIFICATION',
             payload: {
-              title: 'Deriv Disconnected',
-              message: 'Your Deriv connection has been securely removed.',
+              title: 'Broker Disconnected',
+              message: 'Your broker connection has been securely removed.',
               type: 'info',
             },
           });
         }
       }
     } catch {
-      setErrorMessage('Failed to disconnect Deriv account.');
+      setErrorMessage('Failed to disconnect account.');
     } finally {
       setIsDisconnecting(false);
     }
@@ -271,7 +271,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
               <ShieldCheck className="w-5 h-5 text-accent-primary" />
             </div>
             <div>
-              <h2 className="text-sm sm:text-base font-bold text-text-primary">Deriv Account</h2>
+              <h2 className="text-sm sm:text-base font-bold text-text-primary">Broker Account</h2>
               <p className="text-xs text-text-secondary">Secure Trading Gateway</p>
             </div>
           </div>
@@ -296,12 +296,12 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
           <div className="py-8 text-center space-y-3">
             <Loader2 className="w-8 h-8 text-accent-primary animate-spin mx-auto" />
             <p className="text-sm font-semibold text-text-primary">{connectStep}</p>
-            <p className="text-xs text-text-secondary">Redirecting to Deriv secure authentication server...</p>
+            <p className="text-xs text-text-secondary">Redirecting to secure authentication server...</p>
           </div>
         ) : isLoading ? (
           <div className="py-8 text-center space-y-2">
             <Loader2 className="w-6 h-6 text-accent-primary animate-spin mx-auto" />
-            <p className="text-xs text-text-secondary">Checking Deriv connection status...</p>
+            <p className="text-xs text-text-secondary">Checking connection status...</p>
           </div>
         ) : meta && meta.connectionStatus === 'SYNCING' ? (
           /* SYNCING STATE */
@@ -311,7 +311,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
               <ShieldCheck className="w-5 h-5 text-accent-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-bold text-text-primary">Connection successful — synchronizing your Deriv account...</p>
+              <p className="text-sm font-bold text-text-primary">Connection successful — synchronizing your account...</p>
               <p className="text-xs text-text-secondary leading-relaxed px-4">
                 Fetching actual balance, profile data, and validating API permissions securely...
               </p>
@@ -331,7 +331,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
             <div className="space-y-1">
               <p className="text-sm font-bold text-rose-500">Synchronization Failed</p>
               <p className="text-xs text-text-secondary leading-relaxed px-4">
-                We successfully authenticated your account, but could not retrieve your balance or profile details from Deriv's API.
+                We successfully authenticated your account, but could not retrieve your balance or profile details from broker API.
               </p>
             </div>
             
@@ -404,7 +404,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
               className="w-full bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-rose-500/30 disabled:opacity-50"
             >
               <Unplug className="w-3.5 h-3.5" />
-              <span>{isDisconnecting ? 'Disconnecting...' : 'Disconnect Deriv Account'}</span>
+              <span>{isDisconnecting ? 'Disconnecting...' : 'Disconnect Account'}</span>
             </button>
           </div>
         ) : authMode === 'token' ? (
@@ -413,17 +413,17 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
             <div className="p-3 rounded-xl bg-bg-main border border-border-color space-y-1.5">
               <h3 className="text-xs font-bold text-text-primary">Sign in with API Token</h3>
               <p className="text-[11px] text-text-secondary leading-relaxed">
-                Generate an API token from your Deriv account settings with <strong className="text-text-primary">Read, Trade, and Payments</strong> permissions.
+                Generate an API token from your broker account settings with <strong className="text-text-primary">Read, Trade, and Payments</strong> permissions.
               </p>
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold uppercase text-text-secondary mb-1">Deriv API Token</label>
+              <label className="block text-[11px] font-bold uppercase text-text-secondary mb-1">Broker API Token</label>
               <input
                 type="password"
                 value={apiTokenInput}
                 onChange={(e) => setApiTokenInput(e.target.value)}
-                placeholder="Enter your Deriv API token..."
+                placeholder="Enter your Broker API token..."
                 className="w-full bg-bg-main border border-border-color rounded-xl px-3 py-2.5 text-xs text-text-primary font-mono focus:outline-none focus:border-accent-primary"
                 required
               />
@@ -456,7 +456,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
                 <span>Broker Authentication</span>
               </div>
               <p className="text-xs text-text-secondary leading-relaxed">
-                Access your real or demo trading account securely with official Deriv OAuth 2.0 PKCE authentication.
+                Access your real or demo trading account securely with official OAuth 2.0 PKCE authentication.
               </p>
             </div>
 
@@ -466,7 +466,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
                 onClick={() => handleInitiateOAuth('connect')}
                 className="w-full bg-accent-primary hover:opacity-95 text-bg-main py-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shadow-lg flex items-center justify-center gap-2"
               >
-                <span>Log in</span>
+                <span>Log In</span>
                 <ExternalLink className="w-4 h-4" />
               </button>
 
@@ -476,7 +476,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
                 className="w-full bg-[#FF444F] hover:bg-[#E03B44] text-white py-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[#FF444F]/20"
               >
                 <UserPlus className="w-4 h-4" />
-                <span>Open account</span>
+                <span>Open Account</span>
               </button>
 
               {/* USE API TOKEN OPTION */}
@@ -493,7 +493,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
 
         {/* Footer info */}
         <div className="pt-2 border-t border-border-color/60 text-[10px] text-text-secondary/80 text-center">
-          Secure TLS Authentication · Credentials Remain with Deriv
+          Secure TLS Authentication · Credentials Remain with Broker
         </div>
       </div>
     </div>

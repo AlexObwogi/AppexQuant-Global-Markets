@@ -191,8 +191,8 @@ export const AccountView: React.FC = () => {
     setErrorMessage(null);
     setMessage(
       action === 'signup'
-        ? 'Redirecting to official Deriv account registration...'
-        : 'Redirecting to official Deriv OAuth authorization...'
+        ? 'Redirecting to official account registration...'
+        : 'Redirecting to official OAuth authorization...'
     );
     setTimeout(() => {
       window.location.href = `/api/auth/deriv/${action === 'signup' ? 'signup' : 'login'}?action=${action}&destination=/`;
@@ -205,7 +205,7 @@ export const AccountView: React.FC = () => {
     dispatch({ type: 'SET_EXECUTION_ENVIRONMENT', payload: targetEnv === 'demo' ? 'DEMO' : 'LIVE' });
     setShowTokenInput(true);
     setApiTokenInput('');
-    setMessage(`Please provide your Deriv ${targetEnv.toUpperCase()} API token to switch environments or reconnect with OAuth.`);
+    setMessage(`Please provide your ${targetEnv.toUpperCase()} API token to switch environments or reconnect with OAuth.`);
   };
 
   const performTokenLogin = async (tokenStr: string) => {
@@ -284,7 +284,7 @@ export const AccountView: React.FC = () => {
             type: 'ADD_NOTIFICATION',
             payload: {
               title: 'Sync Succeeded',
-              message: 'Active Deriv account balance, tier limits, and permissions successfully synced.',
+              message: 'Active account balance, tier limits, and permissions successfully synced.',
               type: 'success',
             },
           });
@@ -300,7 +300,7 @@ export const AccountView: React.FC = () => {
 
   // Safe manual disconnect
   const handleDisconnect = async () => {
-    if (!window.confirm('Are you sure you want to disconnect your integrated Deriv account? This will revoke active API sessions.')) return;
+    if (!window.confirm('Are you sure you want to disconnect your integrated broker account? This will revoke active API sessions.')) return;
     setIsDisconnecting(true);
     setErrorMessage(null);
     setMessage(null);
@@ -331,7 +331,7 @@ export const AccountView: React.FC = () => {
             type: 'ADD_NOTIFICATION',
             payload: {
               title: 'Integration Disconnected',
-              message: 'Your Deriv account connection has been securely removed.',
+              message: 'Your broker connection has been securely removed.',
               type: 'success',
             },
           });
@@ -399,7 +399,7 @@ export const AccountView: React.FC = () => {
             <div className="pb-3 border-b border-border-color flex items-center justify-between">
               <h3 className="text-xs font-bold text-text-primary flex items-center gap-2 font-mono uppercase tracking-wider">
                 <Globe className="w-3.5 h-3.5 text-accent-primary" />
-                Deriv Account Integration
+                Broker Account Integration
               </h3>
               
               {/* Environment Toggle Switcher */}
@@ -434,7 +434,7 @@ export const AccountView: React.FC = () => {
             ) : meta && meta.connectionStatus === 'SYNCING' ? (
               <div className="py-12 flex flex-col items-center justify-center space-y-3 text-center">
                 <Loader2 className="w-10 h-10 text-accent-primary animate-spin" />
-                <span className="text-sm font-bold text-text-primary">Connection successful — synchronizing your Deriv account...</span>
+                <span className="text-sm font-bold text-text-primary">Connection successful — synchronizing your account...</span>
                 <span className="text-xs text-text-secondary leading-relaxed px-6">
                   Retrieving real-time balances, trade scopes, and currency parameters securely...
                 </span>
@@ -447,7 +447,7 @@ export const AccountView: React.FC = () => {
                 <div className="space-y-1 border-b border-border-color/40 pb-4 max-w-sm mx-auto">
                   <p className="text-sm font-bold text-rose-500">Synchronization Failed</p>
                   <p className="text-xs text-text-secondary leading-relaxed px-4">
-                    We successfully authenticated your account, but could not retrieve your balance or profile details from Deriv's API.
+                    We successfully authenticated your account, but could not retrieve your balance or profile details from broker API.
                   </p>
                 </div>
                 <div className="flex justify-center gap-2 max-w-xs mx-auto pt-2">
@@ -516,7 +516,7 @@ export const AccountView: React.FC = () => {
 
                 {meta?.accountList && meta.accountList.length > 0 && (
                   <div className="p-3 bg-bg-surface border border-border-color rounded-lg space-y-2">
-                    <span className="text-text-secondary text-[9px] uppercase font-bold block">Authorized Deriv Accounts ({meta.accountList.length})</span>
+                    <span className="text-text-secondary text-[9px] uppercase font-bold block">Authorized Accounts ({meta.accountList.length})</span>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {meta.accountList.map((acc) => {
                         const isCurrent = acc.loginid === meta.derivAccountId;
@@ -558,7 +558,7 @@ export const AccountView: React.FC = () => {
                   <Link2 className="w-10 h-10 text-text-secondary mx-auto mb-1 opacity-50" />
                   <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider font-mono">No Active Integration</h4>
                   <p className="text-xs text-text-secondary max-w-md mx-auto px-4 leading-normal">
-                    Connect your personal Deriv account to authorize order execution. AppexQuant manages operations securely without exposing keys in browser sessions.
+                    Connect your personal broker account to authorize order execution. AppexQuant manages operations securely without exposing keys in browser sessions.
                   </p>
                 </div>
 
@@ -568,14 +568,14 @@ export const AccountView: React.FC = () => {
                     variant="primary" 
                     className="w-full sm:w-auto font-bold text-xs px-5 py-2.5 flex items-center justify-center gap-1.5"
                   >
-                    Login to Account
+                    Log In
                   </Button>
 
                   <button 
                     onClick={() => handleInitiateOAuth('signup')}
                     className="w-full sm:w-auto font-bold text-xs px-5 py-2.5 rounded-lg bg-[#FF444F] hover:bg-[#E03B44] text-white transition-colors text-center inline-flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    Create Account
+                    Open Account
                   </button>
                   
                   <Button 
@@ -596,7 +596,7 @@ export const AccountView: React.FC = () => {
                   <form onSubmit={handleTokenSubmit} className="p-4 bg-bg-secondary border border-border-color rounded-xl space-y-4 animate-in slide-in-from-top duration-200">
                     <div className="space-y-1.5">
                       <label className="block text-[10px] font-mono font-bold uppercase text-text-secondary">
-                        Deriv API Token / Personal Access Token
+                        Broker API Token / Personal Access Token
                       </label>
                       <Input
                         type="password"
@@ -607,7 +607,7 @@ export const AccountView: React.FC = () => {
                         className="w-full"
                       />
                       <p className="text-[10px] text-text-secondary leading-normal">
-                        Create a read-only or trading API token from your Deriv account security panel.
+                        Create a read-only or trading API token from your broker account security panel.
                       </p>
                     </div>
 

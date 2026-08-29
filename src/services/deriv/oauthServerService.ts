@@ -637,28 +637,13 @@ export async function handleDerivOAuthCallback(params: {
 
   if (!transaction && cookieState) {
     const decodedTx = decodeOAuthStateCookie<OAuthTransaction>(cookieState);
-    if (decodedTx && (!state || decodedTx.state === state)) {
+    if (decodedTx && decodedTx.userId && (!state || decodedTx.state === state)) {
       transaction = {
         ...decodedTx,
-        userId: decodedTx.userId || 'usr-deriv-pkce',
+        userId: decodedTx.userId,
         action: decodedTx.action || 'connect',
         destination: decodedTx.destination || '/',
         redirectUri: decodedTx.redirectUri || oauthConfig.redirectUri,
-      };
-    }
-  }
-
-  if (!transaction && verifier) {
-    // If state cookie was dropped in browser redirect, verify client provided valid verifier format
-    if (verifier.length >= 43 && verifier.length <= 128) {
-      transaction = {
-        state: state || 'pkce-client-verifier',
-        codeVerifier: verifier,
-        userId: 'usr-deriv-pkce',
-        action: 'connect',
-        destination: '/',
-        redirectUri: params.redirectUri || oauthConfig.redirectUri,
-        createdAt: Date.now(),
       };
     }
   }
@@ -1039,7 +1024,9 @@ export async function hydrateDerivAccount(params: HydrateDerivAccountParams): Pr
 
       await dbQueries.mapDerivAccountToUserSession(derivAccountId, userId);
     } catch (dbErr: any) {
-      logger.warn('[hydrateDerivAccount] Prisma persistence warning:', { error: dbErr?.message });
+      logger.error('[hydrateDerivAccount] Prisma database persistence failed:', { error: dbErr?.message });
+      derivConnectionsStore.delete(userId);
+      throw new Error(`Database persistence failure: Authentication requires database connection (${dbErr?.message || dbErr})`);
     }
 
     syncDerivConnectionToSupabase({

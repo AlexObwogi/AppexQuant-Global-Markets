@@ -15,10 +15,11 @@ import {
   NormalizedCandle,
 } from './derivTypes.ts';
 import { FALLBACK_INSTRUMENTS } from './marketTaxonomy.ts';
+import { subscriptionQueue, TickCallback } from './subscriptionQueue.ts';
 
-export type DerivConnectionState = 'CONNECTED' | 'CONNECTING' | 'RECONNECTING' | 'DISCONNECTED';
+export type DerivConnectionState = 'CONNECTED' | 'CONNECTING' | 'RECONNECTING' | 'OFFLINE' | 'ERROR' | 'DISCONNECTED';
 
-export type TickCallback = (tick: NormalizedTick) => void;
+export type { TickCallback };
 export type StatusCallback = (state: DerivConnectionState) => void;
 
 export class DerivWebSocketManager {
@@ -27,7 +28,6 @@ export class DerivWebSocketManager {
   private endpoint: string;
   private reqIdCounter = 1;
   private pendingRequests = new Map<number, { resolve: (res: DerivResponse) => void; reject: (err: Error) => void; timer: NodeJS.Timeout }>();
-  private tickSubscriptions = new Map<string, { subId?: string; callbacks: Set<TickCallback> }>();
   private tickHistory = new Map<string, NormalizedTick>();
   
   private connectionState: DerivConnectionState = 'DISCONNECTED';
@@ -167,6 +167,11 @@ export class DerivWebSocketManager {
           this.connect().catch(() => {});
         }
       });
+
+      window.addEventListener('offline', () => {
+        console.warn('[DerivWS] Browser is offline.');
+        this.setConnectionState('OFFLINE');
+      });
     }
   }
 
@@ -202,7 +207,8 @@ export class DerivWebSocketManager {
       return this.connectPromise;
     }
 
-    this.setConnectionState(this.reconnectAttempts > 0 ? 'RECONNECTING' : 'CONNECTING');
+    const nextState: DerivConnectionState = this.reconnectAttempts > 0 ? 'RECONNECTING' : 'CONNECTING';
+    this.setConnectionState(nextState);
 
     this.connectPromise = new Promise((resolve, reject) => {
       try {
@@ -213,7 +219,7 @@ export class DerivWebSocketManager {
             console.error('[DerivWS] Connection timeout.');
             this.ws?.close();
             this.connectPromise = null;
-            this.setConnectionState('DISCONNECTED');
+            this.setConnectionState('ERROR');
             reject(new Error('Connection timeout'));
           }
         }, 10000);
@@ -231,11 +237,11 @@ export class DerivWebSocketManager {
         this.ws.onmessage = (event) => this.handleMessage(event);
 
         this.ws.onerror = (error) => {
-          console.warn(`[DerivWS] Connection error on ${this.endpoint}. Re-initiating connection fallback...`);
+          console.warn(`[DerivWS] Connection error on ${this.endpoint}. Scheduling reconnect...`);
           clearTimeout(openTimeout);
           this.ws?.close();
           this.connectPromise = null;
-          this.setConnectionState('DISCONNECTED');
+          this.setConnectionState('ERROR');
           reject(new Error('WebSocket connection error'));
         };
 
@@ -244,14 +250,18 @@ export class DerivWebSocketManager {
           this.connectPromise = null;
           this.stopPing();
           if (!this.isExplicitDisconnect) {
-            this.setConnectionState('DISCONNECTED');
+            if (typeof navigator !== 'undefined' && !navigator.onLine) {
+              this.setConnectionState('OFFLINE');
+            } else {
+              this.setConnectionState('DISCONNECTED');
+            }
             this.scheduleReconnect();
           }
         };
       } catch (err) {
         console.error('[DerivWS] Exception on connect:', err);
         this.connectPromise = null;
-        this.setConnectionState('DISCONNECTED');
+        this.setConnectionState('ERROR');
         reject(err);
       }
     });
@@ -464,10 +474,13 @@ export class DerivWebSocketManager {
 
     this.tickHistory.set(symbol, normalizedTick);
 
-    const sub = this.tickSubscriptions.get(symbol);
-    if (sub) {
-      if (subId && !sub.subId) sub.subId = subId;
-      sub.callbacks.forEach((cb) => {
+    if (subId) {
+      subscriptionQueue.setSubId(symbol, subId);
+    }
+
+    const callbacks = subscriptionQueue.getCallbacks(symbol);
+    if (callbacks) {
+      callbacks.forEach((cb) => {
         try {
           cb(normalizedTick);
         } catch (e) {
@@ -480,7 +493,7 @@ export class DerivWebSocketManager {
   public async fetchActiveSymbols(): Promise<DerivActiveSymbol[]> {
     try {
       const response = await this.sendRequest({
-        active_symbols: 'full',
+        active_symbols: 'brief',
         product_type: 'basic',
       });
       if (response.active_symbols && Array.isArray(response.active_symbols) && response.active_symbols.length > 0) {
@@ -552,34 +565,23 @@ export class DerivWebSocketManager {
   }
 
   public subscribeTick(symbol: string, callback: TickCallback): void {
-    let sub = this.tickSubscriptions.get(symbol);
-    if (!sub) {
-      sub = { callbacks: new Set() };
-      this.tickSubscriptions.set(symbol, sub);
+    const isFirst = subscriptionQueue.enqueue(symbol, callback);
 
-      const doSubscribe = () => {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-          this.sendRequest({ ticks: symbol })
-            .then((res) => {
-              if (res.subscription?.id && sub) {
-                sub.subId = res.subscription.id;
-              }
-            })
-            .catch((err) => {
-              console.error(`[DerivWS] Deriv API subscription failed for ${symbol}: ${err.message || err}`);
-            });
-        }
-      };
-
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        doSubscribe();
-      } else {
-        this.connect().then(doSubscribe).catch((err) => {
-          console.warn(`[DerivWS] Failed to connect for public tick subscription ${symbol}:`, err);
-        });
+    if (this.connectionState === 'CONNECTED') {
+      if (isFirst || !subscriptionQueue.getSubId(symbol)) {
+        this.sendRequest({ ticks: symbol })
+          .then((res) => {
+            if (res.subscription?.id) {
+              subscriptionQueue.setSubId(symbol, res.subscription.id);
+            }
+          })
+          .catch((err) => {
+            console.warn(`[DerivWS] Tick subscription error for ${symbol}:`, err?.message || err);
+          });
       }
+    } else if (this.connectionState === 'DISCONNECTED' || this.connectionState === 'ERROR') {
+      this.connect().catch(() => {});
     }
-    sub.callbacks.add(callback);
 
     const cached = this.tickHistory.get(symbol);
     if (cached) {
@@ -588,18 +590,12 @@ export class DerivWebSocketManager {
   }
 
   public unsubscribeTick(symbol: string, callback: TickCallback): void {
-    const sub = this.tickSubscriptions.get(symbol);
-    if (!sub) return;
-
-    sub.callbacks.delete(callback);
-
-    if (sub.callbacks.size === 0) {
-      if (sub.subId && this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.sendRequest({ forget: sub.subId }).catch(() => {
-          // Ignore forget error on cleanup
-        });
+    const isLast = subscriptionQueue.dequeue(symbol, callback);
+    if (isLast) {
+      const subId = subscriptionQueue.getSubId(symbol);
+      if (subId && this.connectionState === 'CONNECTED') {
+        this.sendRequest({ forget: subId }).catch(() => {});
       }
-      this.tickSubscriptions.delete(symbol);
     }
   }
 
@@ -642,20 +638,8 @@ export class DerivWebSocketManager {
       });
     }
 
-    // 3. Restore market tick streams
-    this.tickSubscriptions.forEach((sub, symbol) => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.sendRequest({ ticks: symbol })
-          .then((res) => {
-            if (res.subscription?.id) {
-              sub.subId = res.subscription.id;
-            }
-          })
-          .catch((err) => {
-            console.error(`[DerivWS] Tick resubscription failed for ${symbol}: ${err.message || err}`);
-          });
-      }
-    });
+    // 3. Flush and restore market tick streams via subscriptionQueue
+    subscriptionQueue.flush((req) => this.sendRequest(req));
   }
 
   public getLastTick(symbol: string): NormalizedTick | undefined {

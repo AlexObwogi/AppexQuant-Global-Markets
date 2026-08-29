@@ -105,7 +105,7 @@ export async function createApp() {
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
-    res.setHeader('Content-Security-Policy', "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:;");
+    res.setHeader('Content-Security-Policy', "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:; connect-src 'self' https: wss: wss://ws.derivws.com wss://*.derivws.com;");
     next();
   });
 
@@ -117,12 +117,19 @@ export async function createApp() {
   // Server-Side Authorization Middleware Builder (Enforces least-privilege, server session verification & MFA checks)
   const requirePermission = (permission: UserPermission) => {
     return (req: Request, res: Response, next: NextFunction) => {
-      // Server-side authorization check: NEVER trust unauthenticated x-user-role headers if a session exists
       const sessionUser = req.sessionUser;
-      const role = sessionUser ? sessionUser.role : ((req.headers['x-user-role'] as UserRole) || 'USER');
-      const userId = sessionUser ? sessionUser.userId : ((req.headers['x-user-id'] as string) || 'usr-default-001');
-      const email = sessionUser ? sessionUser.email : ((req.headers['x-user-email'] as string) || 'trader@appexquant.global');
-      const isElevated = sessionUser ? sessionUser.isElevated : req.headers['x-session-elevated'] === 'true';
+      if (!sessionUser) {
+        logSecurityEvent(req, 'AUTHORIZATION_DENIED', 'WARNING', { path: req.path, reason: 'Unauthenticated session' });
+        return res.status(401).json(createErrorResponse(
+          'Unauthorized: Session required',
+          'UNAUTHORIZED'
+        ));
+      }
+
+      const role = sessionUser.role;
+      const userId = sessionUser.userId;
+      const email = sessionUser.email;
+      const isElevated = sessionUser.isElevated;
 
       if (!hasPermission(role, permission)) {
         logSecurityEvent(req, 'AUTHORIZATION_DENIED', 'WARNING', { role, permission, path: req.path });
@@ -298,7 +305,7 @@ export async function createApp() {
       }
 
       // Log decision to central audit system
-      logAuditEvent(decision.status === 'APPROVED' ? 'TRADE_REQUESTED' : 'RISK_REJECTED', req.sessionUser?.userId || 'sys-01', {
+      logAuditEvent(decision.status === 'APPROVED' ? 'TRADE_REQUESTED' : 'RISK_REJECTED', req.sessionUser?.userId || 'SYSTEM', {
         event: `ORDER_RISK_${decision.status}`,
         orderId: order.id,
         symbol: order.symbol,
@@ -461,9 +468,9 @@ export async function createApp() {
       const { order } = req.body;
       const result = await runPipelineIteration(order);
       if (result.success) {
-        logAuditEvent('TRADE_EXECUTED', 'sys-01', { event: 'AUTOMATED_PIPELINE_SUCCESS', orderId: order?.id || 'simulated' });
+        logAuditEvent('TRADE_EXECUTED', req.sessionUser?.userId || 'SYSTEM', { event: 'AUTOMATED_PIPELINE_SUCCESS', orderId: order?.id || 'simulated' });
       } else {
-        logAuditEvent('TRADE_REJECTED', 'sys-01', { event: 'AUTOMATED_PIPELINE_HALTED', reason: result.message });
+        logAuditEvent('TRADE_REJECTED', req.sessionUser?.userId || 'SYSTEM', { event: 'AUTOMATED_PIPELINE_HALTED', reason: result.message });
       }
       res.json(createSuccessResponse(result));
     } catch (err: any) {
@@ -500,7 +507,7 @@ export async function createApp() {
       const { submitExecutionOrder } = await import('./src/services/ea/executionEngine.js');
       const newOrder = submitExecutionOrder(req.body);
 
-      logAuditEvent('TRADE_REQUESTED', req.sessionUser?.userId || 'sys-01', {
+      logAuditEvent('TRADE_REQUESTED', req.sessionUser?.userId || 'SYSTEM', {
         event: 'EXECUTION_ORDER_SUBMITTED',
         requestId: newOrder.requestId,
         symbol: newOrder.symbol,
@@ -541,7 +548,7 @@ export async function createApp() {
         return res.status(404).json(createErrorResponse('Order not found or not in cancelable state', 'NOT_FOUND'));
       }
 
-      logAuditEvent('TRADE_REQUESTED', 'sys-01', { event: 'EXECUTION_ORDER_CANCEL_REQUESTED', requestId });
+      logAuditEvent('TRADE_REQUESTED', req.sessionUser?.userId || 'SYSTEM', { event: 'EXECUTION_ORDER_CANCEL_REQUESTED', requestId });
 
       res.json(createSuccessResponse(updated));
     } catch (err: any) {
@@ -845,64 +852,51 @@ export async function createApp() {
   app.post('/api/auth/login', authRateLimiterMiddleware, async (req: Request, res: Response) => {
     try {
       const { email, password, role } = req.body;
+      let targetUser: any = null;
       
-      let targetUser;
       const dbPool = getDatabasePool();
       const connTest = await testDatabaseConnection();
       
-      if (connTest.success) {
-        try {
-          const userRes = await dbPool.query('SELECT * FROM users WHERE email = $1', [email]);
-          if (userRes.rows.length > 0) {
-            const row = userRes.rows[0];
-            targetUser = {
-              id: row.id,
-              displayName: row.display_name || 'Appex Quant Trader',
-              email: row.email,
-              role: row.role as UserRole,
-              status: row.status,
-            };
-          } else if (email === 'obwogialex728@gmail.com') {
-            // Auto-create Alex Nyangaresi Obwogi on first login if not exists in DB
-            targetUser = {
-              id: 'usr-super-obwogi',
-              displayName: 'Alex Nyangaresi Obwogi',
-              email: 'obwogialex728@gmail.com',
-              role: 'SUPER_ADMIN' as UserRole,
-              status: 'ACTIVE',
-            };
-            await dbPool.query(
-              'INSERT INTO users (id, email, display_name, role, status) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (email) DO NOTHING',
-              [targetUser.id, targetUser.email, targetUser.displayName, targetUser.role, targetUser.status]
-            );
-            await dbPool.query(
-              'INSERT INTO user_preferences (user_id, theme) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING',
-              [targetUser.id, 'dark']
-            );
-          }
-        } catch (dbErr: any) {
-          logger.error('Database query failed during login:', { error: dbErr.message });
-          return res.status(500).json(createErrorResponse(`Database error during authentication: ${dbErr.message || String(dbErr)}`, 'DATABASE_ERROR'));
-        }
-      } else if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) {
-        return res.status(503).json(createErrorResponse(`Database connection failure: ${connTest.error}`, 'DATABASE_UNAVAILABLE'));
+      if (!connTest.success) {
+        return res.status(503).json(createErrorResponse(`Database connection failure: Authentication requires direct PostgreSQL database persistence (${connTest.error})`, 'DATABASE_UNAVAILABLE'));
       }
 
-      if (!targetUser) {
-        if (email === 'obwogialex728@gmail.com') {
-          targetUser = mockUsers.find(u => u.id === 'usr-super-obwogi') || {
+      try {
+        const userRes = await dbPool.query('SELECT * FROM users WHERE email = $1', [email]);
+        if (userRes.rows.length > 0) {
+          const row = userRes.rows[0];
+          targetUser = {
+            id: row.id,
+            displayName: row.display_name || 'Appex Quant Trader',
+            email: row.email,
+            role: row.role as UserRole,
+            status: row.status,
+          };
+        } else if (email === 'obwogialex728@gmail.com') {
+          // Auto-create Alex Nyangaresi Obwogi on first login if not exists in DB
+          targetUser = {
             id: 'usr-super-obwogi',
             displayName: 'Alex Nyangaresi Obwogi',
             email: 'obwogialex728@gmail.com',
             role: 'SUPER_ADMIN' as UserRole,
             status: 'ACTIVE',
           };
-        } else {
-          targetUser = mockUsers.find(u => u.email === email);
-          if (!targetUser) {
-            return res.status(401).json(createErrorResponse('Invalid credentials', 'INVALID_CREDENTIALS'));
-          }
+          await dbPool.query(
+            'INSERT INTO users (id, email, display_name, role, status) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (email) DO NOTHING',
+            [targetUser.id, targetUser.email, targetUser.displayName, targetUser.role, targetUser.status]
+          );
+          await dbPool.query(
+            'INSERT INTO user_preferences (user_id, theme) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING',
+            [targetUser.id, 'dark']
+          );
         }
+      } catch (dbErr: any) {
+        logger.error('Database query failed during login:', { error: dbErr.message });
+        return res.status(500).json(createErrorResponse(`Database error during authentication: ${dbErr.message || String(dbErr)}`, 'DATABASE_ERROR'));
+      }
+
+      if (!targetUser) {
+        return res.status(401).json(createErrorResponse('Invalid credentials or user not registered', 'INVALID_CREDENTIALS'));
       }
 
       const csrfToken = crypto.randomBytes(32).toString('hex');
@@ -953,26 +947,22 @@ export async function createApp() {
         return res.status(400).json(createErrorResponse('Email is required', 'INVALID_INPUT'));
       }
 
-      let existingUser = null;
+      let existingUser: any = null;
       const dbPool = getDatabasePool();
       const connTest = await testDatabaseConnection();
 
-      if (connTest.success) {
-        try {
-          const userRes = await dbPool.query('SELECT * FROM users WHERE email = $1', [email]);
-          if (userRes.rows.length > 0) {
-            existingUser = userRes.rows[0];
-          }
-        } catch (dbErr: any) {
-          logger.error('Database query failed during registration:', { error: dbErr.message });
-          return res.status(500).json(createErrorResponse(`Database error during registration: ${dbErr.message || String(dbErr)}`, 'DATABASE_ERROR'));
-        }
-      } else if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) {
-        return res.status(503).json(createErrorResponse(`Database connection failure: ${connTest.error}`, 'DATABASE_UNAVAILABLE'));
+      if (!connTest.success) {
+        return res.status(503).json(createErrorResponse(`Database connection failure: Registration requires direct PostgreSQL database persistence (${connTest.error})`, 'DATABASE_UNAVAILABLE'));
       }
 
-      if (!existingUser) {
-        existingUser = mockUsers.find(u => u.email === email);
+      try {
+        const userRes = await dbPool.query('SELECT * FROM users WHERE email = $1', [email]);
+        if (userRes.rows.length > 0) {
+          existingUser = userRes.rows[0];
+        }
+      } catch (dbErr: any) {
+        logger.error('Database query failed during registration:', { error: dbErr.message });
+        return res.status(500).json(createErrorResponse(`Database error during registration: ${dbErr.message || String(dbErr)}`, 'DATABASE_ERROR'));
       }
 
       if (existingUser) {
@@ -988,22 +978,19 @@ export async function createApp() {
         status: 'ACTIVE',
       };
 
-      if (connTest.success) {
-        try {
-          await dbPool.query(
-            'INSERT INTO users (id, email, display_name, role, status) VALUES ($1, $2, $3, $4, $5)',
-            [newUser.id, newUser.email, newUser.displayName, newUser.role, newUser.status]
-          );
-          await dbPool.query(
-            'INSERT INTO user_preferences (user_id, theme, notifications_enabled) VALUES ($1, $2, $3) ON CONFLICT (user_id) DO NOTHING',
-            [newUser.id, 'dark', true]
-          );
-        } catch (dbErr: any) {
-          logger.warn('Database user insert notice during registration, using memory state:', { detail: dbErr.message });
-        }
+      try {
+        await dbPool.query(
+          'INSERT INTO users (id, email, display_name, role, status) VALUES ($1, $2, $3, $4, $5)',
+          [newUser.id, newUser.email, newUser.displayName, newUser.role, newUser.status]
+        );
+        await dbPool.query(
+          'INSERT INTO user_preferences (user_id, theme, notifications_enabled) VALUES ($1, $2, $3) ON CONFLICT (user_id) DO NOTHING',
+          [newUser.id, 'dark', true]
+        );
+      } catch (dbErr: any) {
+        logger.error('Database user insert failed during registration:', { detail: dbErr.message });
+        return res.status(500).json(createErrorResponse(`Database insert error: ${dbErr.message || String(dbErr)}`, 'DATABASE_ERROR'));
       }
-
-      mockUsers.push(newUser);
 
       // Automatically handle live broker handshake on authentication behind the scenes
       try {
@@ -1674,7 +1661,10 @@ export async function createApp() {
 
   app.post('/api/admin/deriv/disconnect', requirePermission(UserPermission.MANAGE_BROKERS), (req: Request, res: Response) => {
     try {
-      const targetUserId = req.body?.targetUserId || 'usr-default-001';
+      const targetUserId = req.body?.targetUserId || req.sessionUser?.userId;
+      if (!targetUserId) {
+        return res.status(400).json(createErrorResponse('Missing targetUserId in request body', 'INVALID_REQUEST'));
+      }
       const success = disconnectUserDeriv(targetUserId);
       logAuditEvent('ADMIN_ACTION', req.sessionUser?.userId || 'ADMIN', { event: 'ADMIN_DISCONNECTED_DERIV_USER', targetUserId });
       res.json(createSuccessResponse({ disconnected: success, targetUserId }));
@@ -1688,9 +1678,12 @@ export async function createApp() {
     try {
       const { code } = req.body;
       const currentUser = req.sessionUser;
-      const uid = currentUser?.userId || req.body?.userId || 'usr-default-001';
-      const uemail = currentUser?.email || req.body?.email || 'trader@appexquant.global';
-      const urole = currentUser?.role || req.body?.role || 'USER';
+      if (!currentUser) {
+        return res.status(401).json(createErrorResponse('Unauthorized: Active session required for MFA elevation', 'UNAUTHORIZED'));
+      }
+      const uid = currentUser.userId;
+      const uemail = currentUser.email;
+      const urole = currentUser.role;
 
       if (code === '123456') {
         const elevatedUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // elevated for 15 minutes
@@ -2150,7 +2143,7 @@ export async function createApp() {
   });
 
   // Log Startup Audit Event
-  logAuditEvent('LOGIN', 'sys-01', { event: 'SERVER_BOOT', env: config.env });
+  logAuditEvent('LOGIN', 'SYSTEM', { event: 'SERVER_BOOT', env: config.env });
 
   // Vite middleware for development vs Static files in production
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {

@@ -146,9 +146,9 @@ export const DashboardView: React.FC = () => {
               </Badge>
             </div>
             <p className="text-text-primary text-xs font-medium mt-0.5">
-              {dashboardState === 'connected' && `Authenticated with Deriv (${state.user?.derivAccountId || state.user?.loginid || 'Active'}). Backend is source of truth.`}
+              {dashboardState === 'connected' && `Authenticated (${state.user?.derivAccountId || state.user?.loginid || 'Active'}). Backend is source of truth.`}
               {dashboardState === 'syncing' && 'Synchronizing account balance and portfolio metadata with backend...'}
-              {dashboardState === 'disconnected' && 'No active Deriv account integration. Connect to synchronize real-time balances.'}
+              {dashboardState === 'disconnected' && 'No active account integration. Connect to synchronize real-time balances.'}
               {dashboardState === 'error' && 'Account synchronization failed or session unverified. Re-authentication required.'}
             </p>
           </div>
@@ -162,7 +162,7 @@ export const DashboardView: React.FC = () => {
               size="sm"
               className="font-bold text-xs shrink-0"
             >
-              Connect Deriv Account
+              Log In
             </Button>
           ) : (
             <Button

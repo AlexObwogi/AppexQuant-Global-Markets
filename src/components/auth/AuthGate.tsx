@@ -412,11 +412,11 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
             }
           }
         }
-        setSyncErrorMessage('Deriv account synchronization failed to verify authoritative balance snapshot.');
+        setSyncErrorMessage('Account synchronization failed to verify authoritative balance snapshot.');
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNC_FAILED' });
       } catch (err: any) {
         console.error('[AuthGate] Account hydration failed:', err);
-        setSyncErrorMessage(err?.message || 'Network error during Deriv account hydration.');
+        setSyncErrorMessage(err?.message || 'Network error during account hydration.');
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNC_FAILED' });
       } finally {
         syncInFlightRef.current[targetAccountId] = false;
@@ -540,7 +540,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           type: 'ADD_NOTIFICATION',
           payload: {
             title: 'Broker Connected',
-            message: `Authenticated with Deriv (${accountId}). Workspace active.`,
+            message: `Authenticated with Broker (${accountId}). Workspace active.`,
             type: 'success',
           },
         });
@@ -557,7 +557,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       setAuthStatusMessage(
         action === 'signup' 
           ? 'Connecting for account creation...' 
-          : 'Connecting to Deriv secure gateway...'
+          : 'Connecting to secure gateway...'
       );
 
       const targetPath = action === 'signup' ? '/api/auth/deriv/signup' : '/api/auth/deriv/login';
@@ -589,11 +589,11 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       let computedErrorMessage = rawMessage;
       if (!computedErrorMessage) {
         if (rawError === 'oauth_failed') {
-          computedErrorMessage = 'We couldn\'t connect to your Deriv account. Please try signing in again.';
+          computedErrorMessage = 'We couldn\'t connect to your account. Please try signing in again.';
         } else if (rawError === 'access_denied') {
           computedErrorMessage = 'Connection was cancelled or denied.';
         } else {
-          computedErrorMessage = 'We couldn\'t connect to your Deriv account. Please try again.';
+          computedErrorMessage = 'We couldn\'t connect to your account. Please try again.';
         }
       }
       setErrorMessage(computedErrorMessage);
@@ -640,7 +640,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           });
           return;
         } catch (e: any) {
-          setErrorMessage(e?.message || 'Deriv OAuth token authorization failed.');
+          setErrorMessage(e?.message || 'OAuth token authorization failed.');
           setIsAuthorizing(false);
         }
       })();
@@ -864,8 +864,42 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
             </span>
           </div>
 
+          {/* Desktop Navigation Bar Links */}
+          <nav className="hidden md:flex items-center gap-4 text-xs font-bold uppercase tracking-wider">
+            <button
+              onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); dispatch({ type: 'SET_ROUTE', payload: 'landing' }); }}
+              className="text-slate-300 hover:text-white transition-colors cursor-pointer"
+            >
+              Home
+            </button>
+            <button
+              onClick={() => dispatch({ type: 'SET_ROUTE', payload: 'markets' })}
+              className="text-slate-300 hover:text-white transition-colors cursor-pointer"
+            >
+              Markets
+            </button>
+            <button
+              onClick={() => dispatch({ type: 'SET_ROUTE', payload: 'ai-analysis' })}
+              className="text-slate-300 hover:text-white transition-colors cursor-pointer"
+            >
+              AI Quant
+            </button>
+            <button
+              onClick={() => dispatch({ type: 'SET_ROUTE', payload: 'education' })}
+              className="text-slate-300 hover:text-white transition-colors cursor-pointer"
+            >
+              SMC/ICT
+            </button>
+            <button
+              onClick={() => dispatch({ type: 'SET_ROUTE', payload: 'eas' })}
+              className="text-slate-300 hover:text-white transition-colors cursor-pointer"
+            >
+              Auto EA
+            </button>
+          </nav>
+
           {/* Live Market Ticker */}
-          <div className="hidden lg:flex flex-1 max-w-sm xl:max-w-md mx-4 overflow-hidden border border-slate-700/30 px-3 py-1 bg-black/20 dark:bg-black/40 rounded-lg shrink min-w-0">
+          <div className="hidden lg:flex flex-1 max-w-xs xl:max-w-sm mx-3 overflow-hidden border border-slate-700/30 px-3 py-1 bg-black/20 dark:bg-black/40 rounded-lg shrink min-w-0">
             <div className="animate-marquee-smooth whitespace-nowrap text-[10px] font-mono tracking-wider uppercase text-slate-400 overflow-hidden">
               <span>{liveTickerString}</span>
               <span className="ml-8">{liveTickerString}</span>
@@ -874,7 +908,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
           {/* Desktop Actions & Theme Toggle */}
           <div className="hidden md:flex items-center gap-2.5 shrink-0">
-            {isAuthenticated ? (
+            {isAuthenticated && (
               <button
                 onClick={() => dispatch({ type: 'SET_ROUTE', payload: 'dashboard' })}
                 className="py-1.5 px-3.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-md shadow-emerald-500/20 active:scale-95"
@@ -882,26 +916,6 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
                 <TrendingUp className="w-3.5 h-3.5" />
                 <span>Go to Dashboard</span>
               </button>
-            ) : (
-              <>
-                <button
-                  onClick={() => handleDerivLogin('connect')}
-                  disabled={isBusy}
-                  className={`py-1.5 px-3.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${syncStyles.primaryBtn}`}
-                >
-                  <Zap className="w-3.5 h-3.5 fill-current" />
-                  <span>Login</span>
-                </button>
-
-                <button
-                  onClick={() => handleDerivLogin('signup')}
-                  disabled={isBusy}
-                  className="py-1.5 px-3.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer bg-[#FF444F] hover:bg-[#E03B44] text-white shadow-md shadow-[#FF444F]/20"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Create Account</span>
-                </button>
-              </>
             )}
 
             <div className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
@@ -939,23 +953,40 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         {/* Mobile Dropdown Navigation Menu */}
         {isMobileMenuOpen && (
           <div className={`md:hidden px-4 py-3 border-t space-y-2.5 animate-in slide-in-from-top-2 duration-200 ${isDark ? 'border-slate-800 bg-[#0B0F19]' : 'border-slate-200 bg-white'}`}>
-            <button
-              onClick={() => { setIsMobileMenuOpen(false); handleDerivLogin('connect'); }}
-              disabled={isBusy}
-              className={`w-full py-2.5 px-4 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${syncStyles.primaryBtn}`}
-            >
-              <Zap className="w-4 h-4 fill-current" />
-              <span>Login</span>
-            </button>
+            <nav className="flex flex-col space-y-1.5 pb-2.5 border-b border-slate-800/40 text-xs font-bold uppercase tracking-wider">
+              <button
+                onClick={() => { setIsMobileMenuOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); dispatch({ type: 'SET_ROUTE', payload: 'landing' }); }}
+                className="text-left text-slate-300 hover:text-white py-1"
+              >
+                Home
+              </button>
+              <button
+                onClick={() => { setIsMobileMenuOpen(false); dispatch({ type: 'SET_ROUTE', payload: 'markets' }); }}
+                className="text-left text-slate-300 hover:text-white py-1"
+              >
+                Markets
+              </button>
+              <button
+                onClick={() => { setIsMobileMenuOpen(false); dispatch({ type: 'SET_ROUTE', payload: 'ai-analysis' }); }}
+                className="text-left text-slate-300 hover:text-white py-1"
+              >
+                AI Quant
+              </button>
+              <button
+                onClick={() => { setIsMobileMenuOpen(false); dispatch({ type: 'SET_ROUTE', payload: 'education' }); }}
+                className="text-left text-slate-300 hover:text-white py-1"
+              >
+                SMC/ICT
+              </button>
+              <button
+                onClick={() => { setIsMobileMenuOpen(false); dispatch({ type: 'SET_ROUTE', payload: 'eas' }); }}
+                className="text-left text-slate-300 hover:text-white py-1"
+              >
+                Auto EA
+              </button>
+            </nav>
 
-            <button
-              onClick={() => { setIsMobileMenuOpen(false); handleDerivLogin('signup'); }}
-              disabled={isBusy}
-              className="w-full py-2.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 bg-[#FF444F] hover:bg-[#E03B44] text-white"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span>Create Account</span>
-            </button>
+
 
             <div className="pt-2 flex items-center justify-between border-t border-slate-800/40 text-[10px] text-slate-400 font-mono">
               <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
@@ -1227,23 +1258,21 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
               </button>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <button
-                  onClick={() => handleDerivLogin('connect')}
-                  disabled={isBusy}
-                  className={`w-full py-3 px-4 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer ${syncStyles.primaryBtn}`}
+                <a
+                  href="/api/auth/deriv/login?action=connect&destination=/"
+                  className={`w-full py-3 px-4 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer ${syncStyles.primaryBtn}`}
                 >
                   <Zap className="w-4 h-4 fill-current" />
-                  <span>Log in</span>
-                </button>
+                  <span>Log In</span>
+                </a>
 
-                <button
-                  onClick={() => handleDerivLogin('signup')}
-                  disabled={isBusy}
-                  className="w-full py-3 px-4 rounded-xl font-bold text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer bg-[#FF444F] hover:bg-[#E03B44] text-white shadow-lg shadow-[#FF444F]/20"
+                <a
+                  href="/api/auth/deriv/signup?action=signup&destination=/"
+                  className="w-full py-3 px-4 rounded-xl font-bold text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer bg-[#FF444F] hover:bg-[#E03B44] text-white shadow-lg shadow-[#FF444F]/20"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Create Account</span>
-                </button>
+                  <span>Open Account</span>
+                </a>
               </div>
             )}
 

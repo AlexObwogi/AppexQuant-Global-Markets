@@ -134,7 +134,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
 
       {/* Right Controls: Environment, Balance Privacy, Connection, Theme, Profile */}
       <div className="flex items-center space-x-1 sm:space-x-2.5 shrink-0">
-        {/* DERIV CONNECTION STATUS: [🔥 admin trigger] [LIVE / DEMO / PAPER / OFFLINE] */}
+        {/* BROKER CONNECTION STATUS: [🔥 admin trigger] [LIVE / DEMO / PAPER / OFFLINE] */}
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           <button
             onClick={() => setShowAdminModal(true)}
@@ -151,7 +151,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
             <span>{statusText}</span>
           </div>
 
-          {/* REACTIVE DERIV HYDRATION SYNC INDICATOR */}
+          {/* REACTIVE HYDRATION SYNC INDICATOR */}
           {isAuthenticated && (
             <button
               onClick={handleManualSync}
@@ -165,12 +165,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
               }`}
               title={
                 state.user?.syncStatus === 'SYNCING'
-                  ? 'Synchronizing authoritative Deriv account snapshot...'
+                  ? 'Synchronizing authoritative account snapshot...'
                   : state.user?.syncStatus === 'SYNC_FAILED'
                   ? 'Synchronization incomplete. Click to retry sync now.'
-                  : 'Deriv Account Snapshot Synced. Click to re-sync.'
+                  : 'Account Snapshot Synced. Click to re-sync.'
               }
-              aria-label="Deriv Sync Status"
+              aria-label="Sync Status"
             >
               {state.user?.syncStatus === 'SYNCING' || isManualSyncing ? (
                 <>

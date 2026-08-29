@@ -21,8 +21,8 @@ export function getDatabasePool(): pkg.Pool {
     let connectionString = process.env.DATABASE_URL;
     
     if (!connectionString) {
-      logger.info('DATABASE_URL environment variable is not defined. Operating in fallback mode.');
-      connectionString = 'postgresql://localhost:5432/fallback';
+      logger.info('DATABASE_URL environment variable is not defined.');
+      connectionString = 'postgresql://localhost:5432/appexquant';
     }
 
     // High-concurrency connection pooling parameters

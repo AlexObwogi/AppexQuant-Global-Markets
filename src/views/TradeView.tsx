@@ -32,10 +32,12 @@ import {
 import { OrderRequest, RiskPolicy, RiskDecision, MarketEnvironmentState, defaultMarketEnvironment, CheckResult } from '../services/ai/riskEngine.ts';
 import { ExecutionCommandDesk } from '../components/eas/ExecutionCommandDesk.tsx';
 import { useApiFetch } from '../utils/apiFetch.ts';
+import { useMarketData } from '../state/MarketDataContext.tsx';
 import { ArrowRightLeft } from 'lucide-react';
 
 export const TradeView: React.FC = () => {
   const apiFetch = useApiFetch();
+  const { selectedInstrument, ticks } = useMarketData();
   // App States
   const [activePolicy, setActivePolicy] = useState<RiskPolicy | null>(null);
   const [marketEnv, setMarketEnv] = useState<MarketEnvironmentState>(defaultMarketEnvironment);
@@ -52,15 +54,29 @@ export const TradeView: React.FC = () => {
   const [orderForm, setOrderForm] = useState<Omit<OrderRequest, 'id' | 'timestamp'>>({
     strategyId: 'strat-ai-01',
     strategyName: 'Alpha-Pulse Gemini RL',
-    symbol: 'EURUSD',
+    symbol: 'frxEURUSD',
     type: 'MARKET',
     direction: 'BUY',
-    volume: 1.5,
-    price: 1.08450,
-    sl: 1.08200,
-    tp: 1.09200,
-    brokerId: 'EXNESS'
+    volume: 1.0,
+    price: 0,
+    sl: 0,
+    tp: 0,
+    brokerId: 'DERIV'
   });
+
+  // Sync real price when selectedInstrument or tick changes if price not manually modified
+  useEffect(() => {
+    const liveTick = ticks[orderForm.symbol] || (selectedInstrument ? ticks[selectedInstrument.symbol] : null);
+    const livePrice = liveTick ? liveTick.quote : (selectedInstrument?.bid || 0);
+    if (livePrice > 0 && orderForm.price === 0) {
+      setOrderForm((prev) => ({
+        ...prev,
+        price: livePrice,
+        sl: Number((livePrice * 0.995).toFixed(5)),
+        tp: Number((livePrice * 1.01).toFixed(5)),
+      }));
+    }
+  }, [ticks, selectedInstrument, orderForm.symbol, orderForm.price]);
 
   // Load state from backend on mount
   useEffect(() => {

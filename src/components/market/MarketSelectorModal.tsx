@@ -111,7 +111,7 @@ export const MarketSelectorModal: React.FC<MarketSelectorModalProps> = ({ isOpen
           ) : (
             filteredInstruments.map((inst) => {
               const tick = ticks[inst.symbol];
-              const price = tick ? tick.quote : inst.bid || 1.0;
+              const price = tick ? tick.quote : inst.bid || 0;
               const changePct = tick ? tick.changePct : inst.change24hPercentage || 0;
               const isFav = watchlist.includes(inst.symbol);
               const isSelected = inst.symbol === selectedSymbol;

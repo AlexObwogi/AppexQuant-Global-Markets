@@ -299,7 +299,7 @@ export const MarketsView: React.FC = () => {
 
                     <div className="text-right">
                       <div className="text-xs font-mono font-bold text-text-primary dark:text-text-primary">
-                        {bid.toFixed(bid > 100 ? 2 : 5)}
+                        {bid > 0 ? bid.toFixed(bid > 100 ? 2 : 5) : '...'}
                       </div>
                       <div
                         className={`text-[10px] font-mono font-semibold flex items-center justify-end space-x-0.5 ${
@@ -344,13 +344,13 @@ export const MarketsView: React.FC = () => {
                 </div>
                 <div className="flex items-center space-x-4 mt-1.5 text-xs text-text-secondary font-mono">
                   <div>
-                    Bid: <span className="text-text-primary font-bold">{selectedInstrument.bid.toFixed(selectedInstrument.bid > 100 ? 2 : 5)}</span>
+                    Bid: <span className="text-text-primary font-bold">{selectedInstrument.bid > 0 ? selectedInstrument.bid.toFixed(selectedInstrument.bid > 100 ? 2 : 5) : '...'}</span>
                   </div>
                   <div>
-                    Ask: <span className="text-text-primary font-bold">{selectedInstrument.ask.toFixed(selectedInstrument.ask > 100 ? 2 : 5)}</span>
+                    Ask: <span className="text-text-primary font-bold">{selectedInstrument.ask > 0 ? selectedInstrument.ask.toFixed(selectedInstrument.ask > 100 ? 2 : 5) : '...'}</span>
                   </div>
                   <div>
-                    Pip Spread: <span className="text-color-warning dark:text-accent-primary font-bold">{selectedInstrument.spread}</span>
+                    Pip Spread: <span className="text-color-warning dark:text-accent-primary font-bold">{selectedInstrument.spread > 0 ? selectedInstrument.spread : '...'}</span>
                   </div>
                 </div>
               </div>
@@ -358,9 +358,10 @@ export const MarketsView: React.FC = () => {
               {/* Price Callout */}
               <div className="text-right">
                 <div className="text-xl font-mono font-bold text-text-primary dark:text-text-primary">
-                  {(currentTick ? currentTick.quote : selectedInstrument.bid).toFixed(
-                    selectedInstrument.bid > 100 ? 2 : 5
-                  )}
+                  {(() => {
+                    const price = currentTick ? currentTick.quote : selectedInstrument.bid;
+                    return price > 0 ? price.toFixed(price > 100 ? 2 : 5) : 'Connecting...';
+                  })()}
                 </div>
                 <div
                   className={`text-xs font-mono font-bold ${

@@ -16,13 +16,13 @@ export async function initializeDatabaseSystem(): Promise<void> {
     // Verify direct Prisma database connection
     const isDirectConnected = await verifyDirectDatabaseConnection();
     if (!isDirectConnected) {
-      logger.info('Direct PostgreSQL database connection is unavailable. Operating in fallback mode.');
+      logger.info('Direct PostgreSQL database connection is unavailable.');
       return;
     }
 
     const connTest = await testDatabaseConnection();
     if (!connTest.success) {
-      logger.info(`PostgreSQL database connection unavailable (${connTest.error}). Operating in fallback mode.`);
+      logger.info(`PostgreSQL database connection unavailable (${connTest.error}).`);
       return;
     }
 
@@ -34,6 +34,6 @@ export async function initializeDatabaseSystem(): Promise<void> {
       logger.warn('Database migration skipped or failed during startup:', { detail: migResult.error });
     }
   } catch (err: any) {
-    logger.info(`Database initialization notice (${err?.message || String(err)}). Operating in fallback mode.`);
+    logger.info(`Database initialization notice (${err?.message || String(err)}).`);
   }
 }

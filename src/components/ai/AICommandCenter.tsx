@@ -62,10 +62,10 @@ export const AICommandCenter: React.FC<AICommandCenterProps> = ({ onOpenStrategy
       minLotSize: 0.01,
       maxLotSize: 100,
       lotStep: 0.01,
-      bid: 1.085,
-      ask: 1.0852,
-      spread: 0.0002,
-      change24hPercentage: 0.25,
+      bid: 0,
+      ask: 0,
+      spread: 0,
+      change24hPercentage: 0,
       isMarketOpen: true,
     };
     const candles = candleHistory[sym] || [];

@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useGlobalState } from '../../state/GlobalStateContext.tsx';
 import { useApiFetch } from '../../utils/apiFetch.ts';
+import { derivAuthService } from '../../services/deriv/authService.ts';
 import { ShieldCheck, ExternalLink, RefreshCw, Unplug, CheckCircle, AlertCircle, Loader2, KeyRound, UserPlus } from 'lucide-react';
 import { StatusPill } from '../ui/StatusPill.tsx';
 
@@ -236,6 +237,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
       if (res.ok) {
         const json = await res.json();
         if (json.success) {
+          derivAuthService.logout();
           setMeta({
             connected: false,
             connectionStatus: 'DISCONNECTED',

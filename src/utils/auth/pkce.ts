@@ -1,94 +1,32 @@
 /**
  * AppexQuant Markets Global - PKCE Cryptographic Security Utility
- * Generates cryptographically secure high-entropy verifiers and SHA-256 challenges
- * conforming to RFC 7636 (Proof Key for Code Exchange by OAuth Public Clients).
+ * Re-exports centralized RFC 7636 PKCE functions from src/services/deriv/pkce.ts
+ * and provides browser client-side encrypted storage utilities.
  */
 
-/**
- * Encodes a buffer to Base64URL string (RFC 4648 § 5)
- */
-export function base64UrlEncode(buffer: Uint8Array | ArrayBuffer): string {
-  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  const base64 = btoa(binary);
-  return base64
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
+export {
+  base64UrlEncode,
+  base64UrlDecode,
+  generateCodeVerifier,
+  generateCodeChallenge,
+  deriveCodeChallenge,
+  generatePKCE,
+  generateState,
+  encodeOAuthStateCookie,
+  decodeOAuthStateCookie,
+} from '../../services/deriv/pkce.ts';
 
-/**
- * Decodes a Base64URL string back to a Uint8Array
- */
-export function base64UrlDecode(str: string): Uint8Array {
-  let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
-  while (base64.length % 4) {
-    base64 += '=';
-  }
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-/**
- * Generates a cryptographically strong, high-entropy code verifier (43 - 128 characters)
- * Uses crypto.getRandomValues for cryptographic randomness.
- */
-export async function generateCodeVerifier(length: number = 64): Promise<string> {
-  const clampedLength = Math.max(43, Math.min(128, length));
-  // 1 byte produces ~1.33 base64 characters; allocate sufficient random bytes
-  const randomBytesCount = Math.ceil((clampedLength * 3) / 4);
-  const randomBytes = new Uint8Array(randomBytesCount);
-  
-  if (typeof window !== 'undefined' && window.crypto) {
-    window.crypto.getRandomValues(randomBytes);
-  } else {
-    // Fallback for node or non-browser environments
-    for (let i = 0; i < randomBytes.length; i++) {
-      randomBytes[i] = Math.floor(Math.random() * 256);
-    }
-  }
-
-  const verifier = base64UrlEncode(randomBytes).substring(0, clampedLength);
-  return verifier;
-}
-
-/**
- * Derives the SHA-256 code challenge from the code verifier
- * S256 method: BASE64URL-ENCODE(SHA256(ASCII(code_verifier)))
- */
-export async function deriveCodeChallenge(codeVerifier: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(codeVerifier);
-
-  if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
-    const digest = await window.crypto.subtle.digest('SHA-256', data);
-    return base64UrlEncode(digest);
-  }
-
-  // Fallback if subtle crypto is unavailable in insecure contexts
-  return base64UrlEncode(data);
-}
-
-/**
- * Alias for backward compatibility
- */
-export const generateCodeChallenge = deriveCodeChallenge;
+import { base64UrlEncode, base64UrlDecode } from '../../services/deriv/pkce.ts';
 
 /**
  * Client-Side Encrypted Cookie Manager (Web Crypto AES-GCM + Secure Attributes)
  */
 const ENCRYPTION_SALT = 'APPEXQUANT_SECURE_AUTH_V1';
 
-async function getEncryptionKey(salt: string): Promise<CryptoKey> {
+async function getEncryptionKey(salt: string): Promise<CryptoKey | null> {
+  if (typeof window === 'undefined' || !window.crypto || !window.crypto.subtle) return null;
   const enc = new TextEncoder();
-  const rawKeyMaterial = enc.encode(salt + (typeof window !== 'undefined' ? window.location.hostname : 'appexquant'));
+  const rawKeyMaterial = enc.encode(salt + window.location.hostname);
   const keyHash = await window.crypto.subtle.digest('SHA-256', rawKeyMaterial);
   return window.crypto.subtle.importKey(
     'raw',
@@ -108,25 +46,27 @@ export async function setEncryptedCookie(name: string, value: string, maxAgeSeco
   try {
     if (window.crypto && window.crypto.subtle) {
       const key = await getEncryptionKey(ENCRYPTION_SALT);
-      const iv = window.crypto.getRandomValues(new Uint8Array(12));
-      const encoder = new TextEncoder();
-      const encodedData = encoder.encode(value);
+      if (key) {
+        const iv = window.crypto.getRandomValues(new Uint8Array(12));
+        const encoder = new TextEncoder();
+        const encodedData = encoder.encode(value);
 
-      const ciphertext = await window.crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        encodedData
-      );
+        const ciphertext = await window.crypto.subtle.encrypt(
+          { name: 'AES-GCM', iv },
+          key,
+          encodedData
+        );
 
-      const combined = new Uint8Array(iv.length + ciphertext.byteLength);
-      combined.set(iv, 0);
-      combined.set(new Uint8Array(ciphertext), iv.length);
+        const combined = new Uint8Array(iv.length + ciphertext.byteLength);
+        combined.set(iv, 0);
+        combined.set(new Uint8Array(ciphertext), iv.length);
 
-      const secureString = base64UrlEncode(combined);
-      const isHttps = window.location.protocol === 'https:';
-      const cookieStr = `${encodeURIComponent(name)}=${encodeURIComponent(secureString)}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax${isHttps ? '; Secure' : ''}`;
-      document.cookie = cookieStr;
-      return;
+        const secureString = base64UrlEncode(combined);
+        const isHttps = window.location.protocol === 'https:';
+        const cookieStr = `${encodeURIComponent(name)}=${encodeURIComponent(secureString)}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax${isHttps ? '; Secure' : ''}`;
+        document.cookie = cookieStr;
+        return;
+      }
     }
   } catch (e) {
     console.warn('Cookie encryption failed, using obfuscated storage fallback:', e);
@@ -165,18 +105,19 @@ export async function getEncryptedCookie(name: string): Promise<string | null> {
         const ciphertext = combined.slice(12);
         const key = await getEncryptionKey(ENCRYPTION_SALT);
 
-        const decrypted = await window.crypto.subtle.decrypt(
-          { name: 'AES-GCM', iv },
-          key,
-          ciphertext
-        );
+        if (key) {
+          const decrypted = await window.crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv },
+            key,
+            ciphertext
+          );
 
-        const decoder = new TextDecoder();
-        return decoder.decode(decrypted);
+          const decoder = new TextDecoder();
+          return decoder.decode(decrypted);
+        }
       }
     }
   } catch (e) {
-    // If decryption fails, try standard base64 decoding
     try {
       return atob(cookieValue);
     } catch {

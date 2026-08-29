@@ -19,10 +19,10 @@ export const FALLBACK_INSTRUMENTS: MarketInstrument[] = [
     minLotSize: 0.01,
     maxLotSize: 100,
     lotStep: 0.01,
-    bid: 1.08450,
-    ask: 1.08456,
-    spread: 0.6,
-    change24hPercentage: 0.14,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
     isMarketOpen: true,
   },
   {
@@ -36,10 +36,10 @@ export const FALLBACK_INSTRUMENTS: MarketInstrument[] = [
     minLotSize: 0.01,
     maxLotSize: 100,
     lotStep: 0.01,
-    bid: 1.29820,
-    ask: 1.29828,
-    spread: 0.8,
-    change24hPercentage: -0.08,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
     isMarketOpen: true,
   },
   {
@@ -53,10 +53,10 @@ export const FALLBACK_INSTRUMENTS: MarketInstrument[] = [
     minLotSize: 0.01,
     maxLotSize: 100,
     lotStep: 0.01,
-    bid: 148.650,
-    ask: 148.658,
-    spread: 0.8,
-    change24hPercentage: 0.35,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
     isMarketOpen: true,
   },
   {
@@ -70,10 +70,10 @@ export const FALLBACK_INSTRUMENTS: MarketInstrument[] = [
     minLotSize: 0.01,
     maxLotSize: 100,
     lotStep: 0.01,
-    bid: 0.65420,
-    ask: 0.65426,
-    spread: 0.6,
-    change24hPercentage: -0.12,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
     isMarketOpen: true,
   },
   // Deriv Volatility & Synthetic Indices
@@ -88,10 +88,10 @@ export const FALLBACK_INSTRUMENTS: MarketInstrument[] = [
     minLotSize: 0.1,
     maxLotSize: 50,
     lotStep: 0.1,
-    bid: 2045.12,
-    ask: 2045.32,
-    spread: 0.2,
-    change24hPercentage: 1.25,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
     isMarketOpen: true,
   },
   {
@@ -105,10 +105,10 @@ export const FALLBACK_INSTRUMENTS: MarketInstrument[] = [
     minLotSize: 0.1,
     maxLotSize: 50,
     lotStep: 0.1,
-    bid: 284.125,
-    ask: 284.150,
-    spread: 0.025,
-    change24hPercentage: -0.42,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
     isMarketOpen: true,
   },
   {
@@ -122,10 +122,10 @@ export const FALLBACK_INSTRUMENTS: MarketInstrument[] = [
     minLotSize: 0.1,
     maxLotSize: 50,
     lotStep: 0.1,
-    bid: 10450.80,
-    ask: 10451.10,
-    spread: 0.3,
-    change24hPercentage: 0.88,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
     isMarketOpen: true,
   },
   {
@@ -139,10 +139,10 @@ export const FALLBACK_INSTRUMENTS: MarketInstrument[] = [
     minLotSize: 0.1,
     maxLotSize: 50,
     lotStep: 0.1,
-    bid: 1845.50,
-    ask: 1845.75,
-    spread: 0.25,
-    change24hPercentage: -1.15,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
     isMarketOpen: true,
   },
   // Commodities / Metals
@@ -157,10 +157,10 @@ export const FALLBACK_INSTRUMENTS: MarketInstrument[] = [
     minLotSize: 0.01,
     maxLotSize: 20,
     lotStep: 0.01,
-    bid: 2742.30,
-    ask: 2742.60,
-    spread: 0.3,
-    change24hPercentage: 0.72,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
     isMarketOpen: true,
   },
   // Crypto
@@ -175,10 +175,10 @@ export const FALLBACK_INSTRUMENTS: MarketInstrument[] = [
     minLotSize: 0.01,
     maxLotSize: 10,
     lotStep: 0.01,
-    bid: 96450.00,
-    ask: 96465.00,
-    spread: 15.0,
-    change24hPercentage: 2.45,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
     isMarketOpen: true,
   },
   {
@@ -192,10 +192,10 @@ export const FALLBACK_INSTRUMENTS: MarketInstrument[] = [
     minLotSize: 0.01,
     maxLotSize: 50,
     lotStep: 0.01,
-    bid: 3420.50,
-    ask: 3421.20,
-    spread: 0.7,
-    change24hPercentage: 1.82,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
     isMarketOpen: true,
   },
 ];
@@ -234,7 +234,7 @@ export function normalizeDerivActiveSymbols(rawSymbols: DerivActiveSymbol[]): Ma
 
     const category = mapDerivMarketCategory(sym.market, sym.submarket);
     const pip = sym.pip || 0.0001;
-    const spotPrice = sym.spot && sym.spot > 0 ? sym.spot : 100.0;
+    const spotPrice = typeof sym.spot === 'number' && sym.spot > 0 ? sym.spot : 0;
 
     // Parse base/quote from symbol or display name
     let baseCurrency = 'USD';
@@ -248,6 +248,10 @@ export function normalizeDerivActiveSymbols(rawSymbols: DerivActiveSymbol[]): Ma
       quoteCurrency = sym.symbol.substring(3).toUpperCase() || 'USD';
     }
 
+    const bid = spotPrice;
+    const ask = spotPrice > 0 ? spotPrice + pip * 2 : 0;
+    const spread = spotPrice > 0 ? Number((pip * 2).toFixed(5)) : 0;
+
     normalized.push({
       id: sym.symbol,
       symbol: sym.symbol,
@@ -259,9 +263,9 @@ export function normalizeDerivActiveSymbols(rawSymbols: DerivActiveSymbol[]): Ma
       minLotSize: sym.min_stake || 0.01,
       maxLotSize: sym.max_stake || 100,
       lotStep: 0.01,
-      bid: spotPrice,
-      ask: spotPrice + pip * 2,
-      spread: Number((pip * 2).toFixed(5)),
+      bid,
+      ask,
+      spread,
       change24hPercentage: 0.0,
       isMarketOpen: sym.is_trading_suspended !== 1,
     });

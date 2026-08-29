@@ -45,7 +45,7 @@ export const PriceTriggerAlertModal: React.FC<PriceTriggerAlertModalProps> = ({ 
 
   const currentTick = ticks[selectedSymbol];
   const activeInst = instruments.find((i) => i.symbol === selectedSymbol);
-  const currentPrice = currentTick ? currentTick.quote : activeInst?.bid || 1.0;
+  const currentPrice = currentTick ? currentTick.quote : activeInst?.bid || 0;
   const pipSize = activeInst?.pipSize || 0.0001;
 
   const [targetPrice, setTargetPrice] = useState<number>(currentPrice);

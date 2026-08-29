@@ -183,54 +183,52 @@ export class MarketDataEngine implements MarketDataProvider {
       return existing;
     }
 
-    // Generate or fetch fresh quote
-    const base = normSymbol.includes('XAU') ? 2338.20 : normSymbol.includes('EUR') ? 1.08450 : 1.27500;
-    const quote = this.validateAndNormalizeQuote(normSymbol, base, base + 0.0002);
-    if (!quote) {
-      throw new Error(`Unable to obtain valid quote for ${normSymbol}`);
+    const lastTick = this.derivWs.getLastTick(normSymbol) || this.derivWs.getLastTick(symbol);
+    if (lastTick && (lastTick.quote > 0 || lastTick.bid > 0)) {
+      const quote = this.validateAndNormalizeQuote(
+        normSymbol,
+        lastTick.bid || lastTick.quote,
+        lastTick.ask || lastTick.quote,
+        lastTick.epoch * 1000
+      );
+      if (quote) return quote;
     }
-    return quote;
+
+    throw new Error(`Real market quote for ${normSymbol} is currently unavailable from Deriv.`);
   }
 
   async getHistoricalBars(symbol: string, timeframe: string, count = 50): Promise<MarketBar[]> {
     const normSymbol = symbol.toUpperCase();
-    const now = Date.now();
-    const tfMs = timeframe === '1M' ? 60000 : timeframe === '5M' ? 300000 : timeframe === '15M' ? 900000 : 3600000;
-    
-    const bars: MarketBar[] = [];
-    let basePrice = normSymbol.includes('XAU') ? 2330.00 : normSymbol.includes('EUR') ? 1.08200 : 1.27000;
+    const tfSec = timeframe === '1M' ? 60 : timeframe === '5M' ? 300 : timeframe === '15M' ? 900 : 3600;
 
-    for (let i = count; i >= 0; i--) {
-      const time = now - i * tfMs;
-      const variation = (Math.random() - 0.48) * (normSymbol.includes('XAU') ? 4 : 0.001);
-      const open = basePrice;
-      const close = open + variation;
-      const high = Math.max(open, close) + Math.random() * (normSymbol.includes('XAU') ? 2 : 0.0005);
-      const low = Math.min(open, close) - Math.random() * (normSymbol.includes('XAU') ? 2 : 0.0005);
-      basePrice = close;
-
-      bars.push({
-        time,
-        open: Number(open.toFixed(5)),
-        high: Number(high.toFixed(5)),
-        low: Number(low.toFixed(5)),
-        close: Number(close.toFixed(5)),
-        volume: Math.floor(Math.random() * 1000 + 100),
-        symbol: normSymbol,
-        timeframe,
-        metadata: {
-          timestamp: new Date(time).toISOString(),
-          provider: this.providerName,
+    try {
+      const fetched = await this.derivWs.fetchCandles(symbol, tfSec, count);
+      if (fetched && fetched.length > 0) {
+        return fetched.map((c, i) => ({
+          time: c.timestamp,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: 100,
           symbol: normSymbol,
-          source: 'Deriv-History',
-          sequence: i,
-          receivedAt: new Date().toISOString(),
-          qualityState: 'FRESH',
-        },
-      });
+          timeframe,
+          metadata: {
+            timestamp: new Date(c.timestamp).toISOString(),
+            provider: this.providerName,
+            symbol: normSymbol,
+            source: 'Deriv-History',
+            sequence: i,
+            receivedAt: new Date().toISOString(),
+            qualityState: 'FRESH',
+          },
+        }));
+      }
+    } catch (e) {
+      console.warn(`[MarketDataEngine] Failed to fetch real candles for ${symbol}:`, e);
     }
 
-    return bars;
+    return [];
   }
 
   async getLatestBar(symbol: string, timeframe: string): Promise<MarketBar> {

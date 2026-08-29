@@ -30,7 +30,7 @@ export const TradingWorkspaceView: React.FC = () => {
 
   const activeCandles = useMemo(() => candles[`${selectedSymbol}_${selectedTimeframe}`] || [], [candles, selectedSymbol, selectedTimeframe]);
   const currentTick = ticks[selectedSymbol];
-  const currentPrice = currentTick ? currentTick.quote : selectedInstrument?.bid || 1.0;
+  const currentPrice = currentTick ? currentTick.quote : selectedInstrument?.bid || 0;
   const priceChange = currentTick ? currentTick.changePct : selectedInstrument?.change24hPercentage || 0;
 
   return (

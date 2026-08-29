@@ -97,7 +97,7 @@ export async function verifyDirectDatabaseConnection(): Promise<boolean> {
   } catch (err: any) {
     isDirectDbAvailableState = false;
     const cleanErrMsg = (err?.message || String(err)).trim().replace(/^\n+/, '').split('\n').pop() || 'Unreachable';
-    logger.info(`Direct PostgreSQL database connection unavailable (${cleanErrMsg}). Fallback mode active.`);
+    logger.info(`Direct PostgreSQL database connection unavailable (${cleanErrMsg}).`);
     return false;
   }
 }

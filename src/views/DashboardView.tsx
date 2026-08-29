@@ -26,6 +26,12 @@ import {
   TrendingUp,
   Shield,
   Zap,
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  Unplug,
+  Search,
+  Lock,
 } from 'lucide-react';
 
 export const DashboardView: React.FC = () => {
@@ -36,6 +42,22 @@ export const DashboardView: React.FC = () => {
     if (symbol) setSelectedSymbol(symbol);
     dispatch({ type: 'SET_ROUTE', payload: 'markets' });
   };
+
+  // Compute dashboard connection state
+  type DashboardState = 'loading' | 'authenticating' | 'discovering' | 'syncing' | 'connected' | 'disconnected' | 'error';
+  let dashboardState: DashboardState = 'disconnected';
+
+  if (!state.user) {
+    dashboardState = 'disconnected';
+  } else if (state.user.syncStatus === 'SYNCING') {
+    dashboardState = 'syncing';
+  } else if (state.user.syncStatus === 'SYNC_FAILED') {
+    dashboardState = 'error';
+  } else if (state.connectionStatus === 'ONLINE' && (state.user.derivAccountId || state.user.loginid)) {
+    dashboardState = 'connected';
+  } else {
+    dashboardState = 'disconnected';
+  }
 
   // Top 4 watchlist instruments to preview on Dashboard
   const previewSymbols = ['frxEURUSD', 'R_100', 'cryBTCUSD', 'frxXAUUSD'];
@@ -91,6 +113,67 @@ export const DashboardView: React.FC = () => {
             <Settings className="w-3.5 h-3.5 text-text-secondary" />
             <span>Settings</span>
           </Button>
+        </div>
+      </div>
+
+      {/* Backend Authority Dashboard Connection Banner */}
+      <div className="p-3 bg-bg-surface border border-border-color dark:border-[#2B3139] rounded-[4px] flex items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2.5">
+          {dashboardState === 'connected' && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />}
+          {dashboardState === 'syncing' && <RefreshCw className="w-4 h-4 text-cyan-500 animate-spin shrink-0" />}
+          {dashboardState === 'disconnected' && <Unplug className="w-4 h-4 text-text-secondary shrink-0" />}
+          {dashboardState === 'error' && <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />}
+
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-mono uppercase font-bold text-[10px] text-text-secondary tracking-wider">
+                Backend Authority Status
+              </span>
+              <Badge
+                variant={
+                  dashboardState === 'connected'
+                    ? 'success'
+                    : dashboardState === 'error'
+                    ? 'danger'
+                    : dashboardState === 'syncing'
+                    ? 'warning'
+                    : 'neutral'
+                }
+                size="sm"
+                className="font-mono text-[10px] font-bold uppercase"
+              >
+                {dashboardState}
+              </Badge>
+            </div>
+            <p className="text-text-primary text-xs font-medium mt-0.5">
+              {dashboardState === 'connected' && `Authenticated with Deriv (${state.user?.derivAccountId || state.user?.loginid || 'Active'}). Backend is source of truth.`}
+              {dashboardState === 'syncing' && 'Synchronizing account balance and portfolio metadata with backend...'}
+              {dashboardState === 'disconnected' && 'No active Deriv account integration. Connect to synchronize real-time balances.'}
+              {dashboardState === 'error' && 'Account synchronization failed or session unverified. Re-authentication required.'}
+            </p>
+          </div>
+        </div>
+
+        <div>
+          {dashboardState === 'disconnected' || dashboardState === 'error' ? (
+            <Button
+              onClick={() => dispatch({ type: 'SET_ROUTE', payload: 'account' })}
+              variant="primary"
+              size="sm"
+              className="font-bold text-xs shrink-0"
+            >
+              Connect Deriv Account
+            </Button>
+          ) : (
+            <Button
+              onClick={() => dispatch({ type: 'SET_ROUTE', payload: 'account' })}
+              variant="outline"
+              size="sm"
+              className="text-xs shrink-0 font-medium"
+            >
+              Account Hub
+            </Button>
+          )}
         </div>
       </div>
 
@@ -209,7 +292,7 @@ export const DashboardView: React.FC = () => {
                   <span className="font-semibold text-text-primary">{inst.name}</span>
                   <div className="text-right font-mono">
                     <span className="text-text-primary font-bold mr-2">
-                      {price.toFixed(price > 100 ? 2 : 5)}
+                      {price > 0 ? price.toFixed(price > 100 ? 2 : 5) : '...'}
                     </span>
                     <span className={pct >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-rose-600 dark:text-rose-400 font-semibold'}>
                       {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%

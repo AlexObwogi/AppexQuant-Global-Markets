@@ -60,9 +60,22 @@ export function isValidDerivAccountId(accountId?: unknown): accountId is string 
   if (typeof accountId !== 'string') return false;
   const trimmed = accountId.trim();
   if (trimmed.length < 3 || trimmed.length > 32) return false;
-  if (trimmed.toLowerCase() === 'undefined' || trimmed.toLowerCase() === 'null') return false;
-  if (trimmed.startsWith('usr-') || trimmed.startsWith('user-')) return false;
-  return VALID_DERIV_ID_REGEX.test(trimmed) || /^(CR|VRTC|VR|MF|MLT)[A-Z0-9_-]+$/i.test(trimmed);
+  const lower = trimmed.toLowerCase();
+  if (
+    lower === 'undefined' ||
+    lower === 'null' ||
+    lower === 'account' ||
+    lower.startsWith('usr-') ||
+    lower.startsWith('user-') ||
+    lower.startsWith('sys-') ||
+    lower.startsWith('demo-') ||
+    lower.startsWith('test-') ||
+    lower.startsWith('fallback') ||
+    lower.startsWith('placeholder')
+  ) {
+    return false;
+  }
+  return VALID_DERIV_ID_REGEX.test(trimmed) || /^(CR|VRTC|VR|MF|MLT|MX)[0-9]+$/i.test(trimmed);
 }
 
 /**

@@ -3,9 +3,8 @@
  * Rebuilt for compact mobile responsive layout and user privacy controls.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useGlobalState, AppViewRoute } from '../../state/GlobalStateContext.tsx';
-import { derivAuthService } from '../../services/deriv/authService.ts';
 import { useApiFetch } from '../../utils/apiFetch.ts';
 import { useMarketData } from '../../state/MarketDataContext.tsx';
 import { EnvironmentSelector } from '../common/EnvironmentSelector.tsx';
@@ -24,11 +23,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
 
-  const [authProfile, setAuthProfile] = useState(derivAuthService.getProfile());
-  useEffect(() => {
-    const interval = setInterval(() => setAuthProfile(derivAuthService.getProfile()), 2000);
-    return () => clearInterval(interval);
-  }, []);
   const handleNavigate = (route: AppViewRoute) => {
     dispatch({ type: 'SET_ROUTE', payload: route });
   };
@@ -235,7 +229,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
         >
           <User className="w-4 h-4 shrink-0" />
           <span className="text-[10px] sm:text-xs font-bold text-text-primary whitespace-normal break-words max-w-[120px] sm:max-w-none text-left leading-tight">
-            {authProfile?.loginid || state.user?.derivAccountId || 'Account'}
+            {state.user?.loginid || state.user?.derivAccountId || 'Account'}
           </span>
         </button>
       </div>

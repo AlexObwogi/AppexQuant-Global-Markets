@@ -4,6 +4,7 @@
  */
 
 import { BrokerAdapter, BrokerConnection, BrokerType, BrokerAccount, BrokerBalance, BrokerPosition, BrokerOrder, BrokerEnvironment, BrokerConnectionState } from '../types/broker.ts';
+import { derivWs } from './deriv/DerivWebSocketManager.ts';
 
 export class BaseBrokerAdapter implements BrokerAdapter {
   readonly brokerType: BrokerType;
@@ -145,12 +146,19 @@ export class BaseBrokerAdapter implements BrokerAdapter {
   }
 
   async getMarketData(symbol: string): Promise<{ symbol: string; bid: number; ask: number; timestamp: string }> {
-    const basePrice = symbol.includes('XAU') ? 2338.20 : symbol.includes('EUR') ? 1.08450 : 1.27500;
-    const spread = symbol.includes('XAU') ? 0.30 : 0.00012;
+    const tick = derivWs.getLastTick(symbol);
+    if (tick && (tick.bid > 0 || tick.quote > 0)) {
+      return {
+        symbol,
+        bid: tick.bid || tick.quote,
+        ask: tick.ask || tick.quote,
+        timestamp: new Date(tick.epoch ? tick.epoch * 1000 : Date.now()).toISOString(),
+      };
+    }
     return {
       symbol,
-      bid: basePrice,
-      ask: basePrice + spread,
+      bid: 0,
+      ask: 0,
       timestamp: new Date().toISOString(),
     };
   }

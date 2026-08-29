@@ -235,74 +235,44 @@ export async function exchangeCodeForToken(
 }
 
 /**
- * Fetches user account profile from Deriv using an access token.
+ * Fetches user account profile from Deriv using an access token via HTTP REST API.
+ * Authentication does not depend on WebSocket.
  */
 export async function fetchUserProfile(accessToken: string, appId?: string): Promise<any> {
   const safeAppId = appId || getDerivAppId();
+  const cleanToken = accessToken ? accessToken.trim() : '';
+  if (!cleanToken) return null;
+
   try {
-    const WS = typeof WebSocket !== 'undefined' ? WebSocket : (globalThis as any).WebSocket;
-    if (!WS) return null;
-
-    return new Promise((resolve) => {
-      const wsUrl = `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(safeAppId)}&l=EN&brand=deriv`;
-      const ws = new WS(wsUrl);
-      let settled = false;
-
-      const finish = (result: any) => {
-        if (!settled) {
-          settled = true;
-          clearTimeout(timer);
-          try {
-            if (typeof ws.close === 'function') ws.close();
-          } catch {}
-          resolve(result);
-        }
-      };
-
-      const timer = setTimeout(() => finish(null), 7000);
-
-      const sendAuth = () => {
-        try {
-          ws.send(JSON.stringify({ authorize: accessToken.trim() }));
-        } catch {
-          finish(null);
-        }
-      };
-
-      if (typeof ws.on === 'function') {
-        ws.on('open', sendAuth);
-        ws.on('message', (data: any) => {
-          try {
-            const raw = typeof data === 'string' ? data : data?.toString() || '';
-            const parsed = JSON.parse(raw);
-            if (parsed.msg_type === 'authorize' && parsed.authorize) {
-              finish(parsed.authorize);
-            } else if (parsed.error) {
-              finish(null);
-            }
-          } catch {
-            finish(null);
-          }
-        });
-        ws.on('error', () => finish(null));
-      } else {
-        ws.onopen = sendAuth;
-        ws.onmessage = (event: any) => {
-          try {
-            const raw = typeof event.data === 'string' ? event.data : event.data?.toString() || '';
-            const parsed = JSON.parse(raw);
-            if (parsed.msg_type === 'authorize' && parsed.authorize) {
-              finish(parsed.authorize);
-            } else if (parsed.error) {
-              finish(null);
-            }
-          } catch {
-            finish(null);
-          }
-        };
-        ws.onerror = () => finish(null);
-      }
+    const url = 'https://api.derivws.com/trading/v1/options/accounts';
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${cleanToken}`,
+        'Deriv-App-ID': safeAppId,
+        Accept: 'application/json',
+      },
     });
+
+    if (response.ok) {
+      const data = await response.json();
+      const rawList = Array.isArray(data) ? data : (data.accounts || (data.account_id ? [data] : []));
+      if (rawList.length > 0) {
+        const item = rawList[0];
+        const loginid = item.account_id || item.loginid || item.id;
+        return {
+          loginid,
+          currency: item.currency || 'USD',
+          balance: typeof item.balance === 'number' ? item.balance : parseFloat(item.balance || '0'),
+          is_virtual: item.account_type === 'demo' || (loginid && String(loginid).startsWith('VR')) ? 1 : 0,
+          email: item.email,
+          fullname: item.fullname || item.full_name,
+          scopes: item.scopes,
+          account_list: rawList,
+        };
+      }
+    }
+    return null;
   } catch {
     return null;
   }

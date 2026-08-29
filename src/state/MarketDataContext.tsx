@@ -363,24 +363,31 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     return () => clearInterval(staleInterval);
   }, [connectionState, ticks]);
 
+  // Compute live instruments dynamically merging real Deriv ticks
+  const liveInstruments = useMemo<MarketInstrument[]>(() => {
+    return instruments.map((inst) => {
+      const tick = ticks[inst.symbol];
+      if (tick && (tick.quote > 0 || tick.bid > 0)) {
+        const bid = tick.bid || tick.quote;
+        const ask = tick.ask || tick.quote;
+        return {
+          ...inst,
+          bid,
+          ask,
+          spread: Number((ask - bid).toFixed(5)),
+          change24hPercentage: tick.changePct || 0,
+        };
+      }
+      return inst;
+    });
+  }, [instruments, ticks]);
+
   // Selected Instrument lookup with live merged quote
   const selectedInstrument = useMemo(() => {
-    const found = instruments.find((i) => i.symbol === selectedSymbol);
-    if (!found) return instruments[0] || null;
-
-    // Attach latest verified live tick quote/bid/ask
-    const tick = ticks[selectedSymbol];
-    if (tick) {
-      return {
-        ...found,
-        bid: tick.bid,
-        ask: tick.ask,
-        spread: Number((tick.ask - tick.bid).toFixed(5)),
-        change24hPercentage: tick.changePct,
-      };
-    }
+    const found = liveInstruments.find((i) => i.symbol === selectedSymbol);
+    if (!found) return liveInstruments[0] || null;
     return found;
-  }, [instruments, selectedSymbol, ticks]);
+  }, [liveInstruments, selectedSymbol]);
 
   // Calculate Data Freshness for currently selected symbol
   const dataFreshness = useMemo<DataFreshness>(() => {
@@ -469,8 +476,8 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   }, []);
 
   const value = useMemo(() => ({
-    instruments,
-    availableInstruments: instruments,
+    instruments: liveInstruments,
+    availableInstruments: liveInstruments,
     selectedSymbol,
     selectedInstrument,
     selectedCategory,
@@ -509,7 +516,7 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     reconnect,
     refreshSymbols,
   }), [
-    instruments,
+    liveInstruments,
     selectedSymbol,
     selectedInstrument,
     selectedCategory,

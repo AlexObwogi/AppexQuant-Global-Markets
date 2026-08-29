@@ -881,12 +881,14 @@ export async function createApp() {
             );
           }
         } catch (dbErr: any) {
-          logger.warn('Database user query notice during login, using memory fallback:', { detail: dbErr.message });
+          logger.error('Database query failed during login:', { error: dbErr.message });
+          return res.status(500).json(createErrorResponse(`Database error during authentication: ${dbErr.message || String(dbErr)}`, 'DATABASE_ERROR'));
         }
+      } else if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) {
+        return res.status(503).json(createErrorResponse(`Database connection failure: ${connTest.error}`, 'DATABASE_UNAVAILABLE'));
       }
 
       if (!targetUser) {
-        // Enforce Super Admin profile if email matches Alex's email
         if (email === 'obwogialex728@gmail.com') {
           targetUser = mockUsers.find(u => u.id === 'usr-super-obwogi') || {
             id: 'usr-super-obwogi',
@@ -962,8 +964,11 @@ export async function createApp() {
             existingUser = userRes.rows[0];
           }
         } catch (dbErr: any) {
-          logger.warn('Database user query notice during registration, using memory fallback:', { detail: dbErr.message });
+          logger.error('Database query failed during registration:', { error: dbErr.message });
+          return res.status(500).json(createErrorResponse(`Database error during registration: ${dbErr.message || String(dbErr)}`, 'DATABASE_ERROR'));
         }
+      } else if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) {
+        return res.status(503).json(createErrorResponse(`Database connection failure: ${connTest.error}`, 'DATABASE_UNAVAILABLE'));
       }
 
       if (!existingUser) {
@@ -1242,28 +1247,45 @@ export async function createApp() {
       }
 
       // Successful exchange: Create authenticated AppExQuant user session
-      const rawAcct = result.rawAccountDetails?.derivAccountId || result.userId;
-      if (!rawAcct) {
-        throw new Error('Deriv account identifier could not be resolved from callback.');
+      // STRICT DISCOVERY ENFORCEMENT: Never fallback to result.userId, usr-*, user-*, sys-*, demo placeholders
+      const verifiedLoginId = result.rawAccountDetails?.derivAccountId || result.rawAccountDetails?.loginid || result.loginid || result.accountId;
+      
+      if (!verifiedLoginId || !isValidDerivAccountId(verifiedLoginId)) {
+        const errorReason = 'Deriv account verification failed: No genuine Deriv account loginid discovered.';
+        logger.error('[DerivOAuth] Verification failure - rejected loginid:', { loginid: verifiedLoginId });
+        logSecurityEvent(req, 'DERIV_OAUTH_FAILED', 'WARNING', { reason: 'UNVERIFIED_LOGINID', loginid: verifiedLoginId });
+        res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`);
+        if (req.headers.accept?.includes('application/json')) {
+          return res.status(400).json(createErrorResponse(errorReason, 'AUTH_FAILED'));
+        }
+        return res.redirect(`/?auth_error=discovery_failed&message=${encodeURIComponent(errorReason)}`);
       }
-      const accountType = result.rawAccountDetails?.accountType || (rawAcct.startsWith('VR') ? 'demo' : 'real');
+
+      const accountId = verifiedLoginId;
+      const loginid = verifiedLoginId;
+      const accountType = result.rawAccountDetails?.accountType || (verifiedLoginId.startsWith('VR') ? 'demo' : 'real');
       const currency = result.rawAccountDetails?.currency || 'USD';
+      const scopes = result.rawAccountDetails?.scopes || result.scopes || ['trade', 'account_manage'];
       const realEmail = result.rawAccountDetails?.email || '';
       const fullName = result.rawAccountDetails?.fullName;
       const balance = result.rawAccountDetails?.balance ?? 0;
       const csrfToken = crypto.randomBytes(32).toString('hex');
       const rawToken = result.rawAccountDetails?.token;
       const encryptedDerivToken = rawToken ? encryptSensitiveData(rawToken) : undefined;
+      const appUserId = (typeof result.userId === 'string' && result.userId.startsWith('usr-'))
+        ? result.userId
+        : `usr-${crypto.randomBytes(6).toString('hex')}`;
 
+      // Invariants: accountId strictly matches discovered loginid; accountId never equals appUserId
       const sessionPayload: SessionPayload = {
-        userId: rawAcct,
+        userId: appUserId,
         email: realEmail,
         fullName,
         balance,
-        derivAccountId: rawAcct,
+        derivAccountId: accountId,
         accountType,
         currency,
-        role: (realEmail === 'obwogialex728@gmail.com' || rawAcct.toLowerCase().includes('admin')) ? UserRole.ADMIN : UserRole.USER,
+        role: (realEmail === 'obwogialex728@gmail.com' || accountId.toLowerCase().includes('admin')) ? UserRole.ADMIN : UserRole.USER,
         isElevated: false,
         elevatedUntil: null,
         csrfToken,
@@ -1283,27 +1305,27 @@ export async function createApp() {
       if (rawToken) {
         cookieList.push(`deriv_access_token=${encodeURIComponent(rawToken)}; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=86400`);
       }
-      if (rawAcct) {
-        cookieList.push(`deriv_session_user_id=${encodeURIComponent(rawAcct)}; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=86400`);
-      }
+      cookieList.push(`deriv_session_user_id=${encodeURIComponent(accountId)}; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=86400`);
       res.setHeader('Set-Cookie', cookieList);
 
-      console.log('[DERIV_OAUTH_SESSION_PERSISTED]', { userId: rawAcct, email: realEmail, accountType });
-      logSecurityEvent(req, 'DERIV_OAUTH_SUCCESS', 'INFO', { userId: rawAcct, email: realEmail, accountType });
+      console.log('[DERIV_OAUTH_SESSION_PERSISTED]', { loginid, accountId, accountType, currency, scopes });
+      logSecurityEvent(req, 'DERIV_OAUTH_SUCCESS', 'INFO', { loginid, accountId, accountType, currency });
 
       if (req.headers.accept?.includes('application/json')) {
         return res.json(createSuccessResponse({
           sessionToken,
           user: {
-            userId: rawAcct,
-            loginid: rawAcct,
-            derivAccountId: rawAcct,
+            userId: appUserId,
+            loginid,
+            accountId,
+            derivAccountId: accountId,
             accountType,
             currency,
+            scopes,
             email: sessionPayload.email,
             fullName: sessionPayload.fullName,
             balance: sessionPayload.balance,
-            displayName: fullName || rawAcct,
+            displayName: fullName || accountId,
             role: sessionPayload.role,
           },
           csrfToken,
@@ -1512,12 +1534,29 @@ export async function createApp() {
         status: metadata.connectionStatus,
       }, metadata.derivAccountId);
 
+      const loginid = metadata.derivAccountId || metadata.loginid || '';
+      const accountId = metadata.derivAccountId || metadata.accountId || '';
+      const accountType = metadata.accountType || (loginid.startsWith('VR') ? 'demo' : 'real');
+      const balance = metadata.balance ?? 0;
+      const currency = metadata.currency || 'USD';
+      const scopes = metadata.scopes || [];
+      const lastSync = metadata.lastSync || metadata.lastSyncedAt || new Date().toISOString();
+
       res.json(createSuccessResponse({
-        accountId: metadata.derivAccountId,
-        balance: metadata.balance ?? 0,
-        currency: metadata.currency || 'USD',
-        accountType: metadata.accountType || (metadata.derivAccountId.startsWith('VR') ? 'demo' : 'real'),
-        ...metadata,
+        loginid,
+        accountId,
+        accountType,
+        balance,
+        currency,
+        scopes,
+        lastSync,
+        lastSyncedAt: lastSync,
+        derivAccountId: accountId,
+        email: metadata.email,
+        fullName: metadata.fullName,
+        accountList: metadata.accountList,
+        connected: metadata.connected,
+        connectionStatus: metadata.connectionStatus,
       }));
     } catch (err: any) {
       console.error('[DERIV_SYNC_ENDPOINT_ERROR]', err);

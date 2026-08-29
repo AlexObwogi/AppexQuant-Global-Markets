@@ -8,8 +8,9 @@
  * - Synchronized Global Background Gradients & Button Morphing across all milestones
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useGlobalState } from '../../state/GlobalStateContext.tsx';
+import { useMarketData } from '../../state/MarketDataContext.tsx';
 import { useApiFetch } from '../../utils/apiFetch.ts';
 import { 
   useDerivAuth, 
@@ -326,7 +327,24 @@ type LandingPhase = 'init' | 'welcome' | 'carousel';
 
 export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { state, dispatch } = useGlobalState();
+  const { instruments, ticks } = useMarketData();
   const apiFetch = useApiFetch();
+
+  const liveTickerString = useMemo(() => {
+    const symbolsToShow = ['frxEURUSD', 'frxGBPUSD', 'frxUSDJPY', 'R_100', 'R_50', '1HZ10V', 'frxXAUUSD', 'cryBTCUSD'];
+    const parts = symbolsToShow.map((sym) => {
+      const inst = instruments.find((i) => i.symbol === sym);
+      const name = inst ? inst.name : sym;
+      const tick = ticks[sym];
+      if (tick && tick.quote > 0) {
+        const change = tick.changePct || 0;
+        const arrow = change >= 0 ? '▲' : '▼';
+        return `${name} ${tick.quote.toFixed(tick.quote > 100 ? 2 : 5)} ${arrow}${Math.abs(change).toFixed(2)}%`;
+      }
+      return `${name} ...`;
+    });
+    return parts.join(' • ');
+  }, [instruments, ticks]);
 
   // PKCE Hook
   const {
@@ -591,31 +609,36 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
       (async () => {
         try {
-          const profile = await derivAuthService.authorize(token1);
-          if (profile) {
-            const targetAccountId = profile.loginid || acct1;
-            if (!targetAccountId) {
-              throw new Error('No valid account identifier returned from broker authorization.');
-            }
+          const res = await apiFetch('/api/auth/deriv/token-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ apiToken: token1 }),
+          }).catch(() => null);
 
-            await apiFetch('/api/auth/deriv/token-login', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ apiToken: token1 }),
-            }).catch(() => null);
+          const resData = res?.ok ? await res.json().catch(() => null) : null;
+          const targetAccountId = resData?.accountId || resData?.loginid || acct1;
 
-            establishUserSession({
-              id: targetAccountId,
-              accountId: targetAccountId,
-              email: profile.email,
-              fullName: profile.fullname,
-              balance: profile.balance,
-              currency: profile.currency || 'USD',
-              accountType: profile.is_virtual ? 'demo' : (targetAccountId.startsWith('VR') ? 'demo' : 'real'),
-            });
-            setIsAuthorizing(false);
-            return;
+          if (!targetAccountId) {
+            throw new Error('No valid account identifier returned from account discovery.');
           }
+
+          establishUserSession({
+            id: targetAccountId,
+            accountId: targetAccountId,
+            email: resData?.email,
+            fullName: resData?.fullName,
+            balance: resData?.balance ?? 0,
+            currency: resData?.currency || 'USD',
+            accountType: resData?.accountType || (targetAccountId.startsWith('VR') ? 'demo' : 'real'),
+          });
+
+          setIsAuthorizing(false);
+
+          // Start WebSocket for real-time data ONLY after authenticated session exists
+          derivAuthService.authorize(token1).catch((wsErr) => {
+            console.warn('[AuthGate] WebSocket real-time subscription deferred warning:', wsErr);
+          });
+          return;
         } catch (e: any) {
           setErrorMessage(e?.message || 'Deriv OAuth token authorization failed.');
           setIsAuthorizing(false);
@@ -844,8 +867,8 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           {/* Live Market Ticker */}
           <div className="hidden lg:flex flex-1 max-w-sm xl:max-w-md mx-4 overflow-hidden border border-slate-700/30 px-3 py-1 bg-black/20 dark:bg-black/40 rounded-lg shrink min-w-0">
             <div className="animate-marquee-smooth whitespace-nowrap text-[10px] font-mono tracking-wider uppercase text-slate-400 overflow-hidden">
-              <span>BTC/USD 98,450.00 ▲0.52% • EUR/USD 1.0845 ▼0.04% • XAU/USD 2,684.20 ▲1.12% • VOLATILITY 75 124,520.10 ▲0.88% • CRASH 500 4,812.30 ▼0.35% • BOOM 1000 12,840.40 ▲2.10%</span>
-              <span className="ml-8">BTC/USD 98,450.00 ▲0.52% • EUR/USD 1.0845 ▼0.04% • XAU/USD 2,684.20 ▲1.12% • VOLATILITY 75 124,520.10 ▲0.88% • CRASH 500 4,812.30 ▼0.35% • BOOM 1000 12,840.40 ▲2.10%</span>
+              <span>{liveTickerString}</span>
+              <span className="ml-8">{liveTickerString}</span>
             </div>
           </div>
 

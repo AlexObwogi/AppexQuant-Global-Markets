@@ -99,6 +99,7 @@ export function useDerivAuth() {
 
       let token = '';
       let accountId = '';
+      let loginid = '';
       let currency = 'USD';
       let email = '';
       let displayName = '';
@@ -110,16 +111,18 @@ export function useDerivAuth() {
       let backendErrorMessage = '';
       if (response.ok) {
         const json = await response.json();
-        if (json.success && json.data) {
-          token = json.data.token || json.data.accessToken || json.data.sessionToken || '';
-          accountId = json.data.accountId || json.data.derivAccountId || json.data.user?.derivAccountId || json.data.user?.userId || '';
-          currency = json.data.currency || json.data.user?.currency || 'USD';
-          email = json.data.user?.email || json.data.email || '';
-          displayName = json.data.user?.displayName || json.data.displayName || '';
-          fullName = json.data.user?.fullName || json.data.fullName || '';
-          balance = json.data.user?.balance ?? json.data.balance ?? 0;
-          accountType = json.data.user?.accountType || json.data.accountType || (accountId.startsWith('VR') ? 'demo' : 'real');
-          role = json.data.user?.role || json.data.role || 'USER';
+        if (json.success) {
+          const payload = json.data || json;
+          token = payload.token || payload.accessToken || payload.sessionToken || '';
+          loginid = payload.loginid || payload.accountId || payload.derivAccountId || payload.user?.loginid || payload.user?.derivAccountId || '';
+          accountId = loginid;
+          currency = payload.currency || payload.user?.currency || 'USD';
+          email = payload.user?.email || payload.email || '';
+          displayName = payload.user?.displayName || payload.displayName || '';
+          fullName = payload.user?.fullName || payload.fullName || '';
+          balance = payload.user?.balance ?? payload.balance ?? 0;
+          accountType = payload.user?.accountType || payload.accountType || (accountId.startsWith('VR') ? 'demo' : 'real');
+          role = payload.user?.role || payload.role || 'USER';
         }
       } else {
         const errJson = await response.json().catch(() => ({}));
@@ -127,11 +130,12 @@ export function useDerivAuth() {
       }
 
       // If backend redirected or returned session status
-      if (!token && !backendErrorMessage) {
+      if (!accountId && !backendErrorMessage) {
         const statusRes = await fetch('/api/auth/deriv/status');
         const statusJson = await statusRes.json();
         if (statusJson.success && statusJson.data?.connected) {
-          accountId = statusJson.data.derivAccountId;
+          loginid = statusJson.data.derivAccountId || statusJson.data.loginid || '';
+          accountId = loginid;
           token = statusJson.data.token || '';
           currency = statusJson.data.currency || 'USD';
           balance = statusJson.data.balance ?? 0;
@@ -139,8 +143,9 @@ export function useDerivAuth() {
         }
       }
 
-      if (!accountId) {
-        throw new Error(backendErrorMessage || 'Could not retrieve authorized Deriv account credentials.');
+      // Strictly validate account ID format
+      if (!accountId || accountId.startsWith('usr-') || accountId.startsWith('user-') || accountId.startsWith('sys-') || accountId.startsWith('demo-') || accountId.startsWith('test-')) {
+        throw new Error(backendErrorMessage || 'Deriv account identity could not be verified from Deriv account discovery.');
       }
 
       // Persist in encrypted cookie (30 days expiration)
@@ -150,16 +155,7 @@ export function useDerivAuth() {
         setStoredToken(token);
       }
 
-      // Authorize with WebSocket engine
-      if (token) {
-        try {
-          await derivAuthService.authorize(token);
-        } catch (wsErr) {
-          console.warn('WebSocket authorization warning:', wsErr);
-        }
-      }
-
-      // Persist user profile attributes in sessionStorage
+      // Persist user profile attributes in sessionStorage (Session exists BEFORE WebSocket)
       if (typeof window !== 'undefined' && window.sessionStorage) {
         sessionStorage.setItem('deriv_user_loginid', accountId);
         sessionStorage.setItem('deriv_user_email', email);
@@ -173,9 +169,17 @@ export function useDerivAuth() {
           balance,
           accountType,
           displayName,
-          fullName,
-          role,
+          connectedAt: new Date().toISOString(),
         }));
+      }
+
+      // Authorize with WebSocket engine for real-time streams ONLY after authenticated session exists
+      if (token) {
+        try {
+          await derivAuthService.authorize(token);
+        } catch (wsErr) {
+          console.warn('[useDerivAuth] Real-time WebSocket initialization notice:', wsErr);
+        }
       }
 
       // Clean up single-use PKCE verifier
@@ -211,6 +215,7 @@ export function useDerivAuth() {
   const disconnect = useCallback(async () => {
     removeCookie('deriv_oauth_token');
     removeCookie('deriv_account_id');
+    derivAuthService.logout();
     try {
       localStorage.removeItem('deriv_access_token');
       localStorage.removeItem('deriv_account_id');

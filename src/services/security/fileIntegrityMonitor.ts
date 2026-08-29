@@ -6,6 +6,7 @@
 
 import crypto from 'crypto';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { logger } from '../../observability/logger.ts';
 
@@ -16,10 +17,12 @@ export interface FIMManifest {
 }
 
 // Core protected files critical to backend execution & security
-const PROTECTED_CORE_FILES = [
+const CANDIDATE_PROTECTED_FILES = [
+  'dist/server.cjs',
   'server.ts',
   'src/services/security.ts',
   'src/db/connection.ts',
+  'src/services/deriv/pkce.ts',
   'src/services/deriv/oauthServerService.ts',
 ];
 
@@ -28,11 +31,19 @@ export class FileIntegrityMonitor {
   private inMemoryBaseline: FIMManifest | null = null;
 
   constructor(manifestPath?: string) {
-    // In serverless / Vercel environments or read-only containers, use /tmp or memory
-    const defaultPath = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
-      ? path.join('/tmp', '.fim-manifest.json')
-      : path.join(process.cwd(), '.fim-manifest.json');
+    // In serverless / Vercel environments (/var/task) or read-only containers, use os.tmpdir() to avoid EROFS errors
+    const defaultPath = path.join(os.tmpdir(), '.fim-manifest.json');
     this.baselineManifestPath = manifestPath || defaultPath;
+  }
+
+  /**
+   * Returns list of protected core files that actually exist on disk in the current environment
+   */
+  private getExistingProtectedFiles(): string[] {
+    return CANDIDATE_PROTECTED_FILES.filter((relPath) => {
+      const fullPath = path.resolve(process.cwd(), relPath);
+      return fs.existsSync(fullPath);
+    });
   }
 
   /**
@@ -56,7 +67,9 @@ export class FileIntegrityMonitor {
    */
   public generateBaseline(): FIMManifest {
     const filesRecord: Record<string, string> = {};
-    for (const relPath of PROTECTED_CORE_FILES) {
+    const existingFiles = this.getExistingProtectedFiles();
+
+    for (const relPath of existingFiles) {
       const hash = this.computeFileHash(relPath);
       if (hash) {
         filesRecord[relPath] = hash;
@@ -74,7 +87,7 @@ export class FileIntegrityMonitor {
     try {
       fs.writeFileSync(this.baselineManifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
     } catch {
-      // Graceful fallback for read-only environments
+      // Graceful handling for read-only environments (/var/task or serverless containers)
     }
 
     return manifest;
@@ -104,6 +117,11 @@ export class FileIntegrityMonitor {
     const modifiedFiles: string[] = [];
 
     for (const [relPath, expectedHash] of Object.entries(baseline.files)) {
+      const fullPath = path.resolve(process.cwd(), relPath);
+      if (!fs.existsSync(fullPath)) {
+        // Skip files that do not exist (e.g. source files in a compiled deployment bundle)
+        continue;
+      }
       const currentHash = this.computeFileHash(relPath);
       if (currentHash && currentHash !== expectedHash) {
         modifiedFiles.push(relPath);

@@ -117,13 +117,13 @@ export default function App() {
   return (
     <ErrorBoundary>
       <GlobalStateProvider>
-        <AuthGate>
-          <MarketDataProvider>
+        <MarketDataProvider>
+          <AuthGate>
             <AppShell>
               <ActiveViewRenderer />
             </AppShell>
-          </MarketDataProvider>
-        </AuthGate>
+          </AuthGate>
+        </MarketDataProvider>
       </GlobalStateProvider>
     </ErrorBoundary>
   );

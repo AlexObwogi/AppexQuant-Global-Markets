@@ -85,12 +85,14 @@ class DerivAuthService {
       if (response.authorize) {
         this.status = 'CONNECTED';
         this.token = token.trim();
+        derivWs.setAuthToken(this.token);
         this.profile = response.authorize as unknown as DerivAccountProfile;
 
-        // Subscribe to real-time balance stream
-        derivWs.sendRequest({ balance: 1, subscribe: 1 }).catch((err) => {
-          console.warn('[DerivAuth] Balance subscription warning:', err);
-        });
+        // Subscribe to real-time streams (balance, portfolio, positions, transactions)
+        derivWs.subscribeBalance(true).catch(() => {});
+        derivWs.subscribePortfolio().catch(() => {});
+        derivWs.subscribePositions().catch(() => {});
+        derivWs.subscribeTransactions().catch(() => {});
 
         return this.profile;
       }
@@ -104,10 +106,16 @@ class DerivAuthService {
   }
 
   public getProfile(): DerivAccountProfile | null {
+    if (this.status !== 'CONNECTED' || !this.profile || !this.profile.loginid) {
+      return null;
+    }
     return this.profile;
   }
 
   public getToken(): string | null {
+    if (this.status !== 'CONNECTED') {
+      return null;
+    }
     return this.token;
   }
 
@@ -115,11 +123,8 @@ class DerivAuthService {
     this.status = 'NOT_CONNECTED';
     this.token = null;
     this.profile = null;
-    if (derivWs.getConnectionState() === 'CONNECTED') {
-      derivWs.sendRequest({ forget_all: 'authentication' }).catch(() => {
-        // Safe cleanup ignore
-      });
-    }
+    this.balanceListeners.clear();
+    derivWs.resetUserSubscriptions();
   }
 
   public getStatus(): DerivAuthStatus {

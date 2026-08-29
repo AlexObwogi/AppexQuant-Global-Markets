@@ -59,7 +59,7 @@ export const MarketHeatmap: React.FC<MarketHeatmapProps> = ({ onSelectSymbol }) 
       .filter((inst) => selectedCatFilter === 'ALL' || inst.category === selectedCatFilter)
       .map((inst) => {
         const tick = ticks[inst.symbol];
-        const currentPrice = tick ? tick.quote : inst.bid || 1.0;
+        const currentPrice = tick ? tick.quote : inst.bid || 0;
         const changePct = tick ? tick.changePct : inst.change24hPercentage || 0;
 
         const baseWeight = inst.category === 'FOREX' ? 1.2 : inst.category === 'CRYPTO' ? 1.5 : 1.0;

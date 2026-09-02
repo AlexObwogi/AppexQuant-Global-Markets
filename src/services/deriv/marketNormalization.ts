@@ -4,8 +4,8 @@
  * Excludes blacklisted/obsolete symbols (1HZ10V, 1HZ100V, cryETHUSD) and prevents invalid subscriptions.
  */
 
-import { DerivActiveSymbol } from './derivTypes.ts';
-import { MarketInstrument, InstrumentCategory } from '../../types/market.ts';
+import { DerivActiveSymbol } from './derivTypes.js';
+import { MarketInstrument, InstrumentCategory } from '../../types/market.js';
 
 export const BLACKLISTED_SYMBOLS = new Set<string>([
   '1HZ10V',

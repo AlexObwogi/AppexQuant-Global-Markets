@@ -105,7 +105,14 @@ function getEnv(name: string): string {
  * - numeric app IDs
  */
 export function getDerivOAuthClientId(): string {
-  return getEnv('DERIV_OAUTH_CLIENT_ID');
+  return (
+    getEnv('DERIV_OAUTH_CLIENT_ID') ||
+    getEnv('CLIENT_ID') ||
+    getEnv('VITE_DERIV_OAUTH_CLIENT_ID') ||
+    getEnv('NEXT_PUBLIC_DERIV_OAUTH_CLIENT_ID') ||
+    getEnv('DERIV_APP_ID') ||
+    '1089'
+  );
 }
 
 /**

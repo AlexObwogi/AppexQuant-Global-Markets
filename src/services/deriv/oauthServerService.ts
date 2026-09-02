@@ -13,7 +13,7 @@ import { derivGateway } from './DerivGateway.ts';
 import { syncUserToSupabase, syncDerivConnectionToSupabase } from '../../lib/supabase.ts';
 import { dbQueries } from '../../lib/db/prisma.ts';
 import { logger } from '../../observability/logger.ts';
-import { buildAuthUrl, DERIV_OAUTH_SCOPE, exchangeCodeForToken } from '../oauthService.ts';
+import { buildAuthUrl, DERIV_OAUTH_SCOPE, exchangeCodeForToken, getDerivAppId } from '../oauthService.ts';
 import { isValidDerivAccountId, DerivSyncState, transitionSyncState } from './syncStateMachine.ts';
 import {
   generatePKCE,
@@ -129,11 +129,11 @@ const derivConnectionsStore = new Map<string, DerivConnectionRecord>();
 export async function requestDerivAccountOtp(
   accountId: string,
   token: string,
-  appId: string = '1089'
+  appId: string = getDerivAppId()
 ): Promise<{ success: boolean; otp?: string; url?: string; accountId?: string; error?: string }> {
   const cleanToken = token ? token.trim() : '';
   const cleanAccountId = accountId ? accountId.trim() : '';
-  const cleanAppId = appId ? appId.trim() : '1089';
+  const cleanAppId = (appId || getDerivAppId()).trim();
 
   if (!cleanToken || !cleanAccountId) {
     return { success: false, error: 'Missing access token or account ID for OTP request' };
@@ -185,7 +185,7 @@ export async function requestDerivAccountOtp(
 export const requestDerivOTP = async (
   accountId: string,
   token: string,
-  appId: string = '1089'
+  appId: string = getDerivAppId()
 ): Promise<{ success: boolean; wsUrl?: string; otp?: string; accountId?: string; error?: string; expiresInSeconds?: number }> => {
   const res = await requestDerivAccountOtp(accountId, token, appId);
   return {
@@ -284,20 +284,7 @@ function cleanupExpiredTransactions() {
  * Helper to get configured Deriv OAuth credentials
  */
 export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: string) {
-  const rawClientId =
-    process.env.DERIV_APP_ID ||
-    process.env.VITE_DERIV_APP_ID ||
-    process.env.CLIENT_ID ||
-    process.env.DERIV_CLIENT_ID ||
-    process.env.DERIV_OAUTH_CLIENT_ID ||
-    process.env.NEXT_PUBLIC_DERIV_APP_ID ||
-    '1089';
-
-  const cleanClientId = typeof rawClientId === 'string' ? rawClientId.trim() : '1089';
-  const clientId = (cleanClientId && cleanClientId !== 'undefined' && cleanClientId !== 'null' && cleanClientId !== '""' && cleanClientId !== "''")
-    ? cleanClientId
-    : '1089';
-
+  const clientId = getDerivAppId();
   const clientSecret = (process.env.DERIV_CLIENT_SECRET || process.env.CLIENT_SECRET || '').trim();
 
   const proto = requestProtocol || (requestHost?.includes('localhost') ? 'http' : 'https');
@@ -511,17 +498,7 @@ export async function handleDerivOAuthCallback(params: {
     };
   }
 
-  // 4. Token Exchange
-  if (!code) {
-    return {
-      success: false,
-      destination: '/dashboard/error?error=missing_code&message=Authorization%20code%20was%20missing',
-      errorMessage: 'Deriv OAuth Error: Authorization code is required for token exchange.',
-    };
-  }
-
-  const tokenEndpoint = oauthConfig.tokenEndpoint;
-
+  // 4. Token Exchange (Single authoritative exchange path via exchangeCodeForToken)
   try {
     let tokenData: any = null;
     try {
@@ -533,61 +510,13 @@ export async function handleDerivOAuthCallback(params: {
         oauthConfig.clientSecret
       );
     } catch (exErr: any) {
-      console.warn('[DERIV_OAUTH_EXCHANGE_ERROR]', exErr?.message);
-      // Fallback candidate endpoints trial if centralized exchange threw
-      const candidateEndpoints = Array.from(new Set([
-        'https://oauth.deriv.com/oauth2/token',
-        oauthConfig.tokenEndpoint,
-        'https://auth.deriv.com/oauth2/token',
-      ]));
-      let lastStatus = 0;
-      let lastStatusText = '';
-      let rawErrorBody: any = null;
-
-      const postBody: Record<string, string> = {
-        grant_type: 'authorization_code',
-        client_id: oauthConfig.clientId,
-        code,
-        code_verifier: transaction.codeVerifier,
-        redirect_uri: transaction.redirectUri,
+      const specificReason = `Deriv Token Exchange Error: ${exErr?.message || 'Exchange failed'}`;
+      logger.error('[DerivOAuth] Token exchange failed:', { error: exErr?.message, state });
+      return {
+        success: false,
+        destination: `/?auth_error=token_failed&message=${encodeURIComponent(specificReason)}`,
+        errorMessage: specificReason,
       };
-      if (oauthConfig.clientSecret) {
-        postBody.client_secret = oauthConfig.clientSecret;
-      }
-
-      for (const endpoint of candidateEndpoints) {
-        try {
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              Accept: 'application/json',
-            },
-            body: new URLSearchParams(postBody),
-            redirect: 'follow',
-          });
-          lastStatus = response.status;
-          lastStatusText = response.statusText;
-          if (response.ok) {
-            tokenData = await response.json();
-            break;
-          } else {
-            rawErrorBody = await response.json().catch(() => ({ rawText: response.statusText }));
-          }
-        } catch (e) {}
-      }
-
-      if (!tokenData) {
-        const errObj = rawErrorBody?.error || rawErrorBody || {};
-        const errCode = errObj.code || errObj.error || 'TOKEN_EXCHANGE_FAILED';
-        const errMsg = errObj.message || rawErrorBody?.error_description || `HTTP ${lastStatus} ${lastStatusText}`;
-        const specificReason = `Deriv Token Exchange Error [${errCode}]: ${errMsg}`;
-        return {
-          success: false,
-          destination: `/?auth_error=token_failed&message=${encodeURIComponent(specificReason)}`,
-          errorMessage: specificReason,
-        };
-      }
     }
 
     const resolvedAccessToken = tokenData?.access_token || tokenData?.token1 || tokenData?.token;
@@ -667,6 +596,7 @@ export async function handleDerivOAuthCallback(params: {
       },
     };
   } catch (err: any) {
+    const tokenEndpoint = oauthConfig.tokenEndpoint;
     const errorMsg = err?.message || 'Network communication error';
     console.error('[DERIV_OAUTH_TOKEN_NETWORK_FAILURE]', {
       message: errorMsg,
@@ -734,7 +664,7 @@ export interface HydrateDerivAccountResult {
  */
 export async function authorizeDerivWebSocket(
   token: string,
-  appId: string = '1089',
+  appId: string = getDerivAppId(),
   timeoutMs: number = 10000
 ): Promise<{ success: boolean; profile?: DerivAccountProfileData; error?: string; errorCode?: string }> {
   const cleanToken = token ? token.trim() : '';
@@ -743,7 +673,7 @@ export async function authorizeDerivWebSocket(
     return { success: false, error: 'Invalid access token for WebSocket authorization', errorCode: 'INVALID_TOKEN' };
   }
 
-  const cleanAppId = (appId || '1089').toString().trim().replace(/['"]/g, '') || '1089';
+  const cleanAppId = (appId || getDerivAppId()).toString().trim().replace(/['"]/g, '') || getDerivAppId();
   const wsUrl = `wss://ws.derivws.com/websockets/v3?app_id=${cleanAppId}`;
   const reqId = crypto.randomInt(100000, 999999);
 
@@ -874,7 +804,7 @@ export async function hydrateDerivAccount(params: HydrateDerivAccountParams): Pr
   }
 
   const oauthConfig = getDerivOAuthConfig();
-  const effectiveAppId = appId || oauthConfig.clientId || '1089';
+  const effectiveAppId = appId || oauthConfig.clientId || getDerivAppId();
 
   logger.info('[DerivOAuth] ACCOUNT_DISCOVERY_STARTED: Authenticating token via WebSocket authorize', { userId });
 

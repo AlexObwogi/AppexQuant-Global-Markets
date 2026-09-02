@@ -1021,23 +1021,45 @@ export class DerivGateway {
   // ==========================================
 
   /**
-   * Attach WebSocket Server to the HTTP Server to serve downstream frontend clients.
-   * Uses noServer mode to prevent duplicate listeners on the same HTTP server.
+   * Returns or initializes the downstream WebSocketServer instance (noServer mode).
    */
-  public attachWebSocketServer(server: any, targetPath = '/api/deriv/stream'): WebSocketServer {
+  public getWebSocketServer(): WebSocketServer {
     if (this.wss) {
       return this.wss;
     }
 
     const wss = new WebSocketServer({ noServer: true });
     this.wss = wss;
-    logger.info(`[DerivGateway] Downstream WebSocket Server attached for path '${targetPath}'`);
+    logger.info('[DerivGateway] Downstream WebSocket Server initialized');
 
     wss.on('connection', (clientWs: any, req: IncomingMessage) => {
       this.handleClientConnection(clientWs, req);
     });
 
     this.startClientHeartbeat();
+    return wss;
+  }
+
+  /**
+   * Directly handles an HTTP upgrade request, performing the WebSocket handshake (HTTP 101).
+   */
+  public handleUpgrade(request: IncomingMessage, socket: any, head: Buffer = Buffer.alloc(0)): void {
+    const wss = this.getWebSocketServer();
+    try {
+      wss.handleUpgrade(request, socket, head, (clientWs) => {
+        wss.emit('connection', clientWs, request);
+      });
+    } catch (err: any) {
+      logger.warn('[DerivGateway] Failed to upgrade WebSocket connection:', { error: err?.message || String(err) });
+    }
+  }
+
+  /**
+   * Attach WebSocket Server to the HTTP Server to serve downstream frontend clients.
+   * Uses noServer mode to prevent duplicate listeners on the same HTTP server.
+   */
+  public attachWebSocketServer(server: any, targetPath = '/api/deriv/stream'): WebSocketServer {
+    const wss = this.getWebSocketServer();
 
     const upgradeHandler = (request: IncomingMessage, socket: any, head: Buffer) => {
       try {
@@ -1051,9 +1073,7 @@ export class DerivGateway {
           pathname === '/deriv/stream' ||
           pathname === '/deriv/stream/'
         ) {
-          wss.handleUpgrade(request, socket, head, (clientWs) => {
-            wss.emit('connection', clientWs, request);
-          });
+          this.handleUpgrade(request, socket, head);
         }
       } catch (err: any) {
         logger.warn('[DerivGateway] Upgrade handling exception:', { error: err?.message || String(err) });

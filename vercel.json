@@ -7,9 +7,15 @@
       "includeFiles": "dist/server.cjs",
       "maxDuration": 30,
       "memory": 1024
+    },
+    "api/deriv/stream.ts": {
+      "includeFiles": "dist/server.cjs",
+      "maxDuration": 30,
+      "memory": 1024
     }
   },
   "rewrites": [
+    { "source": "/api/deriv/stream", "destination": "/api/deriv/stream.ts" },
     { "source": "/api/(.*)", "destination": "/api/index.ts" },
     { "source": "/auth/deriv/callback", "destination": "/api/index.ts" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }

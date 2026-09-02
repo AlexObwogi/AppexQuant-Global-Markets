@@ -82,6 +82,7 @@ export interface DerivConnectionRecord {
 
 export interface SafeDerivConnectionMetadata {
   connected: boolean;
+  userId?: string;
   loginid?: string;
   accountId?: string;
   derivAccountId?: string;
@@ -389,9 +390,6 @@ export async function handleDerivOAuthCallback(params: {
   code?: string;
   state?: string;
   verifier?: string;
-  token1?: string;
-  acct1?: string;
-  cur1?: string;
   redirectUri?: string;
   cookieState?: string;
   error?: string;
@@ -432,7 +430,7 @@ export async function handleDerivOAuthCallback(params: {
 }> {
   cleanupExpiredTransactions();
 
-  const { code, state, verifier, token1, acct1, cur1, cookieState, error, errorDescription } = params;
+  const { code, state, verifier, cookieState, error, errorDescription } = params;
 
   if (error) {
     const detailMsg = errorDescription || error || 'Deriv returned an authorization error.';
@@ -447,62 +445,8 @@ export async function handleDerivOAuthCallback(params: {
 
   const oauthConfig = getDerivOAuthConfig(params.requestHost, params.requestProtocol);
 
-  // Scenario A: Direct token callback (token1 present in query params from redirect)
-  if (token1) {
-    logger.info('[DerivOAuth] Processing direct token callback via WebSocket authorization');
-    const hydrationResult = await hydrateDerivAccount({
-      userId: acct1 && isValidDerivAccountId(acct1) ? acct1 : `usr-${crypto.randomBytes(6).toString('hex')}`,
-      accessToken: token1,
-      appId: oauthConfig.clientId,
-      scopes: ['trade', 'account_manage', 'payments'],
-    });
-
-    if (!hydrationResult.success || !hydrationResult.metadata?.connected || !hydrationResult.metadata?.derivAccountId || !isValidDerivAccountId(hydrationResult.metadata.derivAccountId)) {
-      const discError = hydrationResult.error || 'Failed to discover or verify Deriv trading account identifier from direct token callback.';
-      logger.error('[DerivOAuth] ACCOUNT_DISCOVERY_FAILED: Direct token callback lacked verified loginid:', { error: discError });
-      return {
-        success: false,
-        destination: `/?auth_error=discovery_failed&message=${encodeURIComponent(discError)}`,
-        errorMessage: `Deriv Account Discovery Failure: ${discError}`,
-      };
-    }
-
-    const verifiedLoginId = hydrationResult.metadata.derivAccountId;
-    const accountType: 'demo' | 'real' = hydrationResult.metadata.accountType || (verifiedLoginId.startsWith('VR') ? 'demo' : 'real');
-    const currency = hydrationResult.metadata.currency || cur1 || 'USD';
-    const scopes = hydrationResult.metadata.scopes || ['trade', 'account_manage', 'payments'];
-
-    logger.info('[DerivOAuth] ACCOUNT_DISCOVERED & CONNECTED: Direct callback authorized via WebSocket', { loginid: verifiedLoginId, accountType, currency, scopes });
-
-    return {
-      success: true,
-      userId: verifiedLoginId,
-      loginid: verifiedLoginId,
-      accountId: verifiedLoginId,
-      derivAccountId: verifiedLoginId,
-      accountType,
-      currency,
-      scopes,
-      destination: '/',
-      connectionRecord: hydrationResult.metadata,
-      rawAccountDetails: {
-        derivAccountId: verifiedLoginId,
-        loginid: verifiedLoginId,
-        accountId: verifiedLoginId,
-        currency,
-        accountType,
-        scopes,
-        token: token1,
-        balance: hydrationResult.metadata?.balance,
-        email: hydrationResult.metadata?.email,
-        fullName: hydrationResult.metadata?.fullName,
-        accountList: hydrationResult.metadata?.accountList,
-      },
-    };
-  }
-
   // 1. Validate Code (Authorization Code Flow)
-  if (!code && !token1) {
+  if (!code) {
     logger.warn('[DerivOAuth] Missing authorization code in callback');
     return {
       success: false,
@@ -512,7 +456,7 @@ export async function handleDerivOAuthCallback(params: {
   }
 
   // 2. Validate State (CSRF & State Integrity)
-  if (!state && !token1) {
+  if (!state) {
     logger.warn('[DerivOAuth] Missing state parameter in callback');
     return {
       success: false,
@@ -948,6 +892,14 @@ export async function hydrateDerivAccount(params: HydrateDerivAccountParams): Pr
       loginid: wsAuthRes.profile?.loginid,
     });
 
+    try {
+      transitionSyncState(DerivSyncState.ACCOUNT_DISCOVERY_STARTED, DerivSyncState.ACCOUNT_DISCOVERY_FAILED, {
+        derivAccountId: wsAuthRes.profile?.loginid || '',
+        persisted: false,
+        discoverySucceeded: false,
+      });
+    } catch {}
+
     const nowIso = new Date().toISOString();
     const failedRecord: DerivConnectionRecord = {
       userId,
@@ -976,7 +928,19 @@ export async function hydrateDerivAccount(params: HydrateDerivAccountParams): Pr
   const profile = wsAuthRes.profile;
   const derivAccountId = profile.loginid;
 
-  // Transition: ACCOUNT_DISCOVERED & ACCOUNT_VERIFIED
+  // Transition sequence: ACCOUNT_DISCOVERED -> ACCOUNT_VERIFIED
+  transitionSyncState(DerivSyncState.ACCOUNT_DISCOVERY_STARTED, DerivSyncState.ACCOUNT_DISCOVERED, {
+    derivAccountId,
+    persisted: false,
+    discoverySucceeded: true,
+  });
+
+  transitionSyncState(DerivSyncState.ACCOUNT_DISCOVERED, DerivSyncState.ACCOUNT_VERIFIED, {
+    derivAccountId,
+    persisted: false,
+    discoverySucceeded: true,
+  });
+
   logger.info('[DerivOAuth] ACCOUNT_DISCOVERED & ACCOUNT_VERIFIED: loginid verified via authorize', {
     loginid: derivAccountId,
     currency: profile.currency,
@@ -1017,9 +981,24 @@ export async function hydrateDerivAccount(params: HydrateDerivAccountParams): Pr
     });
 
     await dbQueries.mapDerivAccountToUserSession(derivAccountId, userId);
+
+    // Transition: ACCOUNT_PERSISTED
+    transitionSyncState(DerivSyncState.ACCOUNT_VERIFIED, DerivSyncState.ACCOUNT_PERSISTED, {
+      derivAccountId,
+      persisted: true,
+      discoverySucceeded: true,
+    });
+
     logger.info('[DerivOAuth] ACCOUNT_PERSISTED: Deriv account record stored in database', { loginid: derivAccountId });
   } catch (dbErr: any) {
     logger.error('[DerivOAuth] ACCOUNT_PERSIST_FAILED: Prisma database persistence failed:', { error: dbErr?.message });
+    try {
+      transitionSyncState(DerivSyncState.ACCOUNT_VERIFIED, DerivSyncState.ACCOUNT_PERSIST_FAILED, {
+        derivAccountId,
+        persisted: false,
+        discoverySucceeded: true,
+      });
+    } catch {}
     derivConnectionsStore.delete(userId);
     throw new Error(`Database persistence failure: Authentication requires database connection (${dbErr?.message || dbErr})`);
   }
@@ -1037,6 +1016,12 @@ export async function hydrateDerivAccount(params: HydrateDerivAccountParams): Pr
   }).catch(() => {});
 
   // State Transition: CONNECTED
+  transitionSyncState(DerivSyncState.ACCOUNT_PERSISTED, DerivSyncState.CONNECTED, {
+    derivAccountId,
+    persisted: true,
+    discoverySucceeded: true,
+  });
+
   logger.info('[DerivOAuth] CONNECTED: Valid Deriv account verified and connected', { loginid: derivAccountId });
 
   const connectionRecord: DerivConnectionRecord = {
@@ -1105,7 +1090,31 @@ export function getDerivConnectionRecord(userId: string): DerivConnectionRecord 
  * Get User's Safe Connection Metadata (NO SECRETS EXPOSED TO USERS)
  */
 export async function getUserDerivConnectionAsync(userId: string): Promise<SafeDerivConnectionMetadata> {
-  const record = derivConnectionsStore.get(userId);
+  let record = derivConnectionsStore.get(userId);
+  if (!record || record.connectionStatus === 'DISCONNECTED') {
+    try {
+      const dbAccount = await dbQueries.getDerivAccountByUserId(userId);
+      if (dbAccount && isValidDerivAccountId(dbAccount.id)) {
+        const balance = Number(dbAccount.balance);
+        record = {
+          userId: dbAccount.userId || userId,
+          derivAccountId: dbAccount.id,
+          accountType: dbAccount.accountType as any,
+          currency: dbAccount.currency,
+          balance,
+          connectionStatus: 'CONNECTED',
+          scopes: ['trade', 'account_manage'],
+          accessToken: '',
+          createdAt: dbAccount.lastSyncedAt ? new Date(dbAccount.lastSyncedAt).toISOString() : new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          lastSyncedAt: dbAccount.lastSyncedAt ? new Date(dbAccount.lastSyncedAt).toISOString() : new Date().toISOString(),
+        };
+        derivConnectionsStore.set(userId, record);
+        derivConnectionsStore.set(dbAccount.id, record);
+      }
+    } catch {}
+  }
+
   if (!record || record.connectionStatus === 'DISCONNECTED') {
     return {
       connected: false,

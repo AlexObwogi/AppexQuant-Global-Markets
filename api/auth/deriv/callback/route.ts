@@ -39,9 +39,6 @@ export async function GET(request: Request): Promise<Response> {
   const code = url.searchParams.get('code') || undefined;
   const state = url.searchParams.get('state') || undefined;
   const verifier = url.searchParams.get('verifier') || undefined;
-  const token1 = url.searchParams.get('token1') || undefined;
-  const acct1 = url.searchParams.get('acct1') || undefined;
-  const cur1 = url.searchParams.get('cur1') || undefined;
   const error = url.searchParams.get('error') || undefined;
   const errorDescription = url.searchParams.get('error_description') || undefined;
 
@@ -54,23 +51,20 @@ export async function GET(request: Request): Promise<Response> {
   const isHttps = proto === 'https' || process.env.APP_ENV === 'production';
   const cookieSameSite = isHttps ? 'SameSite=None; Secure' : 'SameSite=Lax';
 
+  const headers = new Headers();
+  // Clear temporary OAuth state cookie immediately
+  headers.append('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=0`);
+
   const result = await handleDerivOAuthCallback({
     code,
     state,
     verifier,
-    token1,
-    acct1,
-    cur1,
     cookieState,
     error,
     errorDescription,
     requestHost,
     requestProtocol: proto,
   });
-
-  const headers = new Headers();
-  // Clear temporary OAuth state cookie
-  headers.append('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=0`);
 
   if (!result.success) {
     const errorDest = result.destination && result.destination.startsWith('/')
@@ -86,6 +80,12 @@ export async function GET(request: Request): Promise<Response> {
   if (!verifiedLoginId || !isValidDerivAccountId(verifiedLoginId)) {
     const errorMsg = 'Deriv account verification failed: No genuine Deriv account loginid discovered via WebSocket authorize.';
     headers.set('Location', new URL(`/?auth_error=discovery_failed&message=${encodeURIComponent(errorMsg)}`, request.url).toString());
+    return new Response(null, { status: 302, headers });
+  }
+
+  if (!result.connectionRecord || result.connectionRecord.connectionStatus !== 'CONNECTED' || !result.connectionRecord.connected) {
+    const errorMsg = 'Deriv account verification failed: State machine did not reach CONNECTED state.';
+    headers.set('Location', new URL(`/?auth_error=not_connected&message=${encodeURIComponent(errorMsg)}`, request.url).toString());
     return new Response(null, { status: 302, headers });
   }
 

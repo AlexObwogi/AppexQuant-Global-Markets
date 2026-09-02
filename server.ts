@@ -3,6 +3,7 @@
  * Serves API routes & dynamic development middleware in development or static assets in production.
  */
 
+import './inject-env.js';
 import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
 import path from 'path';
@@ -1066,44 +1067,89 @@ export async function createApp() {
   });
 
   // 3. Current Session Profile & Session Status Endpoints
-  const sessionHandler = (req: Request, res: Response) => {
-    if (!req.sessionUser) {
-      return res.json(createSuccessResponse({
-        authenticated: false,
-        user: null,
-      }));
-    }
-    const userId = req.sessionUser.userId;
-    const record = getUserDerivConnection(userId);
-    const hasValidConnection = Boolean(record && record.connectionStatus === 'CONNECTED' && isValidDerivAccountId(record.derivAccountId));
+  const sessionHandler = async (req: Request, res: Response) => {
+    try {
+      const parsedCookies = (req as any).cookies || parseCookies(req.headers.cookie);
+      const cookieUserId = parsedCookies['deriv_session_user_id'];
+      const headerUserId = req.headers['x-user-id'] as string;
+      const sessionUserId = req.sessionUser?.userId;
+      const sessionDerivAcct = req.sessionUser?.derivAccountId;
 
-    const rawAcctCandidate = hasValidConnection ? record?.derivAccountId : req.sessionUser.derivAccountId;
-    const derivAcct = isValidDerivAccountId(rawAcctCandidate) ? rawAcctCandidate : undefined;
-    const email = (hasValidConnection && record?.email) || req.sessionUser.email;
-    const fullName = (hasValidConnection && record?.fullName) || req.sessionUser.fullName;
-    const balance = (hasValidConnection && typeof record?.balance === 'number') ? record.balance : (req.sessionUser.balance ?? 0);
-    const currency = (hasValidConnection && record?.currency) || req.sessionUser.currency || 'USD';
-    const accountType = (hasValidConnection && record?.accountType) || req.sessionUser.accountType || 'real';
+      const lookupId = sessionDerivAcct || sessionUserId || cookieUserId || headerUserId;
 
-    res.json(createSuccessResponse({
-      authenticated: true,
-      user: {
-        userId,
-        email,
-        role: req.sessionUser.role,
-        derivAccountId: derivAcct,
-        displayName: fullName || derivAcct || email || userId,
-        fullName: fullName || undefined,
+      if (!lookupId) {
+        return res.json(createSuccessResponse({
+          authenticated: false,
+          accountId: null,
+          currency: null,
+          balance: null,
+          accountType: null,
+          user: null,
+        }));
+      }
+
+      const record = await getUserDerivConnectionAsync(lookupId);
+      const hasValidConnection = Boolean(
+        record &&
+        record.connected &&
+        record.derivAccountId &&
+        isValidDerivAccountId(record.derivAccountId) &&
+        record.connectionStatus === 'CONNECTED'
+      );
+
+      if (!hasValidConnection) {
+        return res.json(createSuccessResponse({
+          authenticated: false,
+          accountId: null,
+          currency: null,
+          balance: null,
+          accountType: null,
+          user: req.sessionUser ? {
+            userId: req.sessionUser.userId,
+            email: req.sessionUser.email,
+            role: req.sessionUser.role,
+            derivAccountId: null,
+            balance: null,
+            accountType: null,
+            currency: null,
+            connectionStatus: record ? record.connectionStatus : 'DISCONNECTED',
+          } : null,
+        }));
+      }
+
+      const accountId = record.derivAccountId;
+      const currency = record.currency || null;
+      const balance = typeof record.balance === 'number' ? record.balance : null;
+      const accountType = record.accountType || null;
+      const email = record.email || req.sessionUser?.email;
+      const fullName = record.fullName || req.sessionUser?.fullName;
+
+      res.json(createSuccessResponse({
+        authenticated: true,
+        accountId,
+        currency,
         balance,
         accountType,
-        currency,
-        connectionStatus: hasValidConnection ? 'CONNECTED' : (record ? record.connectionStatus : 'DISCONNECTED'),
-      },
-      csrfToken: req.sessionUser.csrfToken,
-      isElevated: req.sessionUser.isElevated,
-      elevatedUntil: req.sessionUser.elevatedUntil,
-      expiresAt: req.sessionUser.expiresAt,
-    }));
+        user: {
+          userId: req.sessionUser?.userId || record.userId || accountId,
+          email,
+          role: req.sessionUser?.role || UserRole.USER,
+          derivAccountId: accountId,
+          displayName: fullName || accountId || email,
+          fullName: fullName || undefined,
+          balance,
+          accountType,
+          currency,
+          connectionStatus: record.connectionStatus,
+        },
+        csrfToken: req.sessionUser?.csrfToken,
+        isElevated: req.sessionUser?.isElevated || false,
+        elevatedUntil: req.sessionUser?.elevatedUntil || null,
+        expiresAt: req.sessionUser?.expiresAt,
+      }));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Session query error', 'SESSION_ERROR'));
+    }
   };
 
   app.get('/api/auth/session', authRateLimiterMiddleware, sessionHandler);
@@ -1201,9 +1247,6 @@ export async function createApp() {
       const code = req.query.code as string | undefined;
       const state = req.query.state as string | undefined;
       const verifier = req.query.verifier as string | undefined;
-      const token1 = req.query.token1 as string | undefined;
-      const acct1 = req.query.acct1 as string | undefined;
-      const cur1 = req.query.cur1 as string | undefined;
       const error = req.query.error as string | undefined;
       const errorDescription = req.query.error_description as string | undefined;
       const cookies = parseCookies(req.headers.cookie);
@@ -1211,15 +1254,12 @@ export async function createApp() {
       const requestHost = req.headers.host || 'localhost:3000';
       const requestProtocol = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
 
-      console.log('[DERIV_OAUTH_CALLBACK_RECEIVED]', { hasCode: Boolean(code), hasToken1: Boolean(token1), host: requestHost });
+      console.log('[DERIV_OAUTH_CALLBACK_RECEIVED]', { hasCode: Boolean(code), host: requestHost });
 
       const result = await handleDerivOAuthCallback({
         code,
         state,
         verifier,
-        token1,
-        acct1,
-        cur1,
         cookieState,
         error,
         errorDescription,
@@ -1357,11 +1397,14 @@ export async function createApp() {
           accountDiscovered: false,
           loginid: null,
           accountId: null,
+          currency: null,
+          balance: null,
+          accountType: null,
           websocketConnected: false,
           lastError: null,
           connected: false,
           connectionStatus: 'DISCONNECTED',
-          derivAccountId: undefined,
+          derivAccountId: null,
         }));
       }
 
@@ -1370,16 +1413,19 @@ export async function createApp() {
 
       if (!isVerifiedConnected) {
         return res.json(createSuccessResponse({
-          authenticated: Boolean(req.sessionUser),
+          authenticated: false,
           oauthAuthenticated: false,
           accountDiscovered: false,
           loginid: null,
           accountId: null,
+          currency: null,
+          balance: null,
+          accountType: null,
           websocketConnected: false,
           lastError: metadata?.connectionStatus === 'SYNC_FAILED' ? 'Account discovery failed' : null,
           connected: false,
           connectionStatus: metadata?.connectionStatus || 'DISCONNECTED',
-          derivAccountId: undefined,
+          derivAccountId: null,
           user: req.sessionUser ? {
             userId: req.sessionUser.userId,
             email: req.sessionUser.email,
@@ -1394,6 +1440,10 @@ export async function createApp() {
         accountDiscovered: true,
         loginid: metadata.derivAccountId,
         accountId: metadata.derivAccountId,
+        derivAccountId: metadata.derivAccountId,
+        currency: metadata.currency || null,
+        balance: typeof metadata.balance === 'number' ? metadata.balance : null,
+        accountType: metadata.accountType || null,
         websocketConnected: true,
         lastError: null,
         ...metadata,
@@ -2265,6 +2315,70 @@ export async function createApp() {
     }
   });
 
+  // Direct HTTP / SSE Gateway Endpoint for /api/deriv/stream
+  app.get(['/api/deriv/stream', '/deriv/stream'], (req: Request, res: Response) => {
+    const accept = req.headers.accept || '';
+    const isSSE = accept.includes('text/event-stream') || req.query.format === 'sse';
+
+    if (isSSE) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('Connection', 'keep-alive');
+      if (typeof (res as any).flushHeaders === 'function') {
+        (res as any).flushHeaders();
+      }
+
+      res.write(`data: ${JSON.stringify({ type: 'status', data: derivGateway.getStatus() })}\n\n`);
+
+      const symbol = req.query.symbol as string;
+      let unsubTick: (() => void) | null = null;
+
+      if (symbol) {
+        unsubTick = derivGateway.subscribeTick(symbol, (tick) => {
+          res.write(`data: ${JSON.stringify({ type: 'tick', data: tick })}\n\n`);
+        });
+      }
+
+      const unsubBalance = derivGateway.onBalanceChange((bal) => {
+        res.write(`data: ${JSON.stringify({ type: 'balance', data: bal })}\n\n`);
+      });
+
+      const unsubProfile = derivGateway.onProfileChange((prof) => {
+        res.write(`data: ${JSON.stringify({ type: 'profile', data: prof })}\n\n`);
+      });
+
+      const unsubStatus = derivGateway.onStatusChange((status) => {
+        res.write(`data: ${JSON.stringify({ type: 'status', data: status })}\n\n`);
+      });
+
+      const ssePing = setInterval(() => {
+        try {
+          res.write(`: ping ${Date.now()}\n\n`);
+        } catch {}
+      }, 15000);
+
+      req.on('close', () => {
+        clearInterval(ssePing);
+        if (unsubTick) unsubTick();
+        unsubBalance();
+        unsubProfile();
+        unsubStatus();
+        res.end();
+      });
+      return;
+    }
+
+    // Default JSON Status & Protocol Negotiation Info
+    res.status(200).json(
+      createSuccessResponse({
+        endpoint: '/api/deriv/stream',
+        protocols: ['WebSocket (RFC 6455)', 'Server-Sent Events (SSE)'],
+        status: derivGateway.getStatus(),
+        message: 'Deriv Gateway is online. Connect with WebSocket (ws:// or wss://) or SSE (Accept: text/event-stream)',
+      })
+    );
+  });
+
   // Server-Sent Events (SSE) stream fallback for real-time market data
   app.get('/api/market/events', (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -2354,6 +2468,21 @@ export async function startServer() {
   server.listen(PORT, '0.0.0.0', () => {
     logger.info(`AppexQuant Markets Global server running on http://0.0.0.0:${PORT}`);
   });
+
+  const gracefulShutdown = (signal: string) => {
+    logger.info(`[Server] Received ${signal}. Starting graceful shutdown...`);
+    derivGateway.shutdown();
+    server.close(() => {
+      logger.info('[Server] HTTP server closed gracefully.');
+    });
+    setTimeout(() => {
+      logger.warn('[Server] Forcefully shutting down after timeout.');
+      process.exit(0);
+    }, 5000).unref();
+  };
+
+  process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.once('SIGINT', () => gracefulShutdown('SIGINT'));
 
   return server;
 }

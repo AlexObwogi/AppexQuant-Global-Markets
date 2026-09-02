@@ -127,7 +127,7 @@ export function evaluateSymbolNewsSentiment(
   );
 
   if (relevant.length === 0) {
-    const isSynthetic = symbol.startsWith('R_') || symbol.startsWith('1HZ') || symbol.startsWith('HZ');
+    const isSynthetic = symbol.startsWith('R_') || symbol.startsWith('HZ') || symbol.startsWith('100');
     const isForex = symbol.startsWith('frx');
     
     let defaultSentiment: NewsSentimentType = 'BULLISH';

@@ -133,6 +133,9 @@ export class DerivGateway {
   private currentProfile: GatewayProfileData | null = null;
   private currentBalance: GatewayBalanceData | null = null;
 
+  private wss: WebSocketServer | null = null;
+  private clientHeartbeatInterval: NodeJS.Timeout | null = null;
+
   // Global Listeners (Multiplexed)
   private balanceListeners = new Set<BalanceStreamCallback>();
   private profileListeners = new Set<ProfileStreamCallback>();
@@ -914,7 +917,7 @@ export class DerivGateway {
     this.pingInterval = setInterval(() => {
       if (this.ws && this.connectionState === 'CONNECTED') {
         this.lastPingSent = Date.now();
-        this.sendRequest({ ping: 1 }, 7000)
+        this.sendRequest({ ping: 1 }, 10000)
           .then((res) => {
             if (res.ping === 'pong' || res.msg_type === 'ping') {
               this.lastPongReceived = Date.now();
@@ -922,7 +925,7 @@ export class DerivGateway {
             }
           })
           .catch((err) => {
-            logger.warn('[DerivGateway] Heartbeat ping failed. Forcing connection recovery...', {
+            logger.warn('[DerivGateway] Heartbeat ping failed or timed out (10s). Forcing connection recovery...', {
               error: err?.message || String(err),
             });
             try {
@@ -930,7 +933,7 @@ export class DerivGateway {
             } catch {}
           });
       }
-    }, 20000);
+    }, 30000);
   }
 
   private stopHeartbeat(): void {
@@ -975,6 +978,7 @@ export class DerivGateway {
   public shutdown(): void {
     this.isExplicitShutdown = true;
     this.stopHeartbeat();
+    this.stopClientHeartbeat();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -985,6 +989,22 @@ export class DerivGateway {
       req.reject(new Error('DerivGateway explicitly shutdown'));
     });
     this.pendingRequests.clear();
+
+    // Close all downstream client sockets
+    this.clientSockets.forEach((clientWs) => {
+      try {
+        clientWs.close(1001, 'Gateway Server Shutdown');
+      } catch {}
+    });
+    this.clientSockets.clear();
+    this.clientSymbolSubscriptions.clear();
+
+    if (this.wss) {
+      try {
+        this.wss.close();
+      } catch {}
+      this.wss = null;
+    }
 
     if (this.ws) {
       try {
@@ -1002,22 +1022,96 @@ export class DerivGateway {
 
   /**
    * Attach WebSocket Server to the HTTP Server to serve downstream frontend clients.
+   * Uses noServer mode to prevent duplicate listeners on the same HTTP server.
    */
-  public attachWebSocketServer(server: any, path = '/api/deriv/stream'): WebSocketServer {
-    const wss = new WebSocketServer({ server, path });
-    logger.info(`[DerivGateway] Downstream WebSocket Server attached at path '${path}'`);
+  public attachWebSocketServer(server: any, targetPath = '/api/deriv/stream'): WebSocketServer {
+    if (this.wss) {
+      return this.wss;
+    }
+
+    const wss = new WebSocketServer({ noServer: true });
+    this.wss = wss;
+    logger.info(`[DerivGateway] Downstream WebSocket Server attached for path '${targetPath}'`);
 
     wss.on('connection', (clientWs: any, req: IncomingMessage) => {
       this.handleClientConnection(clientWs, req);
     });
 
+    this.startClientHeartbeat();
+
+    const upgradeHandler = (request: IncomingMessage, socket: any, head: Buffer) => {
+      try {
+        const reqUrl = request.url || '';
+        const url = new URL(reqUrl, `http://${request.headers.host || 'localhost'}`);
+        const pathname = url.pathname;
+
+        if (
+          pathname === targetPath ||
+          pathname === targetPath + '/' ||
+          pathname === '/deriv/stream' ||
+          pathname === '/deriv/stream/'
+        ) {
+          wss.handleUpgrade(request, socket, head, (clientWs) => {
+            wss.emit('connection', clientWs, request);
+          });
+        }
+      } catch (err: any) {
+        logger.warn('[DerivGateway] Upgrade handling exception:', { error: err?.message || String(err) });
+      }
+    };
+
+    // Attach upgrade handler once per server
+    if (server && typeof server.on === 'function') {
+      const existingListeners = server.listeners('upgrade');
+      const isAlreadyAttached = existingListeners.some((l: any) => l._derivGatewayUpgrade);
+      if (!isAlreadyAttached) {
+        (upgradeHandler as any)._derivGatewayUpgrade = true;
+        server.on('upgrade', upgradeHandler);
+      }
+    }
+
     return wss;
+  }
+
+  private startClientHeartbeat(): void {
+    this.stopClientHeartbeat();
+    this.clientHeartbeatInterval = setInterval(() => {
+      this.clientSockets.forEach((clientWs) => {
+        if (clientWs.isAlive === false) {
+          logger.info('[DerivGateway] Terminating dead client WebSocket');
+          try {
+            clientWs.terminate();
+          } catch {}
+          this.clientSockets.delete(clientWs);
+          this.clientSymbolSubscriptions.delete(clientWs);
+          return;
+        }
+        clientWs.isAlive = false;
+        try {
+          if (clientWs.readyState === 1) {
+            clientWs.ping();
+          }
+        } catch {}
+      });
+    }, 30000);
+  }
+
+  private stopClientHeartbeat(): void {
+    if (this.clientHeartbeatInterval) {
+      clearInterval(this.clientHeartbeatInterval);
+      this.clientHeartbeatInterval = null;
+    }
   }
 
   /**
    * Handle incoming frontend client WebSocket connection.
    */
   public handleClientConnection(clientWs: any, req?: IncomingMessage): void {
+    clientWs.isAlive = true;
+    clientWs.on('pong', () => {
+      clientWs.isAlive = true;
+    });
+
     this.clientSockets.add(clientWs);
     this.clientSymbolSubscriptions.set(clientWs, new Set<string>());
 
@@ -1044,7 +1138,40 @@ export class DerivGateway {
         const text = typeof message === 'string' ? message : message.toString('utf8');
         const parsed = JSON.parse(text);
 
-        // Subscribe Tick
+        // 1. Authorize from Client
+        if (parsed.action === 'authorize' || parsed.authorize) {
+          const token = (parsed.token || parsed.authorize || '').trim();
+          if (token) {
+            const profile = await this.setAuthToken(token);
+            if (profile) {
+              this.sendToClient(clientWs, { type: 'authorize', data: profile, req_id: parsed.req_id });
+              this.sendToClient(clientWs, { type: 'profile', data: profile });
+              if (this.currentBalance) {
+                this.sendToClient(clientWs, { type: 'balance', data: this.currentBalance });
+              }
+            } else {
+              this.sendToClient(clientWs, {
+                type: 'authorize',
+                error: { message: 'Authorization failed upstream' },
+                req_id: parsed.req_id,
+              });
+            }
+          }
+        }
+
+        // 2. Balance from Client
+        if (parsed.action === 'balance' || parsed.balance) {
+          if (this.currentBalance) {
+            this.sendToClient(clientWs, { type: 'balance', data: this.currentBalance, req_id: parsed.req_id });
+          } else if (this.isAuthorized) {
+            await this.subscribeBalanceOnce();
+            if (this.currentBalance) {
+              this.sendToClient(clientWs, { type: 'balance', data: this.currentBalance, req_id: parsed.req_id });
+            }
+          }
+        }
+
+        // 3. Subscribe Tick
         if (parsed.action === 'subscribe_tick' || parsed.type === 'subscribe_tick' || parsed.ticks) {
           const symbol = (parsed.symbol || parsed.ticks || '').trim();
           if (symbol && !isSymbolBlacklisted(symbol)) {
@@ -1061,7 +1188,7 @@ export class DerivGateway {
           }
         }
 
-        // Unsubscribe Tick
+        // 4. Unsubscribe Tick
         if (parsed.action === 'unsubscribe_tick' || parsed.type === 'unsubscribe_tick' || parsed.forget) {
           const symbol = (parsed.symbol || parsed.forget || '').trim();
           if (symbol) {
@@ -1073,13 +1200,13 @@ export class DerivGateway {
           }
         }
 
-        // Active Symbols Request
+        // 5. Active Symbols Request
         if (parsed.action === 'active_symbols' || parsed.active_symbols) {
           const symbols = await this.fetchActiveSymbols('full');
           this.sendToClient(clientWs, { type: 'active_symbols', data: symbols, req_id: parsed.req_id });
         }
 
-        // Candles / Ticks History Request
+        // 6. Candles / Ticks History Request
         if (parsed.action === 'fetch_candles' || parsed.ticks_history) {
           const symbol = (parsed.symbol || parsed.ticks_history || '').trim();
           const gran = parsed.granularity || 60;
@@ -1088,7 +1215,7 @@ export class DerivGateway {
           this.sendToClient(clientWs, { type: 'candles', symbol, data: candles, req_id: parsed.req_id });
         }
 
-        // Ping from Client
+        // 7. Ping from Client
         if (parsed.action === 'ping' || parsed.ping) {
           this.sendToClient(clientWs, { type: 'pong', time: Date.now(), req_id: parsed.req_id });
         }

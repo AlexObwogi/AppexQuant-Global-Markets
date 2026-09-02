@@ -246,6 +246,40 @@ export const dbQueries = {
   },
 
   /**
+   * Retrieves the primary active Deriv account for a given user or loginid from database
+   */
+  async getDerivAccountByUserId(userIdOrLoginId: string): Promise<any | null> {
+    if (!isDirectDatabaseAvailable()) return null;
+    try {
+      // 1. Try finding by loginid directly
+      const byLoginId = await directPrisma.derivAccount.findUnique({
+        where: { id: userIdOrLoginId },
+      });
+      if (byLoginId) return byLoginId;
+
+      // 2. Try finding by userId
+      const byUserId = await directPrisma.derivAccount.findFirst({
+        where: { userId: userIdOrLoginId },
+        orderBy: { lastSyncedAt: 'desc' },
+      });
+      if (byUserId) return byUserId;
+
+      // 3. Try finding user session mapping
+      const userWithAccount = await directPrisma.user.findFirst({
+        where: { OR: [{ id: userIdOrLoginId }, { derivAccountId: userIdOrLoginId }] },
+        include: { derivAccounts: true },
+      });
+      if (userWithAccount?.derivAccounts?.[0]) {
+        return userWithAccount.derivAccounts[0];
+      }
+      return null;
+    } catch (err: any) {
+      setDirectDatabaseAvailable(false);
+      return null;
+    }
+  },
+
+  /**
    * Idempotently captures an account snapshot (balance & equity)
    */
   async recordAccountSnapshot(data: {

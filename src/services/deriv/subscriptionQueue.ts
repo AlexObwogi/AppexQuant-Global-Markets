@@ -93,6 +93,7 @@ export class SubscriptionQueue {
     // 3. Strict validation against availableSymbols returned by Deriv
     if (this.availableSymbols.size > 0 && !this.availableSymbols.has(cleanSymbol)) {
       console.warn(`[SubscriptionQueue] Subscription rejected: Symbol '${cleanSymbol}' is not present in Deriv active_symbols list.`);
+      this.markRejected(cleanSymbol);
       return false;
     }
 

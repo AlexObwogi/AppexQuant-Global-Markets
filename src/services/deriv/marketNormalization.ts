@@ -1,7 +1,7 @@
 /**
  * AppexQuant Markets Global - Market Normalization Engine
- * Normalizes Deriv active symbols retrieved via active_symbols: "full", product_type: "basic".
- * Excludes blacklisted/invalid symbols (1HZ10V, 1HZ100V, cryETHUSD) and symbols rejected by Deriv.
+ * Normalizes Deriv active symbols retrieved via { active_symbols: "full", product_type: "basic" }.
+ * Excludes blacklisted/obsolete symbols (1HZ10V, 1HZ100V, cryETHUSD) and prevents invalid subscriptions.
  */
 
 import { DerivActiveSymbol } from './derivTypes.ts';
@@ -15,8 +15,172 @@ export const BLACKLISTED_SYMBOLS = new Set<string>([
 
 export function isSymbolBlacklisted(symbol: string): boolean {
   if (!symbol) return true;
-  return BLACKLISTED_SYMBOLS.has(symbol.trim());
+  const clean = symbol.trim();
+  if (BLACKLISTED_SYMBOLS.has(clean)) return true;
+  // Exclude legacy or malformed symbols
+  if (clean.startsWith('1HZ10V') || clean.startsWith('1HZ100V') || clean === 'cryETHUSD') return true;
+  return false;
 }
+
+export const OFFICIAL_FALLBACK_INSTRUMENTS: MarketInstrument[] = [
+  // Forex Majors
+  {
+    id: 'frxEURUSD',
+    symbol: 'frxEURUSD',
+    name: 'EUR/USD',
+    category: 'FOREX',
+    baseCurrency: 'EUR',
+    quoteCurrency: 'USD',
+    pipSize: 0.00001,
+    minLotSize: 0.01,
+    maxLotSize: 100,
+    lotStep: 0.01,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
+    isMarketOpen: true,
+  },
+  {
+    id: 'frxGBPUSD',
+    symbol: 'frxGBPUSD',
+    name: 'GBP/USD',
+    category: 'FOREX',
+    baseCurrency: 'GBP',
+    quoteCurrency: 'USD',
+    pipSize: 0.00001,
+    minLotSize: 0.01,
+    maxLotSize: 100,
+    lotStep: 0.01,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
+    isMarketOpen: true,
+  },
+  {
+    id: 'frxUSDJPY',
+    symbol: 'frxUSDJPY',
+    name: 'USD/JPY',
+    category: 'FOREX',
+    baseCurrency: 'USD',
+    quoteCurrency: 'JPY',
+    pipSize: 0.001,
+    minLotSize: 0.01,
+    maxLotSize: 100,
+    lotStep: 0.01,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
+    isMarketOpen: true,
+  },
+  {
+    id: 'frxAUDUSD',
+    symbol: 'frxAUDUSD',
+    name: 'AUD/USD',
+    category: 'FOREX',
+    baseCurrency: 'AUD',
+    quoteCurrency: 'USD',
+    pipSize: 0.00001,
+    minLotSize: 0.01,
+    maxLotSize: 100,
+    lotStep: 0.01,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
+    isMarketOpen: true,
+  },
+  // Deriv Continuous Volatility Indices
+  {
+    id: 'R_100',
+    symbol: 'R_100',
+    name: 'Volatility 100 Index',
+    category: 'SYNTHETICS',
+    baseCurrency: 'USD',
+    quoteCurrency: 'USD',
+    pipSize: 0.01,
+    minLotSize: 0.1,
+    maxLotSize: 50,
+    lotStep: 0.1,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
+    isMarketOpen: true,
+  },
+  {
+    id: 'R_50',
+    symbol: 'R_50',
+    name: 'Volatility 50 Index',
+    category: 'SYNTHETICS',
+    baseCurrency: 'USD',
+    quoteCurrency: 'USD',
+    pipSize: 0.001,
+    minLotSize: 0.1,
+    maxLotSize: 50,
+    lotStep: 0.1,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
+    isMarketOpen: true,
+  },
+  {
+    id: 'R_75',
+    symbol: 'R_75',
+    name: 'Volatility 75 Index',
+    category: 'SYNTHETICS',
+    baseCurrency: 'USD',
+    quoteCurrency: 'USD',
+    pipSize: 0.0001,
+    minLotSize: 0.01,
+    maxLotSize: 50,
+    lotStep: 0.01,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
+    isMarketOpen: true,
+  },
+  // Commodities
+  {
+    id: 'frxXAUUSD',
+    symbol: 'frxXAUUSD',
+    name: 'Gold / USD',
+    category: 'COMMODITIES',
+    baseCurrency: 'XAU',
+    quoteCurrency: 'USD',
+    pipSize: 0.01,
+    minLotSize: 0.01,
+    maxLotSize: 20,
+    lotStep: 0.01,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
+    isMarketOpen: true,
+  },
+  // Crypto
+  {
+    id: 'cryBTCUSD',
+    symbol: 'cryBTCUSD',
+    name: 'Bitcoin / USD',
+    category: 'CRYPTO',
+    baseCurrency: 'BTC',
+    quoteCurrency: 'USD',
+    pipSize: 0.01,
+    minLotSize: 0.01,
+    maxLotSize: 10,
+    lotStep: 0.01,
+    bid: 0,
+    ask: 0,
+    spread: 0,
+    change24hPercentage: 0,
+    isMarketOpen: true,
+  },
+];
 
 export function mapDerivCategory(market: string, submarket?: string): InstrumentCategory {
   const m = (market || '').toLowerCase();
@@ -31,7 +195,9 @@ export function mapDerivCategory(market: string, submarket?: string): Instrument
 }
 
 export function normalizeDerivActiveSymbols(rawSymbols: DerivActiveSymbol[]): MarketInstrument[] {
-  if (!rawSymbols || !Array.isArray(rawSymbols)) return [];
+  if (!rawSymbols || !Array.isArray(rawSymbols) || rawSymbols.length === 0) {
+    return OFFICIAL_FALLBACK_INSTRUMENTS;
+  }
 
   const normalized: MarketInstrument[] = [];
   const seenSymbols = new Set<string>();
@@ -41,7 +207,7 @@ export function normalizeDerivActiveSymbols(rawSymbols: DerivActiveSymbol[]): Ma
     const symbolClean = sym.symbol.trim();
 
     // Reject blacklisted and duplicate symbols
-    if (BLACKLISTED_SYMBOLS.has(symbolClean) || seenSymbols.has(symbolClean)) {
+    if (isSymbolBlacklisted(symbolClean) || seenSymbols.has(symbolClean)) {
       continue;
     }
     seenSymbols.add(symbolClean);
@@ -84,14 +250,14 @@ export function normalizeDerivActiveSymbols(rawSymbols: DerivActiveSymbol[]): Ma
     });
   }
 
-  return normalized;
+  return normalized.length > 0 ? normalized : OFFICIAL_FALLBACK_INSTRUMENTS;
 }
 
 export function extractAvailableSymbols(instruments: MarketInstrument[]): Set<string> {
   const set = new Set<string>();
   if (!instruments || !Array.isArray(instruments)) return set;
   for (const inst of instruments) {
-    if (inst.symbol && !BLACKLISTED_SYMBOLS.has(inst.symbol)) {
+    if (inst.symbol && !isSymbolBlacklisted(inst.symbol)) {
       set.add(inst.symbol);
     }
   }

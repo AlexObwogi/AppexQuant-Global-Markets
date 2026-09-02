@@ -9,6 +9,9 @@ const { Pool } = pkg;
 import { logger } from '../observability/logger.ts';
 
 let pool: pkg.Pool | null = null;
+let isConnectionVerified = false;
+let verificationAttempted = false;
+let cachedConnectionResult: { success: boolean; latencyMs?: number; error?: string; stats?: PoolStats | null } | null = null;
 
 export interface PoolStats {
   totalCount: number;
@@ -21,7 +24,6 @@ export function getDatabasePool(): pkg.Pool {
     let connectionString = process.env.DATABASE_URL;
     
     if (!connectionString) {
-      logger.info('DATABASE_URL environment variable is not defined.');
       connectionString = 'postgresql://localhost:5432/appexquant';
     }
 
@@ -34,7 +36,7 @@ export function getDatabasePool(): pkg.Pool {
     const isProd = process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
 
     pool = new Pool({
-      connectionString: connectionString || undefined,
+      connectionString,
       ssl: isProd ? { rejectUnauthorized: false } : undefined,
       max: maxConnections,
       min: 0,
@@ -49,7 +51,6 @@ export function getDatabasePool(): pkg.Pool {
     });
 
     pool.on('connect', (client) => {
-      // Set query performance and isolation flags on new pooled client
       client.query(`SET statement_timeout = ${statementTimeout};`).catch(() => {});
     });
   }
@@ -66,19 +67,67 @@ export function getPoolStats(): PoolStats | null {
   };
 }
 
-export async function testDatabaseConnection(): Promise<{ success: boolean; latencyMs?: number; error?: string; stats?: PoolStats | null }> {
+/**
+ * Startup Verification & Retry Strategy
+ * Verifies the pooled PostgreSQL connection with exponential backoff retries and strict timeout handling.
+ * Caches the result to prevent repeated fallback logs or connection overhead.
+ */
+export async function testDatabaseConnection(forceRetry = false): Promise<{ success: boolean; latencyMs?: number; error?: string; stats?: PoolStats | null }> {
+  if (cachedConnectionResult && !forceRetry) {
+    return cachedConnectionResult;
+  }
+
   if (!process.env.DATABASE_URL || !process.env.DATABASE_URL.trim()) {
-    return { success: false, error: 'DATABASE_URL environment variable is missing. Direct PostgreSQL connection is required.' };
+    cachedConnectionResult = {
+      success: false,
+      error: 'DATABASE_URL environment variable is missing. Direct PostgreSQL connection is required.',
+      stats: null,
+    };
+    return cachedConnectionResult;
   }
-  const dbPool = getDatabasePool();
+
+  const maxRetries = 3;
+  let lastError = 'Unknown database connection error';
   const start = Date.now();
-  try {
-    const client = await dbPool.connect();
-    await client.query('SELECT NOW() AS current_time');
-    client.release();
-    const latencyMs = Date.now() - start;
-    return { success: true, latencyMs, stats: getPoolStats() };
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Failed to connect to PostgreSQL database' };
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const dbPool = getDatabasePool();
+      const client = await Promise.race([
+        dbPool.connect(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Database connection timeout (3000ms)')), 3000)
+        ),
+      ]);
+
+      try {
+        await client.query('SELECT NOW() AS current_time');
+      } finally {
+        client.release();
+      }
+
+      const latencyMs = Date.now() - start;
+      isConnectionVerified = true;
+      verificationAttempted = true;
+      cachedConnectionResult = { success: true, latencyMs, stats: getPoolStats() };
+      return cachedConnectionResult;
+    } catch (err: any) {
+      lastError = err?.message || String(err);
+      if (attempt < maxRetries) {
+        const backoffMs = Math.pow(2, attempt) * 250;
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
+    }
   }
+
+  verificationAttempted = true;
+  isConnectionVerified = false;
+  cachedConnectionResult = {
+    success: false,
+    error: `PostgreSQL connection failed after ${maxRetries} attempts: ${lastError}`,
+    stats: getPoolStats(),
+  };
+
+  return cachedConnectionResult;
 }
+

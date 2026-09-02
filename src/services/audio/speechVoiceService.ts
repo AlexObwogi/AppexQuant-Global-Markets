@@ -206,7 +206,7 @@ class TradeSpeechVoiceService {
     if (s === 'ETHUSD' || s === 'ETHUSDT') return 'Ethereum';
     if (s === 'XRPUSD' || s === 'XRPUSDT') return 'X R P';
     if (s === 'MEMEUSDT') return 'Meme token';
-    if (s.startsWith('R_') || s.startsWith('1HZ')) return `Volatility index ${s.replace(/[^0-9]/g, '')}`;
+    if (s.startsWith('R_') || s.startsWith('HZ')) return `Volatility index ${s.replace(/[^0-9]/g, '')}`;
     return s.split('').join(' ');
   }
 

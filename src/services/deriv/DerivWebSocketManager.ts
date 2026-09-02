@@ -275,8 +275,8 @@ export class DerivWebSocketManager {
     this.stopPing();
     this.pingInterval = setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.sendRequest({ ping: 1 }, 7000).catch(() => {
-          console.warn('[DerivWS-Client] Heartbeat ping failed. Closing connection...');
+        this.sendRequest({ ping: 1 }, 10000).catch(() => {
+          console.warn('[DerivWS-Client] Heartbeat ping failed or timed out (10s). Closing connection...');
           if (this.ws) {
             try {
               this.ws.close();
@@ -284,7 +284,7 @@ export class DerivWebSocketManager {
           }
         });
       }
-    }, 20000);
+    }, 30000);
   }
 
   private stopPing(): void {

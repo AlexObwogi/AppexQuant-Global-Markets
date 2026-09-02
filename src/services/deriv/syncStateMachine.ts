@@ -36,7 +36,7 @@ export enum DerivSyncState {
 }
 
 export interface DerivSyncContext {
-  userId: string;
+  userId?: string;
   derivAccountId?: string;
   accountType?: 'demo' | 'real';
   currency?: string;
@@ -47,8 +47,8 @@ export interface DerivSyncContext {
   persisted?: boolean;
   errorReason?: string;
   errorCode?: string;
-  requestId: string;
-  timestamp: string;
+  requestId?: string;
+  timestamp?: string;
 }
 
 const VALID_DERIV_ID_REGEX = /^(CR|VRTC|VR|MF|MLT|MX|GBP|USD|EUR|AUD|BTC|ETH|LTC|UST|eUSDT)\d+$/i;

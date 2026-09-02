@@ -12,7 +12,7 @@ import {
   DataQualityState,
   MarketMessageMetadata,
 } from '../types/marketData.ts';
-import { DerivWebSocketManager } from './deriv/DerivWebSocketManager.ts';
+import { DerivWebSocketManager, derivWs } from './deriv/DerivWebSocketManager.ts';
 
 export class MarketDataEngine implements MarketDataProvider {
   readonly providerName = 'AppexQuant-MultiSource-Engine';
@@ -27,7 +27,7 @@ export class MarketDataEngine implements MarketDataProvider {
   private staledetectThresholdMs = 10000; // 10 seconds without tick = STALE
 
   constructor(derivWsInstance?: DerivWebSocketManager) {
-    this.derivWs = derivWsInstance || new DerivWebSocketManager();
+    this.derivWs = derivWsInstance || derivWs;
     this.startStaleMonitor();
   }
 

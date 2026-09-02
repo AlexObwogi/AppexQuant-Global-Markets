@@ -1,21 +1,29 @@
 /**
- * AppexQuant Markets Global - Deriv WebSocket Manager
- * Resilient, high-performance market data WebSocket client.
- * Handles request correlation, subscriptions, reconnects, stale detection, and data validation.
+ * AppexQuant Markets Global - Deriv WebSocket Manager (Frontend Gateway Consumer)
+ * 
+ * Consumes real-time multiplexed market data and account streams from the Authoritative Backend Gateway.
+ * - Connects to the backend gateway stream (/api/deriv/stream) instead of opening multiple direct Deriv sockets.
+ * - Subscribes and unsubscribes symbols cleanly.
+ * - Auto-reconnects with exponential backoff and randomized jitter.
+ * - Safely resubscribes all active symbol subscriptions on reconnection.
+ * - Never fabricates prices, balances, or profiles.
  */
 
 import {
   DerivRequest,
-  DerivRequestMessage,
   DerivResponse,
   DerivActiveSymbol,
-  DerivCandle,
   DerivContractCategory,
   NormalizedTick,
   NormalizedCandle,
 } from './derivTypes.ts';
-import { FALLBACK_INSTRUMENTS } from './marketTaxonomy.ts';
 import { subscriptionQueue, TickCallback } from './subscriptionQueue.ts';
+import {
+  normalizeDerivActiveSymbols,
+  extractAvailableSymbols,
+  BLACKLISTED_SYMBOLS,
+  isSymbolBlacklisted,
+} from './marketNormalization.ts';
 
 export type DerivConnectionState = 'CONNECTED' | 'CONNECTING' | 'RECONNECTING' | 'OFFLINE' | 'ERROR' | 'DISCONNECTED';
 
@@ -24,12 +32,14 @@ export type StatusCallback = (state: DerivConnectionState) => void;
 
 export class DerivWebSocketManager {
   private ws: WebSocket | null = null;
-  private appId: string;
-  private endpoint: string;
   private reqIdCounter = 1;
-  private pendingRequests = new Map<number, { resolve: (res: DerivResponse) => void; reject: (err: Error) => void; timer: NodeJS.Timeout }>();
+  private pendingRequests = new Map<
+    number,
+    { resolve: (res: any) => void; reject: (err: Error) => void; timer: NodeJS.Timeout }
+  >();
   private tickHistory = new Map<string, NormalizedTick>();
-  
+  private availableSymbols = new Set<string>();
+
   private connectionState: DerivConnectionState = 'DISCONNECTED';
   private statusListeners = new Set<StatusCallback>();
   private balanceCallbacks = new Set<(balanceObj: any) => void>();
@@ -37,19 +47,42 @@ export class DerivWebSocketManager {
   private positionCallbacks = new Set<(positionData: any) => void>();
   private transactionCallbacks = new Set<(transactionData: any) => void>();
 
-  // User socket scoping & subscription recovery flags
-  private authToken: string | null = null;
-  private isBalanceSubscribed = false;
-  private isPortfolioSubscribed = false;
-  private isPositionsSubscribed = false;
-  private isTransactionsSubscribed = false;
+  private pingInterval: NodeJS.Timeout | null = null;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private connectPromise: Promise<void> | null = null;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 25;
+  private baseReconnectDelayMs = 1000;
+  private maxReconnectDelayMs = 30000;
+  private isExplicitDisconnect = false;
 
-  public setAuthToken(token: string | null): void {
-    this.authToken = token ? token.trim() : null;
+  constructor() {
+    this.setupWindowListeners();
   }
 
-  public getAuthToken(): string | null {
-    return this.authToken;
+  private setupWindowListeners(): void {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => {
+        if (this.connectionState !== 'CONNECTED' && !this.isExplicitDisconnect) {
+          console.log('[DerivWS-Client] Network online detected. Triggering immediate reconnection to backend gateway...');
+          if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+          }
+          this.reconnectAttempts = 0;
+          this.connect().catch(() => {});
+        }
+      });
+
+      window.addEventListener('offline', () => {
+        console.warn('[DerivWS-Client] Browser is offline.');
+        this.setConnectionState('OFFLINE');
+      });
+    }
+  }
+
+  public getIsSimulated(): boolean {
+    return false;
   }
 
   public onBalance(cb: (balanceObj: any) => void): () => void {
@@ -76,107 +109,39 @@ export class DerivWebSocketManager {
     return () => this.transactionCallbacks.delete(cb);
   }
 
-  public async subscribeBalance(subscribe: boolean = true): Promise<void> {
-    this.isBalanceSubscribed = subscribe;
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      await this.sendRequest({ balance: 1, subscribe: subscribe ? 1 : 0 }).catch((err) => {
-        console.warn('[DerivWS] Balance subscribe warning:', err);
-      });
-    }
-  }
-
-  public async subscribePortfolio(): Promise<void> {
-    this.isPortfolioSubscribed = true;
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      await this.sendRequest({ portfolio: 1, subscribe: 1 }).catch((err) => {
-        console.warn('[DerivWS] Portfolio subscribe warning:', err);
-      });
-    }
-  }
-
-  public async subscribePositions(): Promise<void> {
-    this.isPositionsSubscribed = true;
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      await this.sendRequest({ proposal_open_contract: 1, subscribe: 1 }).catch((err) => {
-        console.warn('[DerivWS] Positions subscribe warning:', err);
-      });
-    }
-  }
-
-  public async subscribeTransactions(): Promise<void> {
-    this.isTransactionsSubscribed = true;
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      await this.sendRequest({ transaction: 1, subscribe: 1 }).catch((err) => {
-        console.warn('[DerivWS] Transactions subscribe warning:', err);
-      });
-    }
-  }
-
   public resetUserSubscriptions(): void {
-    this.authToken = null;
-    this.isBalanceSubscribed = false;
-    this.isPortfolioSubscribed = false;
-    this.isPositionsSubscribed = false;
-    this.isTransactionsSubscribed = false;
-
     this.balanceCallbacks.clear();
     this.portfolioCallbacks.clear();
     this.positionCallbacks.clear();
     this.transactionCallbacks.clear();
-
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.sendRequest({ forget_all: 'balance' }).catch(() => {});
-      this.sendRequest({ forget_all: 'portfolio' }).catch(() => {});
-      this.sendRequest({ forget_all: 'proposal_open_contract' }).catch(() => {});
-      this.sendRequest({ forget_all: 'transaction' }).catch(() => {});
-      this.sendRequest({ forget_all: 'authentication' }).catch(() => {});
-    }
-  }
-  
-  private pingInterval: NodeJS.Timeout | null = null;
-  private reconnectTimer: NodeJS.Timeout | null = null;
-  private connectPromise: Promise<void> | null = null;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 20;
-  private baseReconnectDelayMs = 1000;
-  private maxReconnectDelayMs = 30000;
-  private isExplicitDisconnect = false;
-
-  private endpoints: string[];
-
-  constructor(appId = '1089') {
-    this.appId = appId;
-    this.endpoints = [
-      `wss://ws.derivws.com/websockets/v3?app_id=${this.appId}`,
-      `wss://ws.binaryws.com/websockets/v3?app_id=${this.appId}`,
-    ];
-    this.endpoint = this.endpoints[0];
-    this.setupWindowListeners();
   }
 
-  private setupWindowListeners(): void {
-    if (typeof window !== 'undefined') {
-      window.addEventListener('online', () => {
-        if (this.connectionState !== 'CONNECTED' && !this.isExplicitDisconnect) {
-          console.log('[DerivWS] Network online detected. Triggering immediate reconnection...');
-          if (this.reconnectTimer) {
-            clearTimeout(this.reconnectTimer);
-            this.reconnectTimer = null;
-          }
-          this.reconnectAttempts = 0;
-          this.connect().catch(() => {});
+  public setAvailableSymbols(symbols: Set<string> | string[]): void {
+    this.availableSymbols.clear();
+    if (symbols instanceof Set) {
+      symbols.forEach((s) => {
+        if (s && !BLACKLISTED_SYMBOLS.has(s.trim())) {
+          this.availableSymbols.add(s.trim());
         }
       });
-
-      window.addEventListener('offline', () => {
-        console.warn('[DerivWS] Browser is offline.');
-        this.setConnectionState('OFFLINE');
+    } else if (Array.isArray(symbols)) {
+      symbols.forEach((s) => {
+        if (s && !BLACKLISTED_SYMBOLS.has(s.trim())) {
+          this.availableSymbols.add(s.trim());
+        }
       });
     }
+    subscriptionQueue.setAvailableSymbols(this.availableSymbols);
   }
 
-  public getIsSimulated(): boolean {
-    return false;
+  public getAvailableSymbols(): Set<string> {
+    return new Set(this.availableSymbols);
+  }
+
+  public hasAvailableSymbol(symbol: string): boolean {
+    if (!symbol || isSymbolBlacklisted(symbol)) return false;
+    if (this.availableSymbols.size === 0) return !isSymbolBlacklisted(symbol);
+    return this.availableSymbols.has(symbol.trim());
   }
 
   public onStatusChange(callback: StatusCallback): () => void {
@@ -196,6 +161,15 @@ export class DerivWebSocketManager {
     return this.connectionState;
   }
 
+  private getGatewayStreamUrl(): string {
+    if (typeof window === 'undefined') {
+      return 'ws://localhost:3000/api/deriv/stream';
+    }
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host || 'localhost:3000';
+    return `${protocol}//${host}/api/deriv/stream`;
+  }
+
   public connect(): Promise<void> {
     this.isExplicitDisconnect = false;
 
@@ -212,15 +186,18 @@ export class DerivWebSocketManager {
 
     this.connectPromise = new Promise((resolve, reject) => {
       try {
-        this.ws = new WebSocket(this.endpoint);
+        const streamUrl = this.getGatewayStreamUrl();
+        console.log(`[DerivWS-Client] Connecting to backend gateway stream: ${streamUrl}`);
+
+        this.ws = new WebSocket(streamUrl);
 
         const openTimeout = setTimeout(() => {
           if (this.ws?.readyState !== WebSocket.OPEN) {
-            console.error('[DerivWS] Connection timeout.');
+            console.warn('[DerivWS-Client] Backend gateway connection timeout.');
             this.ws?.close();
             this.connectPromise = null;
             this.setConnectionState('ERROR');
-            reject(new Error('Connection timeout'));
+            reject(new Error('Gateway connection timeout'));
           }
         }, 10000);
 
@@ -229,6 +206,7 @@ export class DerivWebSocketManager {
           this.reconnectAttempts = 0;
           this.connectPromise = null;
           this.setConnectionState('CONNECTED');
+          console.log('[DerivWS-Client] Connected to backend gateway stream');
           this.startPing();
           this.resubscribeAll();
           resolve();
@@ -236,13 +214,13 @@ export class DerivWebSocketManager {
 
         this.ws.onmessage = (event) => this.handleMessage(event);
 
-        this.ws.onerror = (error) => {
-          console.warn(`[DerivWS] Connection error on ${this.endpoint}. Scheduling reconnect...`);
+        this.ws.onerror = () => {
+          console.warn('[DerivWS-Client] Gateway WebSocket error. Scheduling reconnect...');
           clearTimeout(openTimeout);
           this.ws?.close();
           this.connectPromise = null;
           this.setConnectionState('ERROR');
-          reject(new Error('WebSocket connection error'));
+          reject(new Error('Gateway connection error'));
         };
 
         this.ws.onclose = () => {
@@ -259,7 +237,7 @@ export class DerivWebSocketManager {
           }
         };
       } catch (err) {
-        console.error('[DerivWS] Exception on connect:', err);
+        console.error('[DerivWS-Client] Connect exception:', err);
         this.connectPromise = null;
         this.setConnectionState('ERROR');
         reject(err);
@@ -284,24 +262,12 @@ export class DerivWebSocketManager {
     this.pendingRequests.clear();
 
     if (this.ws) {
-      if (this.ws.readyState === WebSocket.OPEN) {
-        try {
-          this.ws.send(JSON.stringify({ forget_all: 'balance' }));
-          this.ws.send(JSON.stringify({ forget_all: 'portfolio' }));
-          this.ws.send(JSON.stringify({ forget_all: 'proposal_open_contract' }));
-          this.ws.send(JSON.stringify({ forget_all: 'transaction' }));
-          this.ws.send(JSON.stringify({ forget_all: 'ticks' }));
-        } catch {
-          // Ignore send errors during disconnect
-        }
+      try {
         this.ws.close(1000, 'Normal Closure');
-      } else {
-        this.ws.close();
-      }
+      } catch {}
       this.ws = null;
     }
 
-    this.authToken = null;
     this.setConnectionState('DISCONNECTED');
   }
 
@@ -309,22 +275,14 @@ export class DerivWebSocketManager {
     this.stopPing();
     this.pingInterval = setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.sendRequest({ ping: 1 }, 7000)
-          .then((res) => {
-            if (res.ping !== 'pong' && res.msg_type !== 'ping') {
-              console.warn('[DerivWS] Unexpected ping response format:', res);
-            }
-          })
-          .catch((err) => {
-            console.warn('[DerivWS] Heartbeat ping failed or timed out. Closing dead connection...', err?.message || err);
-            if (this.ws) {
-              try {
-                this.ws.close();
-              } catch {
-                // Ignore error on dead socket
-              }
-            }
-          });
+        this.sendRequest({ ping: 1 }, 7000).catch(() => {
+          console.warn('[DerivWS-Client] Heartbeat ping failed. Closing connection...');
+          if (this.ws) {
+            try {
+              this.ws.close();
+            } catch {}
+          }
+        });
       }
     }, 20000);
   }
@@ -340,7 +298,7 @@ export class DerivWebSocketManager {
     if (this.isExplicitDisconnect || this.reconnectTimer) return;
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('[DerivWS] Max reconnect attempts reached');
+      console.error('[DerivWS-Client] Max reconnect attempts reached');
       this.setConnectionState('DISCONNECTED');
       return;
     }
@@ -353,12 +311,11 @@ export class DerivWebSocketManager {
     );
     const delay = exponentialDelay + jitter;
 
-    console.log(`[DerivWS] Reconnecting in ${delay}ms (Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    console.log(`[DerivWS-Client] Reconnecting to gateway in ${delay}ms (Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
     this.setConnectionState('RECONNECTING');
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.endpoint = this.endpoints[(this.reconnectAttempts - 1) % this.endpoints.length];
       this.connect().catch(() => {});
     }, delay);
   }
@@ -366,15 +323,15 @@ export class DerivWebSocketManager {
   public sendRequest(request: DerivRequest, timeoutMs = 15000): Promise<DerivResponse> {
     return new Promise((resolve, reject) => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-        return reject(new Error('WebSocket is not connected'));
+        return reject(new Error('Gateway WebSocket is not connected'));
       }
 
       const reqId = this.reqIdCounter++;
-      const payload: DerivRequestMessage = { ...request, req_id: reqId };
+      const payload: any = { ...request, req_id: reqId };
 
       const timer = setTimeout(() => {
         this.pendingRequests.delete(reqId);
-        reject(new Error(`Deriv API Request Timeout: ${JSON.stringify(request)}`));
+        reject(new Error(`Gateway Request Timeout: ${JSON.stringify(request)}`));
       }, timeoutMs);
 
       this.pendingRequests.set(reqId, { resolve, reject, timer });
@@ -392,254 +349,244 @@ export class DerivWebSocketManager {
   private handleMessage(event: MessageEvent): void {
     try {
       const data = JSON.parse(event.data) as any;
-      
-      if (data.msg_type === 'balance' && data.balance) {
+
+      // 1. Handle Gateway Status Updates
+      if (data.type === 'status' && data.data) {
+        const state = data.data.state as DerivConnectionState;
+        if (state && this.connectionState !== state && this.connectionState === 'CONNECTED') {
+          // If gateway upstream changed state, reflect it
+          if (state === 'RECONNECTING' || state === 'CONNECTING') {
+            this.setConnectionState(state);
+          }
+        }
+      }
+
+      // 2. Handle Genuine Balance Stream
+      if (data.type === 'balance' && data.data) {
+        const balancePayload = data.data;
         this.balanceCallbacks.forEach((cb) => {
           try {
-            cb(data.balance);
+            cb(balancePayload);
           } catch (e) {
-            console.error('[DerivWS] Error in balance callback:', e);
+            console.error('[DerivWS-Client] Error in balance callback:', e);
           }
         });
       }
 
-      if (data.msg_type === 'portfolio' || data.portfolio) {
-        this.portfolioCallbacks.forEach((cb) => {
-          try {
-            cb(data.portfolio || data);
-          } catch (e) {
-            console.error('[DerivWS] Error in portfolio callback:', e);
-          }
-        });
+      // 3. Handle Genuine Profile Stream
+      if (data.type === 'profile' && data.data) {
+        const profilePayload = data.data;
+        if (profilePayload.balance !== undefined) {
+          this.balanceCallbacks.forEach((cb) => {
+            try {
+              cb(profilePayload);
+            } catch (e) {
+              console.error('[DerivWS-Client] Error in profile balance callback:', e);
+            }
+          });
+        }
       }
 
-      if (data.msg_type === 'proposal_open_contract' || data.proposal_open_contract || data.open_positions) {
-        const payload = data.proposal_open_contract || data.open_positions || data;
-        this.positionCallbacks.forEach((cb) => {
-          try {
-            cb(payload);
-          } catch (e) {
-            console.error('[DerivWS] Error in position callback:', e);
-          }
-        });
+      // 4. Handle Multiplexed Tick Stream
+      if (data.type === 'tick' && data.data) {
+        this.processIncomingNormalizedTick(data.data);
       }
 
-      if (data.msg_type === 'transaction' && data.transaction) {
-        this.transactionCallbacks.forEach((cb) => {
-          try {
-            cb(data.transaction);
-          } catch (e) {
-            console.error('[DerivWS] Error in transaction callback:', e);
-          }
-        });
-      }
-
+      // 5. Handle Correlated Responses
       if (data.req_id && this.pendingRequests.has(data.req_id)) {
         const req = this.pendingRequests.get(data.req_id)!;
         clearTimeout(req.timer);
         this.pendingRequests.delete(data.req_id);
 
         if (data.error) {
-          req.reject(new Error(data.error.message));
+          req.reject(new Error(data.error.message || data.error));
         } else {
-          req.resolve(data);
+          req.resolve(data.data !== undefined ? data.data : data);
         }
-      } else if (data.msg_type === 'tick' && data.tick) {
-        this.processIncomingTick(data.tick, data.subscription?.id);
       }
     } catch (err) {
-      console.error('[DerivWS] Failed to parse message:', err);
+      console.error('[DerivWS-Client] Failed to parse gateway message:', err);
     }
   }
 
-  private processIncomingTick(tickData: any, subId?: string): void {
-    if (!tickData.symbol || !tickData.quote) return;
-    
-    const { symbol, quote, epoch, bid, ask } = tickData;
-    const prevTick = this.tickHistory.get(symbol);
-    const prevQuote = prevTick ? prevTick.quote : quote;
-    const changePct = prevQuote ? ((quote - prevQuote) / prevQuote) * 100 : 0;
+  private processIncomingNormalizedTick(normalizedTick: NormalizedTick): void {
+    if (!normalizedTick || !normalizedTick.symbol || typeof normalizedTick.quote !== 'number') return;
 
-    const normalizedTick: NormalizedTick = {
-      symbol,
-      quote,
-      bid: bid || quote,
-      ask: ask || quote,
-      epoch: epoch || Math.floor(Date.now() / 1000),
-      change: quote - prevQuote,
-      changePct,
-      prevQuote,
-      lastUpdated: new Date(epoch ? epoch * 1000 : Date.now()),
+    const symbol = normalizedTick.symbol.trim();
+    // Ensure Date object for lastUpdated
+    const tickWithDate: NormalizedTick = {
+      ...normalizedTick,
+      lastUpdated: normalizedTick.lastUpdated ? new Date(normalizedTick.lastUpdated) : new Date(),
     };
 
-    this.tickHistory.set(symbol, normalizedTick);
-
-    if (subId) {
-      subscriptionQueue.setSubId(symbol, subId);
-    }
+    this.tickHistory.set(symbol, tickWithDate);
 
     const callbacks = subscriptionQueue.getCallbacks(symbol);
     if (callbacks) {
       callbacks.forEach((cb) => {
         try {
-          cb(normalizedTick);
+          cb(tickWithDate);
         } catch (e) {
-          console.error('[DerivWS] Error in tick callback:', e);
+          console.error('[DerivWS-Client] Error in tick callback:', e);
         }
       });
     }
   }
 
-  public async fetchActiveSymbols(): Promise<DerivActiveSymbol[]> {
+  public async fetchActiveSymbols(style: 'full' | 'brief' = 'full'): Promise<DerivActiveSymbol[]> {
     try {
-      const response = await this.sendRequest({
-        active_symbols: 'brief',
-        product_type: 'basic',
-      });
-      if (response.active_symbols && Array.isArray(response.active_symbols) && response.active_symbols.length > 0) {
-        return response.active_symbols;
+      // 1. Try backend gateway REST endpoint first
+      const res = await fetch('/api/market/active-symbols');
+      if (res.ok) {
+        const json = await res.json();
+        const rawSymbols = json.data || json.active_symbols || json;
+        if (Array.isArray(rawSymbols) && rawSymbols.length > 0) {
+          const normalized = normalizeDerivActiveSymbols(rawSymbols);
+          const available = extractAvailableSymbols(normalized);
+          this.setAvailableSymbols(available);
+          return rawSymbols;
+        }
       }
     } catch (err) {
-      console.error('[DerivWS] Active symbols lookup failed:', err);
+      console.warn('[DerivWS-Client] REST active symbols lookup warning:', err);
     }
+
+    // 2. Fallback to Gateway WebSocket request if connected
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        const response: any = await this.sendRequest({ active_symbols: style, action: 'active_symbols' } as any);
+        const symbols = response.active_symbols || (Array.isArray(response) ? response : []);
+        if (Array.isArray(symbols) && symbols.length > 0) {
+          const normalized = normalizeDerivActiveSymbols(symbols);
+          const available = extractAvailableSymbols(normalized);
+          this.setAvailableSymbols(available);
+          return symbols;
+        }
+      } catch (e) {
+        console.warn('[DerivWS-Client] WebSocket active symbols query error:', e);
+      }
+    }
+
     return [];
   }
 
   public async fetchCandles(symbol: string, granularitySeconds: number, count = 300): Promise<NormalizedCandle[]> {
+    const cleanSymbol = symbol ? symbol.trim() : '';
+    if (isSymbolBlacklisted(cleanSymbol)) return [];
+
     try {
-      const response = await this.sendRequest({
-        ticks_history: symbol,
-        style: 'candles',
-        granularity: granularitySeconds,
-        count,
-        end: 'latest',
+      // 1. Try backend gateway REST endpoint
+      const params = new URLSearchParams({
+        symbol: cleanSymbol,
+        granularity: String(granularitySeconds),
+        count: String(count),
       });
-
-      if (response.candles && Array.isArray(response.candles) && response.candles.length > 0) {
-        return response.candles
-          .filter((c) => typeof c.open === 'number' && !isNaN(c.open) && c.open > 0)
-          .map((c) => ({
-            timestamp: c.epoch * 1000,
-            open: c.open,
-            high: c.high,
-            low: c.low,
-            close: c.close,
-          }));
-      }
-
-      if (response.history && response.history.prices && response.history.times) {
-        const { prices, times } = response.history;
-        const candles: NormalizedCandle[] = [];
-        for (let i = 0; i < prices.length; i++) {
-          const price = prices[i];
-          const time = times[i] * 1000;
-          candles.push({
-            timestamp: time,
-            open: price,
-            high: price,
-            low: price,
-            close: price,
-          });
+      const res = await fetch(`/api/market/candles?${params.toString()}`);
+      if (res.ok) {
+        const json = await res.json();
+        const candles = json.data || json.candles || [];
+        if (Array.isArray(candles) && candles.length > 0) {
+          return candles;
         }
-        if (candles.length > 0) return candles;
       }
     } catch (err) {
-      console.error(`[DerivWS] Ticks history lookup for ${symbol} failed:`, err);
+      console.warn(`[DerivWS-Client] REST fetchCandles warning for ${cleanSymbol}:`, err);
+    }
+
+    // 2. Fallback to Gateway WebSocket
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        const response: any = await this.sendRequest({
+          action: 'fetch_candles',
+          ticks_history: cleanSymbol,
+          symbol: cleanSymbol,
+          granularity: granularitySeconds,
+          count,
+        } as any);
+
+        if (Array.isArray(response)) return response;
+        if (response.data && Array.isArray(response.data)) return response.data;
+      } catch (e) {
+        console.warn(`[DerivWS-Client] Gateway WebSocket candles lookup error for ${cleanSymbol}:`, e);
+      }
     }
 
     return [];
   }
 
   public async fetchContractsFor(symbol: string): Promise<DerivContractCategory[]> {
+    const cleanSymbol = symbol ? symbol.trim() : '';
+    if (isSymbolBlacklisted(cleanSymbol)) return [];
+
     try {
-      const response = await this.sendRequest({
-        contracts_for: symbol,
-      });
-      if (response.contracts_for?.available && Array.isArray(response.contracts_for.available)) {
-        return response.contracts_for.available;
+      const res = await fetch(`/api/market/contracts-for?symbol=${encodeURIComponent(cleanSymbol)}`);
+      if (res.ok) {
+        const json = await res.json();
+        const categories = json.data || json.contracts_for?.available || [];
+        if (Array.isArray(categories) && categories.length > 0) {
+          return categories;
+        }
       }
-    } catch (e) {
-      console.error(`[DerivWS] Contracts lookup failed for ${symbol}:`, e);
+    } catch (err) {
+      console.warn(`[DerivWS-Client] REST fetchContractsFor warning for ${cleanSymbol}:`, err);
     }
+
     return [];
   }
 
   public subscribeTick(symbol: string, callback: TickCallback): void {
-    const isFirst = subscriptionQueue.enqueue(symbol, callback);
+    if (!symbol) return;
+    const cleanSymbol = symbol.trim();
 
-    if (this.connectionState === 'CONNECTED') {
-      if (isFirst || !subscriptionQueue.getSubId(symbol)) {
-        this.sendRequest({ ticks: symbol })
-          .then((res) => {
-            if (res.subscription?.id) {
-              subscriptionQueue.setSubId(symbol, res.subscription.id);
-            }
-          })
-          .catch((err) => {
-            console.warn(`[DerivWS] Tick subscription error for ${symbol}:`, err?.message || err);
-          });
+    if (isSymbolBlacklisted(cleanSymbol)) {
+      console.warn(`[DerivWS-Client] Rejected blacklisted symbol subscription: ${cleanSymbol}`);
+      return;
+    }
+
+    const isFirst = subscriptionQueue.enqueue(cleanSymbol, callback);
+
+    if (this.connectionState === 'CONNECTED' && this.ws?.readyState === WebSocket.OPEN) {
+      if (isFirst) {
+        try {
+          this.ws.send(JSON.stringify({ action: 'subscribe_tick', symbol: cleanSymbol }));
+        } catch (err) {
+          console.warn(`[DerivWS-Client] Failed to send subscribe_tick for ${cleanSymbol}:`, err);
+        }
       }
     } else if (this.connectionState === 'DISCONNECTED' || this.connectionState === 'ERROR') {
       this.connect().catch(() => {});
     }
 
-    const cached = this.tickHistory.get(symbol);
+    const cached = this.tickHistory.get(cleanSymbol);
     if (cached) {
       callback(cached);
     }
   }
 
   public unsubscribeTick(symbol: string, callback: TickCallback): void {
-    const isLast = subscriptionQueue.dequeue(symbol, callback);
-    if (isLast) {
-      const subId = subscriptionQueue.getSubId(symbol);
-      if (subId && this.connectionState === 'CONNECTED') {
-        this.sendRequest({ forget: subId }).catch(() => {});
+    if (!symbol) return;
+    const cleanSymbol = symbol.trim();
+    const isLast = subscriptionQueue.dequeue(cleanSymbol, callback);
+    if (isLast && this.ws?.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(JSON.stringify({ action: 'unsubscribe_tick', symbol: cleanSymbol }));
+      } catch (err) {
+        console.warn(`[DerivWS-Client] Failed to send unsubscribe_tick for ${cleanSymbol}:`, err);
       }
     }
   }
 
-  private async resubscribeAll(): Promise<void> {
-    console.log('[DerivWS] Connection recovered. Restoring active subscriptions...');
-
-    // 1. Re-authorize user scope if an authentication token is active
-    if (this.authToken && this.ws?.readyState === WebSocket.OPEN) {
-      try {
-        console.log('[DerivWS] Re-authorizing user socket session...');
-        await this.sendRequest({ authorize: this.authToken }, 10000);
-        console.log('[DerivWS] Socket user authorization successfully restored.');
-      } catch (authErr) {
-        console.warn('[DerivWS] Re-authorization failed during recovery:', authErr);
-      }
-    }
-
-    // 2. Restore user-level streams: balance, portfolio, positions, transactions
-    if (this.isBalanceSubscribed && this.ws?.readyState === WebSocket.OPEN) {
-      this.sendRequest({ balance: 1, subscribe: 1 }).catch((err) => {
-        console.warn('[DerivWS] Balance resubscription failed:', err);
+  private resubscribeAll(): void {
+    console.log('[DerivWS-Client] Gateway connection recovered. Restoring active market subscriptions...');
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      // Re-send subscription messages for all symbols currently having active callbacks
+      subscriptionQueue.flush((req) => {
+        if (req.ticks) {
+          this.ws?.send(JSON.stringify({ action: 'subscribe_tick', symbol: req.ticks }));
+        }
+        return Promise.resolve({ req_id: 0, msg_type: 'tick' });
       });
     }
-
-    if (this.isPortfolioSubscribed && this.ws?.readyState === WebSocket.OPEN) {
-      this.sendRequest({ portfolio: 1, subscribe: 1 }).catch((err) => {
-        console.warn('[DerivWS] Portfolio resubscription failed:', err);
-      });
-    }
-
-    if (this.isPositionsSubscribed && this.ws?.readyState === WebSocket.OPEN) {
-      this.sendRequest({ proposal_open_contract: 1, subscribe: 1 }).catch((err) => {
-        console.warn('[DerivWS] Positions resubscription failed:', err);
-      });
-    }
-
-    if (this.isTransactionsSubscribed && this.ws?.readyState === WebSocket.OPEN) {
-      this.sendRequest({ transaction: 1, subscribe: 1 }).catch((err) => {
-        console.warn('[DerivWS] Transactions resubscription failed:', err);
-      });
-    }
-
-    // 3. Flush and restore market tick streams via subscriptionQueue
-    subscriptionQueue.flush((req) => this.sendRequest(req));
   }
 
   public getLastTick(symbol: string): NormalizedTick | undefined {
@@ -649,3 +596,4 @@ export class DerivWebSocketManager {
 
 // Global Singleton Instance
 export const derivWs = new DerivWebSocketManager();
+export default derivWs;

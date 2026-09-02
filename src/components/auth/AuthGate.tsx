@@ -331,7 +331,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const apiFetch = useApiFetch();
 
   const liveTickerString = useMemo(() => {
-    const symbolsToShow = ['frxEURUSD', 'frxGBPUSD', 'frxUSDJPY', 'R_100', 'R_50', '1HZ10V', 'frxXAUUSD', 'cryBTCUSD'];
+    const symbolsToShow = ['frxEURUSD', 'frxGBPUSD', 'frxUSDJPY', 'R_100', 'R_50', 'R_75', 'frxXAUUSD', 'cryBTCUSD'];
     const parts = symbolsToShow.map((sym) => {
       const inst = instruments.find((i) => i.symbol === sym);
       const name = inst ? inst.name : sym;
@@ -634,9 +634,9 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
           setIsAuthorizing(false);
 
-          // Start WebSocket for real-time data ONLY after authenticated session exists
-          derivAuthService.authorize(token1).catch((wsErr) => {
-            console.warn('[AuthGate] WebSocket real-time subscription deferred warning:', wsErr);
+          // Synchronize session state with DerivAuthService
+          derivAuthService.checkSession().catch((sessionErr) => {
+            console.warn('[AuthGate] Session check notice:', sessionErr);
           });
           return;
         } catch (e: any) {

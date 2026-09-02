@@ -4,8 +4,10 @@
  */
 
 import express, { Request, Response, NextFunction } from 'express';
+import http from 'http';
 import path from 'path';
 import crypto from 'crypto';
+import { derivGateway } from './src/services/deriv/DerivGateway.ts';
 import { loadAppConfig } from './src/config/appConfig.ts';
 import { createSuccessResponse, createErrorResponse } from './src/types/api.ts';
 import { getAuditLogs, logAuditEvent } from './src/observability/audit.ts';
@@ -74,6 +76,8 @@ import {
   connectUserWithApiToken,
   connectUserWithApiTokenAsync,
   switchUserDerivAccountAsync,
+  fetchUserDerivBalanceAsync,
+  reconnectUserDerivAsync,
   requestDerivAccountOtp,
 } from './src/services/deriv/oauthServerService.ts';
 import { isValidDerivAccountId } from './src/services/deriv/syncStateMachine.ts';
@@ -1339,7 +1343,7 @@ export async function createApp() {
   });
 
   // Get current user's safe Deriv connection metadata (No secret tokens returned to normal users)
-  app.get('/api/auth/deriv/status', async (req: Request, res: Response) => {
+  app.get(['/api/auth/status', '/api/auth/deriv/status'], async (req: Request, res: Response) => {
     try {
       const parsedCookies = (req as any).cookies || parseCookies(req.headers.cookie);
       const cookieUserId = parsedCookies['deriv_session_user_id'];
@@ -1366,7 +1370,7 @@ export async function createApp() {
 
       if (!isVerifiedConnected) {
         return res.json(createSuccessResponse({
-          authenticated: false,
+          authenticated: Boolean(req.sessionUser),
           oauthAuthenticated: false,
           accountDiscovered: false,
           loginid: null,
@@ -1376,6 +1380,11 @@ export async function createApp() {
           connected: false,
           connectionStatus: metadata?.connectionStatus || 'DISCONNECTED',
           derivAccountId: undefined,
+          user: req.sessionUser ? {
+            userId: req.sessionUser.userId,
+            email: req.sessionUser.email,
+            role: req.sessionUser.role,
+          } : undefined,
         }));
       }
 
@@ -1391,6 +1400,63 @@ export async function createApp() {
       }));
     } catch (err: any) {
       res.status(500).json(createErrorResponse('Failed to fetch Deriv connection status', 'DERIV_STATUS_ERROR'));
+    }
+  });
+
+  // Authoritative Backend Balance Gateway
+  app.get(['/api/auth/balance', '/api/auth/deriv/balance'], async (req: Request, res: Response) => {
+    try {
+      const parsedCookies = (req as any).cookies || parseCookies(req.headers.cookie);
+      const cookieUserId = parsedCookies['deriv_session_user_id'];
+      const headerUserId = req.headers['x-user-id'] as string;
+      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId || cookieUserId || headerUserId;
+
+      if (!userId) {
+        return res.status(401).json(createErrorResponse('Authentication required for balance query', 'UNAUTHENTICATED'));
+      }
+
+      const balanceResult = await fetchUserDerivBalanceAsync(userId);
+      if (balanceResult.success) {
+        return res.json(createSuccessResponse({
+          balance: balanceResult.balance,
+          currency: balanceResult.currency,
+          loginid: balanceResult.loginid,
+        }));
+      }
+
+      // Fallback to cached connection record balance
+      const meta = await getUserDerivConnectionAsync(userId);
+      if (meta && typeof meta.balance === 'number') {
+        return res.json(createSuccessResponse({
+          balance: meta.balance,
+          currency: meta.currency || 'USD',
+          loginid: meta.derivAccountId,
+        }));
+      }
+
+      return res.status(422).json(createErrorResponse(balanceResult.error || 'Unable to retrieve balance from gateway', 'BALANCE_ERROR'));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Gateway balance request failed', 'BALANCE_ERROR'));
+    }
+  });
+
+  // Server-side Deriv Reconnect & Session Re-authorization
+  app.post(['/api/auth/reconnect', '/api/auth/deriv/reconnect'], async (req: Request, res: Response) => {
+    try {
+      const parsedCookies = (req as any).cookies || parseCookies(req.headers.cookie);
+      const cookieUserId = parsedCookies['deriv_session_user_id'];
+      const headerUserId = req.headers['x-user-id'] as string;
+      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId || cookieUserId || headerUserId;
+
+      if (!userId) {
+        return res.status(401).json(createErrorResponse('Authentication required for reconnect', 'UNAUTHENTICATED'));
+      }
+
+      const meta = await reconnectUserDerivAsync(userId);
+      logAuditEvent('ACCOUNT_CONNECTED', userId, { event: 'DERIV_SESSION_RECONNECTED', connectionStatus: meta.connectionStatus }, meta.derivAccountId);
+      res.json(createSuccessResponse(meta));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Failed to reconnect Deriv gateway session', 'RECONNECT_ERROR'));
     }
   });
 
@@ -2142,6 +2208,99 @@ export async function createApp() {
     }
   });
 
+  // ========================================================
+  // Backend Deriv Market Data Gateway & Streaming Endpoints
+  // ========================================================
+
+  // Active Symbols from Authoritative Deriv Gateway
+  app.get(['/api/market/active-symbols', '/api/market/symbols'], async (req: Request, res: Response) => {
+    try {
+      const style = req.query.style === 'brief' ? 'brief' : 'full';
+      const symbols = await derivGateway.fetchActiveSymbols(style);
+      res.json(createSuccessResponse(symbols));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Failed to fetch active symbols from gateway', 'MARKET_SYMBOLS_ERROR'));
+    }
+  });
+
+  // Authoritative Ticks History / Candles from Deriv Gateway
+  app.get(['/api/market/candles', '/api/market/history'], async (req: Request, res: Response) => {
+    try {
+      const symbol = (req.query.symbol as string || '').trim();
+      const granularity = parseInt(req.query.granularity as string, 10) || 60;
+      const count = parseInt(req.query.count as string, 10) || 300;
+
+      if (!symbol) {
+        return res.status(400).json(createErrorResponse('Symbol parameter required', 'BAD_REQUEST'));
+      }
+
+      const candles = await derivGateway.fetchCandles(symbol, granularity, count);
+      res.json(createSuccessResponse(candles));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Failed to fetch candles from gateway', 'CANDLES_ERROR'));
+    }
+  });
+
+  // Contracts For Symbol
+  app.get('/api/market/contracts-for', async (req: Request, res: Response) => {
+    try {
+      const symbol = (req.query.symbol as string || '').trim();
+      if (!symbol) {
+        return res.status(400).json(createErrorResponse('Symbol parameter required', 'BAD_REQUEST'));
+      }
+      const contracts = await derivGateway.fetchContractsFor(symbol);
+      res.json(createSuccessResponse(contracts));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Failed to fetch contracts from gateway', 'CONTRACTS_ERROR'));
+    }
+  });
+
+  // Gateway Connection & Streaming Status
+  app.get(['/api/market/status', '/api/market/gateway-status'], (req: Request, res: Response) => {
+    try {
+      const status = derivGateway.getStatus();
+      res.json(createSuccessResponse(status));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Failed to fetch gateway status', 'GATEWAY_STATUS_ERROR'));
+    }
+  });
+
+  // Server-Sent Events (SSE) stream fallback for real-time market data
+  app.get('/api/market/events', (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    if (typeof (res as any).flushHeaders === 'function') {
+      (res as any).flushHeaders();
+    }
+
+    res.write(`data: ${JSON.stringify({ type: 'status', data: derivGateway.getStatus() })}\n\n`);
+
+    const symbol = req.query.symbol as string;
+    let unsubTick: (() => void) | null = null;
+
+    if (symbol) {
+      unsubTick = derivGateway.subscribeTick(symbol, (tick) => {
+        res.write(`data: ${JSON.stringify({ type: 'tick', data: tick })}\n\n`);
+      });
+    }
+
+    const unsubBalance = derivGateway.onBalanceChange((bal) => {
+      res.write(`data: ${JSON.stringify({ type: 'balance', data: bal })}\n\n`);
+    });
+
+    const unsubProfile = derivGateway.onProfileChange((prof) => {
+      res.write(`data: ${JSON.stringify({ type: 'profile', data: prof })}\n\n`);
+    });
+
+    req.on('close', () => {
+      if (unsubTick) unsubTick();
+      unsubBalance();
+      unsubProfile();
+      res.end();
+    });
+  });
+
   // Log Startup Audit Event
   logAuditEvent('LOGIN', 'SYSTEM', { event: 'SERVER_BOOT', env: config.env });
 
@@ -2182,9 +2341,21 @@ process.on('uncaughtException', (err: Error) => {
 export async function startServer() {
   const PORT = 3000;
   const app = await createApp();
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = http.createServer(app);
+
+  // Attach real-time Deriv Gateway WebSocket server
+  derivGateway.attachWebSocketServer(server, '/api/deriv/stream');
+  
+  // Initiate resilient upstream connection
+  derivGateway.connect().catch((err) => {
+    logger.warn('[Server] Initial DerivGateway connection notice:', { error: err?.message || String(err) });
+  });
+
+  server.listen(PORT, '0.0.0.0', () => {
     logger.info(`AppexQuant Markets Global server running on http://0.0.0.0:${PORT}`);
   });
+
+  return server;
 }
 
 // Auto-start standalone server when run directly as CLI entry point (not when imported as module)

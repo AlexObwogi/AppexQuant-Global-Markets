@@ -8,7 +8,6 @@ import { useGlobalState } from '../state/GlobalStateContext.tsx';
 import { derivAuthService, DerivAccountProfile } from '../services/deriv/authService.ts';
 import { useApiFetch } from '../utils/apiFetch.ts';
 import { Card } from '../components/ui/Card.tsx';
-import { setEncryptedCookie } from "../utils/auth/pkce.ts";
 import { Button } from '../components/ui/Button.tsx';
 import { Input, Select } from '../components/ui/Input.tsx';
 import { Badge } from '../components/ui/Badge.tsx';

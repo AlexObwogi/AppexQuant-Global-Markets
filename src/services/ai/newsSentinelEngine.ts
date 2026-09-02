@@ -52,7 +52,7 @@ export const VERIFIED_NEWS_FEED: NewsItem[] = [
     publishedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
     url: 'https://deriv.com/markets/synthetic/',
     category: 'Synthetics',
-    relatedSymbols: ['R_100', 'R_75', 'R_50', '1HZ100V'],
+    relatedSymbols: ['R_100', 'R_75', 'R_50', 'R_25'],
     sentiment: 'BULLISH',
     sentimentConfidence: 91,
     importance: 'HIGH',

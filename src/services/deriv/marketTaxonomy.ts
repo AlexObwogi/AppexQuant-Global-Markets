@@ -5,6 +5,9 @@
 
 import { DerivActiveSymbol } from './derivTypes.ts';
 import { MarketInstrument, InstrumentCategory } from '../../types/market.ts';
+import { BLACKLISTED_SYMBOLS, normalizeDerivActiveSymbols as normalizeDerivSymbols, mapDerivCategory } from './marketNormalization.ts';
+
+export { BLACKLISTED_SYMBOLS, mapDerivCategory };
 
 export const FALLBACK_INSTRUMENTS: MarketInstrument[] = [
   // Forex Majors & Minors
@@ -112,33 +115,16 @@ export const FALLBACK_INSTRUMENTS: MarketInstrument[] = [
     isMarketOpen: true,
   },
   {
-    id: '1HZ10V',
-    symbol: '1HZ10V',
-    name: 'Volatility 10 (1s) Index',
+    id: 'R_75',
+    symbol: 'R_75',
+    name: 'Volatility 75 Index',
     category: 'SYNTHETICS',
     baseCurrency: 'USD',
     quoteCurrency: 'USD',
-    pipSize: 0.001,
-    minLotSize: 0.1,
+    pipSize: 0.0001,
+    minLotSize: 0.01,
     maxLotSize: 50,
-    lotStep: 0.1,
-    bid: 0,
-    ask: 0,
-    spread: 0,
-    change24hPercentage: 0,
-    isMarketOpen: true,
-  },
-  {
-    id: '1HZ100V',
-    symbol: '1HZ100V',
-    name: 'Volatility 100 (1s) Index',
-    category: 'SYNTHETICS',
-    baseCurrency: 'USD',
-    quoteCurrency: 'USD',
-    pipSize: 0.01,
-    minLotSize: 0.1,
-    maxLotSize: 50,
-    lotStep: 0.1,
+    lotStep: 0.01,
     bid: 0,
     ask: 0,
     spread: 0,
@@ -181,23 +167,6 @@ export const FALLBACK_INSTRUMENTS: MarketInstrument[] = [
     change24hPercentage: 0,
     isMarketOpen: true,
   },
-  {
-    id: 'cryETHUSD',
-    symbol: 'cryETHUSD',
-    name: 'Ethereum / USD',
-    category: 'CRYPTO',
-    baseCurrency: 'ETH',
-    quoteCurrency: 'USD',
-    pipSize: 0.01,
-    minLotSize: 0.01,
-    maxLotSize: 50,
-    lotStep: 0.01,
-    bid: 0,
-    ask: 0,
-    spread: 0,
-    change24hPercentage: 0,
-    isMarketOpen: true,
-  },
 ];
 
 export function mapDerivMarketCategory(derivMarket: string, derivSubmarket?: string): InstrumentCategory {
@@ -226,50 +195,6 @@ export function normalizeDerivActiveSymbols(rawSymbols: DerivActiveSymbol[]): Ma
   if (!rawSymbols || !Array.isArray(rawSymbols) || rawSymbols.length === 0) {
     return FALLBACK_INSTRUMENTS;
   }
-
-  const normalized: MarketInstrument[] = [];
-
-  for (const sym of rawSymbols) {
-    if (!sym.symbol || !sym.display_name) continue;
-
-    const category = mapDerivMarketCategory(sym.market, sym.submarket);
-    const pip = sym.pip || 0.0001;
-    const spotPrice = typeof sym.spot === 'number' && sym.spot > 0 ? sym.spot : 0;
-
-    // Parse base/quote from symbol or display name
-    let baseCurrency = 'USD';
-    let quoteCurrency = 'USD';
-    if (sym.display_name.includes('/')) {
-      const parts = sym.display_name.split('/');
-      baseCurrency = parts[0].trim();
-      quoteCurrency = parts[1].trim();
-    } else {
-      baseCurrency = sym.symbol.substring(0, 3).toUpperCase();
-      quoteCurrency = sym.symbol.substring(3).toUpperCase() || 'USD';
-    }
-
-    const bid = spotPrice;
-    const ask = spotPrice > 0 ? spotPrice + pip * 2 : 0;
-    const spread = spotPrice > 0 ? Number((pip * 2).toFixed(5)) : 0;
-
-    normalized.push({
-      id: sym.symbol,
-      symbol: sym.symbol,
-      name: sym.display_name,
-      category,
-      baseCurrency,
-      quoteCurrency,
-      pipSize: pip,
-      minLotSize: sym.min_stake || 0.01,
-      maxLotSize: sym.max_stake || 100,
-      lotStep: 0.01,
-      bid,
-      ask,
-      spread,
-      change24hPercentage: 0.0,
-      isMarketOpen: sym.is_trading_suspended !== 1,
-    });
-  }
-
-  return normalized.length > 0 ? normalized : FALLBACK_INSTRUMENTS;
+  const result = normalizeDerivSymbols(rawSymbols);
+  return result.length > 0 ? result : FALLBACK_INSTRUMENTS;
 }

@@ -2,13 +2,24 @@
  * AppexQuant Markets Global - Centralized Authoritative Market Data Context & WebSocket Manager
  * Single source of truth for live ticks, active symbols, historical candles, watchlist,
  * centralized WebSocket subscription deduplication, and per-feed freshness/stale tracking.
+ * 
+ * Strict Startup Sequence:
+ * 1. active_symbols("full")
+ * 2. normalize returned symbols
+ * 3. subscribe ONLY if returned by Deriv (availableSymbols.has(symbol))
+ * Fallback instruments exist solely for initial UI display and are NEVER auto-subscribed.
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
 import { MarketInstrument, InstrumentCategory } from '../types/market.ts';
 import { derivWs, DerivConnectionState } from '../services/deriv/DerivWebSocketManager.ts';
 import { derivAuthService } from '../services/deriv/authService.ts';
-import { normalizeDerivActiveSymbols, FALLBACK_INSTRUMENTS } from '../services/deriv/marketTaxonomy.ts';
+import {
+  normalizeDerivActiveSymbols,
+  extractAvailableSymbols,
+  isSymbolBlacklisted,
+} from '../services/deriv/marketNormalization.ts';
+import { FALLBACK_INSTRUMENTS } from '../services/deriv/marketTaxonomy.ts';
 import { NormalizedTick, NormalizedCandle, DerivContractCategory } from '../services/deriv/derivTypes.ts';
 
 export type DataFreshness = 'LIVE' | 'RECENT' | 'STALE' | 'DISCONNECTED' | 'UNAVAILABLE';
@@ -16,6 +27,7 @@ export type DataFreshness = 'LIVE' | 'RECENT' | 'STALE' | 'DISCONNECTED' | 'UNAV
 export interface MarketDataContextType {
   instruments: MarketInstrument[];
   availableInstruments: MarketInstrument[];
+  availableSymbols: Set<string>;
   selectedSymbol: string;
   selectedInstrument: MarketInstrument | null;
   selectedCategory: InstrumentCategory | 'ALL';
@@ -79,6 +91,7 @@ const MarketDataContext = createContext<MarketDataContextType | undefined>(undef
 
 export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [instruments, setInstruments] = useState<MarketInstrument[]>(FALLBACK_INSTRUMENTS);
+  const [availableSymbols, setAvailableSymbols] = useState<Set<string>>(new Set<string>());
   const [selectedSymbol, setSelectedSymbolState] = useState<string>('frxEURUSD');
   const [selectedCategory, setSelectedCategory] = useState<InstrumentCategory | 'ALL'>('ALL');
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1h');
@@ -103,6 +116,7 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   const ticksRef = useRef<Map<string, NormalizedTick>>(new Map());
   const lastTickReceivedRef = useRef<Map<string, number>>(new Map());
   const feedLatencyRef = useRef<Map<string, number>>(new Map());
+  const availableSymbolsRef = useRef<Set<string>>(new Set<string>());
 
   // Centralized WebSocket subscription registry (prevents duplicate Deriv subscriptions)
   // Map of symbol -> Set of consumer listener callbacks
@@ -112,7 +126,10 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   const [watchlist, setWatchlist] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem(WATCHLIST_STORAGE_KEY);
-      return saved ? JSON.parse(saved) : ['frxEURUSD', 'R_100', 'cryBTCUSD', 'frxXAUUSD'];
+      const parsed = saved ? JSON.parse(saved) : ['frxEURUSD', 'R_100', 'cryBTCUSD', 'frxXAUUSD'];
+      return Array.isArray(parsed)
+        ? parsed.filter((s) => typeof s === 'string' && !isSymbolBlacklisted(s))
+        : ['frxEURUSD', 'R_100', 'cryBTCUSD', 'frxXAUUSD'];
     } catch {
       return ['frxEURUSD', 'R_100', 'cryBTCUSD', 'frxXAUUSD'];
     }
@@ -181,56 +198,71 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   }, []);
 
-  // Centralized Subscribe API (Reference-counted deduplication)
+  // Centralized Subscribe API (Reference-counted deduplication with strict availability check)
   const subscribeSymbol = useCallback((symbol: string, callback?: (tick: NormalizedTick) => void): (() => void) => {
     if (!symbol) return () => {};
+    const cleanSymbol = symbol.trim();
 
-    let subs = subscribersRef.current.get(symbol);
+    // 1. Never subscribe using hardcoded fallback or blacklisted symbols
+    if (isSymbolBlacklisted(cleanSymbol)) {
+      console.warn(`[MarketDataContext] Refused subscription for blacklisted symbol: ${cleanSymbol}`);
+      return () => {};
+    }
+
+    // 2. Strict validation against availableSymbols returned by Deriv active_symbols(full)
+    if (availableSymbolsRef.current.size > 0 && !availableSymbolsRef.current.has(cleanSymbol)) {
+      console.warn(`[MarketDataContext] Subscription rejected: Symbol '${cleanSymbol}' is not present in available active symbols.`);
+      return () => {};
+    }
+
+    let subs = subscribersRef.current.get(cleanSymbol);
     const isFirstSubscriber = !subs || subs.size === 0;
 
     if (!subs) {
       subs = new Set();
-      subscribersRef.current.set(symbol, subs);
+      subscribersRef.current.set(cleanSymbol, subs);
     }
 
     if (callback) {
       subs.add(callback);
       // If we already have a cached tick, immediately dispatch to subscriber to avoid blank initial state
-      const cached = ticksRef.current.get(symbol);
+      const cached = ticksRef.current.get(cleanSymbol);
       if (cached) {
         try {
           callback(cached);
         } catch (e) {
-          console.error(`[MarketDataContext] Immediate tick dispatch error for ${symbol}:`, e);
+          console.error(`[MarketDataContext] Immediate tick dispatch error for ${cleanSymbol}:`, e);
         }
       }
     }
 
     // Only subscribe to Deriv WS once per symbol across the entire application
     if (isFirstSubscriber) {
-      derivWs.subscribeTick(symbol, handleCentralIncomingTick);
+      derivWs.subscribeTick(cleanSymbol, handleCentralIncomingTick);
     }
 
     // Return idempotently managed cleanup function
     return () => {
-      const currentSubs = subscribersRef.current.get(symbol);
+      const currentSubs = subscribersRef.current.get(cleanSymbol);
       if (currentSubs) {
         if (callback) currentSubs.delete(callback);
         if (currentSubs.size === 0) {
-          derivWs.unsubscribeTick(symbol, handleCentralIncomingTick);
-          subscribersRef.current.delete(symbol);
+          derivWs.unsubscribeTick(cleanSymbol, handleCentralIncomingTick);
+          subscribersRef.current.delete(cleanSymbol);
         }
       }
     };
   }, [handleCentralIncomingTick]);
 
   const unsubscribeSymbol = useCallback((symbol: string, callback?: (tick: NormalizedTick) => void) => {
-    const subs = subscribersRef.current.get(symbol);
+    if (!symbol) return;
+    const cleanSymbol = symbol.trim();
+    const subs = subscribersRef.current.get(cleanSymbol);
     if (subs) {
       if (callback) subs.delete(callback);
       if (subs.size === 0) {
-        derivWs.unsubscribeTick(symbol, handleCentralIncomingTick);
-        subscribersRef.current.delete(symbol);
+        derivWs.unsubscribeTick(cleanSymbol, handleCentralIncomingTick);
+        subscribersRef.current.delete(cleanSymbol);
       }
     }
   }, [handleCentralIncomingTick]);
@@ -240,17 +272,27 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     return ticksRef.current.get(symbol) || ticks[symbol];
   }, [ticks]);
 
-  // Refresh active symbols from Deriv API
+  // Refresh active symbols from Deriv API (Startup sequence step 1 & 2)
   const refreshSymbols = useCallback(async () => {
     setIsLoadingSymbols(true);
     try {
-      const rawSymbols = await derivWs.fetchActiveSymbols();
+      // 1. Call active_symbols('full')
+      const rawSymbols = await derivWs.fetchActiveSymbols('full');
       if (rawSymbols && rawSymbols.length > 0) {
+        // 2. Normalize returned symbols
         const normalized = normalizeDerivActiveSymbols(rawSymbols);
+        const available = extractAvailableSymbols(normalized);
+
+        availableSymbolsRef.current = available;
+        setAvailableSymbols(available);
         setInstruments(normalized);
+
+        // Update WebSocket manager with authoritative set
+        derivWs.setAvailableSymbols(available);
+        console.log(`[MarketDataContext] Successfully initialized ${normalized.length} normalized symbols from Deriv.`);
       }
     } catch (err) {
-      console.warn('[MarketDataContext] Failed to load active symbols from Deriv, maintaining fallbacks:', err);
+      console.warn('[MarketDataContext] Failed to load active symbols from Deriv:', err);
     } finally {
       setIsLoadingSymbols(false);
     }
@@ -262,7 +304,6 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
       setConnectionState(status);
       if (status !== 'CONNECTED') {
         // Mark feeds as disconnected / stale when WS is offline
-        const now = Date.now();
         const newStatus: Record<string, DataFreshness> = {};
         const newStale: Record<string, boolean> = {};
         ticksRef.current.forEach((_, sym) => {
@@ -304,18 +345,35 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     };
   }, [refreshSymbols]);
 
-  // Central subscription coordinator for core symbols (selected symbol, watchlist, major instruments)
-  // Ensures core symbols are pre-subscribed with zero duplicate requests
+  // Central subscription coordinator for verified symbols
+  // Rule: If a fallback instrument exists for UI rendering, it must NEVER automatically subscribe.
+  // Rule: Startup sequence only subscribes after active_symbols returns and availableSymbols.has(symbol) is verified.
   useEffect(() => {
-    const activeSymbols = instruments.slice(0, 12).map((i) => i.symbol);
-    const symbolsToMaintain = Array.from(new Set([selectedSymbol, ...watchlist, ...activeSymbols]));
+    // Do not automatically subscribe before active_symbols has loaded authoritative availableSymbols
+    if (availableSymbols.size === 0 || connectionState !== 'CONNECTED') {
+      return;
+    }
 
+    const validWatchlist = watchlist.filter((sym) => availableSymbols.has(sym));
+    const activeSymbols = instruments
+      .map((i) => i.symbol)
+      .filter((sym) => availableSymbols.has(sym))
+      .slice(0, 10);
+
+    const targetSymbols = new Set<string>();
+    if (availableSymbols.has(selectedSymbol)) {
+      targetSymbols.add(selectedSymbol);
+    }
+    validWatchlist.forEach((sym) => targetSymbols.add(sym));
+    activeSymbols.forEach((sym) => targetSymbols.add(sym));
+
+    const symbolsToMaintain = Array.from(targetSymbols);
     const cleanups = symbolsToMaintain.map((sym) => subscribeSymbol(sym));
 
     return () => {
       cleanups.forEach((unsub) => unsub());
     };
-  }, [selectedSymbol, watchlist, instruments, subscribeSymbol]);
+  }, [selectedSymbol, watchlist, instruments, availableSymbols, connectionState, subscribeSymbol]);
 
   // Stale detection heartbeat (evaluates every 1 second)
   useEffect(() => {
@@ -428,16 +486,24 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
 
   // Actions
   const setSelectedSymbol = useCallback((symbol: string) => {
+    if (isSymbolBlacklisted(symbol)) return;
     setSelectedSymbolState(symbol);
   }, []);
 
   const toggleWatchlist = useCallback((symbol: string) => {
+    if (isSymbolBlacklisted(symbol)) return;
     setWatchlist((prev) =>
       prev.includes(symbol) ? prev.filter((s) => s !== symbol) : [...prev, symbol]
     );
   }, []);
 
   const fetchCandles = useCallback(async (symbol: string, timeframe: string): Promise<NormalizedCandle[]> => {
+    if (isSymbolBlacklisted(symbol)) return [];
+    if (availableSymbolsRef.current.size > 0 && !availableSymbolsRef.current.has(symbol)) {
+      console.warn(`[MarketDataContext] Rejected candle fetch for unlisted symbol: ${symbol}`);
+      return [];
+    }
+
     const cacheKey = `${symbol}_${timeframe}`;
     const granularity = TIMEFRAME_TO_SECONDS[timeframe] || 3600;
 
@@ -458,6 +524,10 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   }, [candles]);
 
   const fetchContractsFor = useCallback(async (symbol: string): Promise<DerivContractCategory[]> => {
+    if (isSymbolBlacklisted(symbol)) return [];
+    if (availableSymbolsRef.current.size > 0 && !availableSymbolsRef.current.has(symbol)) {
+      return [];
+    }
     if (contracts[symbol]) return contracts[symbol];
     try {
       const fetched = await derivWs.fetchContractsFor(symbol);
@@ -478,6 +548,7 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   const value = useMemo(() => ({
     instruments: liveInstruments,
     availableInstruments: liveInstruments,
+    availableSymbols,
     selectedSymbol,
     selectedInstrument,
     selectedCategory,
@@ -517,6 +588,7 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     refreshSymbols,
   }), [
     liveInstruments,
+    availableSymbols,
     selectedSymbol,
     selectedInstrument,
     selectedCategory,
@@ -569,4 +641,3 @@ export const useMarketData = (): MarketDataContextType => {
   }
   return context;
 };
-

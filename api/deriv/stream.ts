@@ -10,8 +10,8 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import type { IncomingMessage } from 'http';
-import { derivGateway } from '../../src/services/deriv/DerivGateway.ts';
-import { logger } from '../../src/observability/logger.ts';
+import { derivGateway } from '../../src/services/deriv/DerivGateway.js';
+import { logger } from '../../src/observability/logger.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {

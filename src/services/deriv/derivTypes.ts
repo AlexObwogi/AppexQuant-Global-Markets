@@ -1,6 +1,15 @@
 /**
- * AppexQuant Markets Global - Deriv WebSocket API Types & Schemas
- * Official Deriv v3 API Specification
+ * AppeX Quant Global Markets
+ *
+ * Deriv Options API Types
+ *
+ * Current architecture:
+ * - OAuth 2.0 + PKCE for user authentication
+ * - Options REST API for account discovery and OTP
+ * - Options WebSocket for public market data
+ * - Authenticated Options WebSocket for account operations
+ *
+ * No legacy authentication protocol is represented here.
  */
 
 export interface DerivActiveSymbol {
@@ -11,7 +20,7 @@ export interface DerivActiveSymbol {
   submarket: string;
   submarket_display_name: string;
   pip: number;
-  is_trading_suspended: number; // 0 or 1
+  is_trading_suspended: number;
   min_stake?: number;
   max_stake?: number;
   quote_type?: string;
@@ -46,66 +55,149 @@ export interface DerivContractCategory {
   max_contract_duration?: string;
 }
 
-export interface DerivRequest {
-  active_symbols?: 'full' | 'brief';
-  product_type?: 'basic';
-  ticks?: string;
-  forget?: string;
-  forget_all?: string;
-  ticks_history?: string;
-  style?: 'ticks' | 'candles';
-  granularity?: number; // Granularity in seconds (60, 300, 900, 1800, 3600, 14400, 86400)
-  count?: number;
-  end?: string | number;
-  contracts_for?: string;
-  ping?: 1;
-  authorize?: string;
-  balance?: number;
-  subscribe?: number;
-  [key: string]: unknown;
-}
-
-export interface DerivRequestMessage extends DerivRequest {
-  req_id: number;
-}
-
 export interface DerivError {
   code: string;
   message: string;
   details?: Record<string, unknown>;
 }
 
-export interface DerivResponse {
-  req_id: number;
-  msg_type: 'active_symbols' | 'tick' | 'history' | 'candles' | 'contracts_for' | 'ping' | 'forget' | 'error' | 'authorize' | 'balance';
+export interface DerivSubscription {
+  id: string;
+}
+
+/**
+ * Generic Options WebSocket request.
+ *
+ * Individual operations extend this shape where required.
+ */
+export interface DerivOptionsRequest {
+  req_id?: number;
+  subscribe?: 1;
+  [key: string]: unknown;
+}
+
+export interface DerivTickRequest
+  extends DerivOptionsRequest {
+  ticks: string;
+}
+
+export interface DerivActiveSymbolsRequest
+  extends DerivOptionsRequest {
+  active_symbols: 'full' | 'brief';
+  product_type?: 'basic';
+}
+
+export interface DerivHistoryRequest
+  extends DerivOptionsRequest {
+  ticks_history: string;
+  style?: 'ticks' | 'candles';
+  granularity?: number;
+  count?: number;
+  end?: 'latest' | number;
+}
+
+export interface DerivContractsRequest
+  extends DerivOptionsRequest {
+  contracts_for: string;
+}
+
+export interface DerivBalanceRequest
+  extends DerivOptionsRequest {
+  balance: 1;
+}
+
+export interface DerivForgetRequest
+  extends DerivOptionsRequest {
+  forget: string;
+}
+
+export interface DerivForgetAllRequest
+  extends DerivOptionsRequest {
+  forget_all: string;
+}
+
+/**
+ * Generic response envelope from the Options WebSocket.
+ */
+export interface DerivOptionsResponse {
+  req_id?: number;
+  msg_type?: string;
+
   active_symbols?: DerivActiveSymbol[];
+
   tick?: DerivTick;
-  authorize?: Record<string, unknown>;
-  balance?: any;
+
   history?: {
     prices: number[];
     times: number[];
   };
+
   candles?: DerivCandle[];
+
   contracts_for?: {
     available: DerivContractCategory[];
     spot?: number;
   };
-  subscription?: {
-    id: string;
-  };
+
+  balance?: DerivBalance;
+
+  subscription?: DerivSubscription;
+
   error?: DerivError;
-  ping?: string;
+
+  [key: string]: unknown;
 }
 
-export interface NormalizedCandle {
-  timestamp: number; // unix ms
-  open: number;
-  high: number;
-  low: number;
-  close: number;
+export interface DerivBalance {
+  balance: number;
+  currency: string;
+  loginid?: string;
 }
 
+/**
+ * REST Options account returned by the current account API.
+ */
+export interface DerivOptionsAccount {
+  account_id: string;
+  account_type?: string;
+  balance?: number;
+  currency?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * REST account-list response.
+ */
+export interface DerivOptionsAccountsResponse {
+  data?: DerivOptionsAccount[] | DerivOptionsAccount;
+  errors?: DerivError[];
+}
+
+/**
+ * REST OTP response.
+ *
+ * The returned URL is a short-lived, one-time authenticated
+ * WebSocket endpoint.
+ */
+export interface DerivOptionsOtpResponse {
+  data?: {
+    url?: string;
+  };
+  errors?: DerivError[];
+}
+
+/**
+ * OAuth session information kept server-side.
+ */
+export interface DerivOAuthSession {
+  accessToken: string;
+  accountId: string;
+}
+
+/**
+ * Normalized market tick consumed by AppeX.
+ */
 export interface NormalizedTick {
   symbol: string;
   quote: number;
@@ -116,4 +208,47 @@ export interface NormalizedTick {
   changePct: number;
   prevQuote: number;
   lastUpdated: Date;
+}
+
+/**
+ * Normalized OHLC candle consumed by AppeX.
+ */
+export interface NormalizedCandle {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+/**
+ * Gateway connection state.
+ */
+export type DerivConnectionState =
+  | 'CONNECTED'
+  | 'CONNECTING'
+  | 'RECONNECTING'
+  | 'OFFLINE'
+  | 'ERROR'
+  | 'DISCONNECTED';
+
+/**
+ * Public tick subscription state.
+ */
+export interface DerivTickSubscription {
+  symbol: string;
+  subscriptionId?: string;
+}
+
+/**
+ * Gateway status exposed internally by AppeX.
+ */
+export interface DerivGatewayStatus {
+  state: DerivConnectionState;
+  isAuthorized: boolean;
+  activeSymbolsCount: number;
+  subscribedSymbolsCount: number;
+  connectedClientsCount: number;
+  latencyMs: number | null;
+  uptimeSeconds: number;
 }

@@ -1131,7 +1131,7 @@ export async function createApp() {
         balance,
         accountType,
         user: {
-          userId: req.sessionUser?.userId || record.userId || accountId,
+          userId: req.sessionUser?.userId || accountId,
           email,
           role: req.sessionUser?.role || UserRole.USER,
           derivAccountId: accountId,
@@ -1279,7 +1279,7 @@ export async function createApp() {
 
       // Successful exchange: Create authenticated AppExQuant user session
       // STRICT DISCOVERY ENFORCEMENT: Never fallback to result.userId, usr-*, user-*, sys-*, demo placeholders
-      const verifiedLoginId = result.rawAccountDetails?.derivAccountId || result.rawAccountDetails?.loginid || result.loginid || result.accountId;
+      const verifiedLoginId = result.rawAccountDetails?.derivAccountId || result.connectionRecord?.derivAccountId;
       
       if (!verifiedLoginId || !isValidDerivAccountId(verifiedLoginId)) {
         const errorReason = 'Deriv account verification failed: No genuine Deriv account loginid discovered.';
@@ -1296,7 +1296,7 @@ export async function createApp() {
       const loginid = verifiedLoginId;
       const accountType = result.rawAccountDetails?.accountType || (verifiedLoginId.startsWith('VR') ? 'demo' : 'real');
       const currency = result.rawAccountDetails?.currency || 'USD';
-      const scopes = result.rawAccountDetails?.scopes || result.scopes || ['trade', 'account_manage'];
+      const scopes = result.connectionRecord?.scopes || ['trade', 'account_manage'];
       const realEmail = result.rawAccountDetails?.email || '';
       const fullName = result.rawAccountDetails?.fullName;
       const balance = result.rawAccountDetails?.balance ?? 0;
@@ -1637,13 +1637,13 @@ export async function createApp() {
         status: metadata.connectionStatus,
       }, metadata.derivAccountId);
 
-      const loginid = metadata.derivAccountId || metadata.loginid || '';
-      const accountId = metadata.derivAccountId || metadata.accountId || '';
+      const loginid = metadata.derivAccountId || '';
+      const accountId = metadata.derivAccountId || '';
       const accountType = metadata.accountType || (loginid.startsWith('VR') ? 'demo' : 'real');
       const balance = metadata.balance ?? 0;
       const currency = metadata.currency || 'USD';
       const scopes = metadata.scopes || [];
-      const lastSync = metadata.lastSync || metadata.lastSyncedAt || new Date().toISOString();
+      const lastSync = metadata.lastSyncedAt || new Date().toISOString();
 
       res.json(createSuccessResponse({
         loginid,

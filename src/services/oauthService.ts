@@ -1,12 +1,28 @@
 /**
  * AppeX Quant Global Markets
- * Centralized Deriv OAuth 2.0 Service
+ * Deriv OAuth 2.0 Service
+ *
+ * Architecture:
+ *   OAuth 2.0 Authorization Code + PKCE
+ *        ↓
+ *   https://auth.deriv.com/oauth2/auth
+ *        ↓
+ *   https://auth.deriv.com/oauth2/token
+ *        ↓
+ *   Bearer access token
+ *        ↓
+ *   Deriv Options REST API
  *
  * IMPORTANT:
- * - DERIV_OAUTH_CLIENT_ID = registered Deriv OAuth 2.0 client ID
- * - DERIV_APP_ID          = optional legacy Deriv V1 app ID
+ * - This service uses ONLY DERIV_OAUTH_CLIENT_ID.
+ * - No legacy app_id is used.
+ * - No legacy V1 API is used.
+ * - No legacy WebSocket authentication is used.
+ * - No DERIV_APP_ID / 1089 fallback exists.
+ * - No app_secret is used as an OAuth credential.
  *
- * These values are intentionally kept separate.
+ * Authenticated WebSocket OTP generation belongs to the
+ * Deriv Options API connection layer, not this OAuth service.
  */
 
 export const DERIV_OAUTH_SCOPE = 'trade account_manage';
@@ -17,13 +33,16 @@ export const DERIV_AUTH_BASE_URL =
 export const DERIV_TOKEN_ENDPOINT =
   'https://auth.deriv.com/oauth2/token';
 
+export const DERIV_OPTIONS_API_BASE_URL =
+  'https://api.derivws.com/trading/v1/options';
+
 export interface BuildAuthUrlOptions {
   appId?: string;
   clientId?: string;
   redirectUri?: string;
   state?: string;
   codeChallenge?: string;
-  codeChallengeMethod?: string;
+  codeChallengeMethod?: 'S256';
   scope?: string;
   action?: 'connect' | 'signup';
   lang?: string;
@@ -32,102 +51,105 @@ export interface BuildAuthUrlOptions {
   extraParams?: Record<string, string>;
 }
 
+export interface DerivTokenResponse {
+  access_token: string;
+  token_type?: string;
+  expires_in?: number;
+  refresh_token?: string;
+  scope?: string;
+  [key: string]: unknown;
+}
+
+export interface DerivAccount {
+  account_id?: string;
+  loginid?: string;
+  id?: string;
+  currency?: string;
+  balance?: number | string;
+  account_type?: string;
+  is_virtual?: boolean | number;
+  email?: string;
+  fullname?: string;
+  full_name?: string;
+  scopes?: unknown;
+  [key: string]: unknown;
+}
+
+export interface DerivAccountsResponse {
+  accounts: DerivAccount[];
+  [key: string]: unknown;
+}
+
 function clean(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function getEnv(name: string): string {
+  if (
+    typeof process === 'undefined' ||
+    !process.env
+  ) {
+    return '';
+  }
+
+  return clean(process.env[name]);
+}
+
 /**
- * Returns the registered OAuth 2.0 client ID.
+ * Returns the registered Deriv OAuth 2.0 client ID.
  *
- * DO NOT fall back to DERIV_APP_ID here.
- *
- * OAuth2 client_id and legacy app_id are different concepts.
+ * There is deliberately NO fallback to:
+ * - DERIV_APP_ID
+ * - VITE_DERIV_APP_ID
+ * - NEXT_PUBLIC_DERIV_APP_ID
+ * - numeric app IDs
  */
 export function getDerivOAuthClientId(): string {
-  if (typeof process !== 'undefined' && process.env) {
-    const candidates = [
-      process.env.DERIV_OAUTH_CLIENT_ID,
-      process.env.DERIV_CLIENT_ID,
-      process.env.OAUTH_CLIENT_ID,
-    ];
-
-    for (const candidate of candidates) {
-      const value = clean(candidate);
-
-      if (value && value !== 'undefined' && value !== 'null') {
-        return value;
-      }
-    }
-  }
-
-  return '';
+  return getEnv('DERIV_OAUTH_CLIENT_ID');
 }
 
 /**
- * Returns the optional legacy Deriv V1 App ID.
- *
- * 1089 is NOT used as the OAuth2 client_id.
+ * Returns the optional legacy Deriv V1 App ID if present in environment.
  */
 export function getDerivAppId(): string {
-  if (typeof process !== 'undefined' && process.env) {
-    const candidates = [
-      process.env.DERIV_APP_ID,
-      process.env.VITE_DERIV_APP_ID,
-      process.env.NEXT_PUBLIC_DERIV_APP_ID,
-    ];
-
-    for (const candidate of candidates) {
-      const value = clean(candidate);
-
-      if (value && /^\d+$/.test(value)) {
-        return value;
-      }
-    }
-  }
-
-  return '';
+  return (
+    getEnv('DERIV_APP_ID') ||
+    getEnv('VITE_DERIV_APP_ID') ||
+    getEnv('NEXT_PUBLIC_DERIV_APP_ID')
+  );
 }
 
 /**
- * Returns the exact OAuth redirect URI.
+ * Returns the exact OAuth callback URI.
  *
- * This value MUST exactly match the URI registered
- * against the OAuth2 client in Deriv.
+ * This value must exactly match the redirect URI registered
+ * for the OAuth application in Deriv.
  */
 export function getDerivRedirectUri(): string {
-  if (typeof process !== 'undefined' && process.env) {
-    const candidates = [
-      process.env.DERIV_OAUTH_REDIRECT_URI,
-      process.env.OAUTH_REDIRECT_URI,
-      process.env.DERIV_REDIRECT_URI,
-      process.env.REDIRECT_URI,
-      process.env.VITE_DERIV_REDIRECT_URI,
-      process.env.VITE_REDIRECT_URI,
-    ];
+  const configured =
+    getEnv('DERIV_OAUTH_REDIRECT_URI');
 
-    for (const candidate of candidates) {
-      const value = clean(candidate);
+  if (configured) {
+    return configured;
+  }
 
-      if (value) {
-        return value;
-      }
-    }
+  const appUrl = getEnv('APP_URL');
 
-    const appUrl = clean(process.env.APP_URL);
+  if (appUrl) {
+    return `${appUrl.replace(/\/$/, '')}/api/auth/deriv/callback`;
+  }
 
-    if (appUrl) {
-      return `${appUrl.replace(/\/$/, '')}/api/auth/deriv/callback`;
-    }
+  const siteUrl =
+    getEnv('NEXT_PUBLIC_SITE_URL');
 
-    const siteUrl = clean(process.env.NEXT_PUBLIC_SITE_URL);
-
-    if (siteUrl) {
-      return `${siteUrl.replace(/\/$/, '')}/api/auth/deriv/callback`;
-    }
+  if (siteUrl) {
+    return `${siteUrl.replace(/\/$/, '')}/api/auth/deriv/callback`;
   }
 
   if (typeof window !== 'undefined') {
-    const origin = clean(window.location?.origin);
+    const origin = clean(
+      window.location?.origin,
+    );
 
     if (origin) {
       return `${origin}/api/auth/deriv/callback`;
@@ -138,18 +160,15 @@ export function getDerivRedirectUri(): string {
 }
 
 /**
- * Builds the Deriv OAuth2 authorization URL.
+ * Builds the Deriv OAuth 2.0 authorization URL.
  *
- * Required OAuth2 parameters:
- * - response_type=code
- * - client_id
- * - redirect_uri
- * - scope
- * - state
- * - code_challenge
- * - code_challenge_method=S256
+ * Only OAuth 2.0 parameters are generated here.
  *
- * app_id is only added when an explicit legacy app ID exists.
+ * There is intentionally NO:
+ * - app_id
+ * - app_secret
+ * - legacy API parameter
+ * - legacy WebSocket parameter
  */
 export function buildAuthUrl(
   options: BuildAuthUrlOptions = {},
@@ -160,7 +179,7 @@ export function buildAuthUrl(
 
   if (!clientId) {
     throw new Error(
-      'Missing DERIV_OAUTH_CLIENT_ID. Register an OAuth 2.0 client with Deriv and configure its client ID.',
+      'Missing DERIV_OAUTH_CLIENT_ID.',
     );
   }
 
@@ -170,7 +189,7 @@ export function buildAuthUrl(
 
   if (!redirectUri) {
     throw new Error(
-      'Missing Deriv OAuth redirect URI. Configure DERIV_OAUTH_REDIRECT_URI.',
+      'Missing DERIV_OAUTH_REDIRECT_URI.',
     );
   }
 
@@ -178,11 +197,12 @@ export function buildAuthUrl(
 
   if (!state) {
     throw new Error(
-      'Missing OAuth state. A fresh state value is required for every authorization request.',
+      'Missing OAuth state.',
     );
   }
 
-  const codeChallenge = clean(options.codeChallenge);
+  const codeChallenge =
+    clean(options.codeChallenge);
 
   if (!codeChallenge) {
     throw new Error(
@@ -191,75 +211,107 @@ export function buildAuthUrl(
   }
 
   const codeChallengeMethod =
-    clean(options.codeChallengeMethod) || 'S256';
+    options.codeChallengeMethod || 'S256';
 
   if (codeChallengeMethod !== 'S256') {
     throw new Error(
-      'Deriv OAuth2 PKCE requires code_challenge_method=S256.',
+      'Deriv OAuth 2.0 requires PKCE S256.',
     );
   }
 
   const authUrl =
-    clean(
-      typeof process !== 'undefined'
-        ? process.env?.DERIV_AUTH_URL
-        : '',
-    ) || DERIV_AUTH_BASE_URL;
+    getEnv('DERIV_AUTH_URL') ||
+    DERIV_AUTH_BASE_URL;
 
   const params = new URLSearchParams();
 
-  params.set('response_type', 'code');
-  params.set('client_id', clientId);
-  params.set('redirect_uri', redirectUri);
+  params.set(
+    'response_type',
+    'code',
+  );
+
+  params.set(
+    'client_id',
+    clientId,
+  );
+
+  params.set(
+    'redirect_uri',
+    redirectUri,
+  );
+
   params.set(
     'scope',
-    clean(options.scope) || DERIV_OAUTH_SCOPE,
+    clean(options.scope) ||
+      DERIV_OAUTH_SCOPE,
   );
-  params.set('state', state);
-  params.set('code_challenge', codeChallenge);
-  params.set('code_challenge_method', codeChallengeMethod);
 
-  const lang = clean(options.lang) || 'en';
-  params.set('l', lang.toLowerCase());
+  params.set(
+    'state',
+    state,
+  );
 
-  const brand = clean(options.brand);
+  params.set(
+    'code_challenge',
+    codeChallenge,
+  );
+
+  params.set(
+    'code_challenge_method',
+    codeChallengeMethod,
+  );
+
+  const language =
+    clean(options.lang) || 'en';
+
+  params.set(
+    'l',
+    language.toLowerCase(),
+  );
+
+  const brand =
+    clean(options.brand);
 
   if (brand) {
-    params.set('brand', brand);
-  }
-
-  /**
-   * Optional legacy V1 app support.
-   *
-   * IMPORTANT:
-   * This is deliberately NOT used as client_id.
-   */
-  const legacyAppId =
-    clean(options.appId) || getDerivAppId();
-
-  if (legacyAppId) {
-    params.set('app_id', legacyAppId);
+    params.set(
+      'brand',
+      brand,
+    );
   }
 
   if (options.action === 'signup') {
-    params.set('prompt', 'registration');
+    params.set(
+      'prompt',
+      'registration',
+    );
   }
 
-  if (options.destination) {
+  const destination =
+    clean(options.destination);
+
+  if (destination) {
     params.set(
       'destination',
-      clean(options.destination),
+      destination,
     );
   }
 
   if (options.extraParams) {
-    for (const [key, value] of Object.entries(
-      options.extraParams,
-    )) {
+    for (
+      const [key, value]
+      of Object.entries(options.extraParams)
+    ) {
+      const cleanKey = clean(key);
       const cleanValue = clean(value);
 
-      if (cleanValue) {
-        params.set(key, cleanValue);
+      if (
+        cleanKey &&
+        cleanValue
+      ) {
+        params.set(
+          cleanKey,
+          cleanValue,
+        );
       }
     }
   }
@@ -268,28 +320,33 @@ export function buildAuthUrl(
 }
 
 /**
- * Builds the application's login gateway URL.
+ * Builds the application's Deriv OAuth gateway URL.
  */
 export function buildLoginGatewayUrl(
   action: 'connect' | 'signup' = 'connect',
-  destination: string = '/',
+  destination = '/',
 ): string {
-  const params = new URLSearchParams();
+  const params =
+    new URLSearchParams();
 
-  params.set('action', action);
-  params.set('destination', destination || '/');
+  params.set(
+    'action',
+    action,
+  );
+
+  params.set(
+    'destination',
+    destination || '/',
+  );
 
   return `/api/auth/deriv/login?${params.toString()}`;
 }
 
 /**
- * Exchanges a Deriv OAuth2 authorization code for tokens.
+ * Exchanges an OAuth authorization code for
+ * an OAuth access token using PKCE.
  *
- * This MUST execute server-side.
- *
- * PKCE:
- *   code_challenge -> generated during login
- *   code_verifier  -> original verifier supplied here
+ * Server-side only.
  */
 export async function exchangeCodeForToken(
   code: string,
@@ -297,21 +354,19 @@ export async function exchangeCodeForToken(
   redirectUri: string,
   clientId?: string,
   clientSecret?: string,
-): Promise<{
-  access_token: string;
-  token_type?: string;
-  expires_in?: number;
-  refresh_token?: string;
-  scope?: string;
-  [key: string]: unknown;
-}> {
-  const authorizationCode = clean(code);
-  const verifier = clean(codeVerifier);
-  const callbackUri = clean(redirectUri);
+): Promise<DerivTokenResponse> {
+  const authorizationCode =
+    clean(code);
+
+  const verifier =
+    clean(codeVerifier);
+
+  const callbackUri =
+    clean(redirectUri);
 
   if (!authorizationCode) {
     throw new Error(
-      'Missing Deriv OAuth authorization code.',
+      'Missing OAuth authorization code.',
     );
   }
 
@@ -333,31 +388,16 @@ export async function exchangeCodeForToken(
 
   if (!resolvedClientId) {
     throw new Error(
-      'Missing DERIV_OAUTH_CLIENT_ID for token exchange.',
+      'Missing DERIV_OAUTH_CLIENT_ID.',
     );
   }
 
-  const resolvedClientSecret =
-    clean(clientSecret) ||
-    clean(
-      typeof process !== 'undefined'
-        ? process.env?.DERIV_CLIENT_SECRET
-        : '',
-    ) ||
-    clean(
-      typeof process !== 'undefined'
-        ? process.env?.OAUTH_CLIENT_SECRET
-        : '',
-    );
-
   const tokenEndpoint =
-    clean(
-      typeof process !== 'undefined'
-        ? process.env?.DERIV_TOKEN_ENDPOINT
-        : '',
-    ) || DERIV_TOKEN_ENDPOINT;
+    getEnv('DERIV_TOKEN_ENDPOINT') ||
+    DERIV_TOKEN_ENDPOINT;
 
-  const body = new URLSearchParams();
+  const body =
+    new URLSearchParams();
 
   body.set(
     'grant_type',
@@ -385,45 +425,52 @@ export async function exchangeCodeForToken(
   );
 
   /**
-   * Only include client_secret when the registered
-   * OAuth application actually requires it.
+   * A client secret is optional.
    *
-   * Never send legacy app_secret/app_id as substitutes
-   * for OAuth2 client credentials.
+   * It is only sent when explicitly supplied
+   * by the caller.
+   *
+   * No environment fallback is used.
    */
-  if (resolvedClientSecret) {
+  const explicitClientSecret =
+    clean(clientSecret);
+
+  if (explicitClientSecret) {
     body.set(
       'client_secret',
-      resolvedClientSecret,
+      explicitClientSecret,
     );
   }
 
-  const response = await fetch(
-    tokenEndpoint,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type':
-          'application/x-www-form-urlencoded',
-        Accept: 'application/json',
+  const response =
+    await fetch(
+      tokenEndpoint,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type':
+            'application/x-www-form-urlencoded',
+          Accept:
+            'application/json',
+        },
+        body,
+        cache: 'no-store',
       },
-      body,
-      cache: 'no-store',
-    },
-  );
+    );
 
-  const responseText = await response.text();
+  const responseText =
+    await response.text();
 
-  let payload: Record<string, unknown>;
+  let payload:
+    Record<string, unknown>;
 
   try {
-    payload = responseText
-      ? JSON.parse(responseText)
-      : {};
+    payload =
+      responseText
+        ? JSON.parse(responseText)
+        : {};
   } catch {
-    payload = {
-      raw: responseText,
-    };
+    payload = {};
   }
 
   if (!response.ok) {
@@ -432,13 +479,13 @@ export async function exchangeCodeForToken(
         ? payload.error
         : `HTTP_${response.status}`;
 
-    const errorDescription =
+    const description =
       typeof payload.error_description === 'string'
         ? payload.error_description
-        : 'Deriv token exchange failed.';
+        : 'OAuth token exchange failed.';
 
     throw new Error(
-      `Deriv OAuth token exchange failed: ${errorCode} - ${errorDescription}`,
+      `Deriv OAuth token exchange failed: ${errorCode} - ${description}`,
     );
   }
 
@@ -449,29 +496,252 @@ export async function exchangeCodeForToken(
 
   if (!accessToken) {
     throw new Error(
-      'Deriv OAuth token exchange succeeded but returned no access_token.',
+      'OAuth token exchange returned no access_token.',
     );
   }
 
-  return payload as {
-    access_token: string;
-    token_type?: string;
-    expires_in?: number;
-    refresh_token?: string;
-    scope?: string;
-    [key: string]: unknown;
-  };
+  return payload as DerivTokenResponse;
 }
 
 /**
- * Fetches the user's Deriv account information using
- * the OAuth access token.
+ * Performs an authenticated request against the
+ * Deriv Options REST API.
  *
- * Authentication is performed through REST.
+ * Authentication:
+ *   Authorization: Bearer <OAuth access token>
+ *
+ * No app ID is used.
+ */
+async function derivOptionsRequest<T>(
+  accessToken: string,
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const token =
+    clean(accessToken);
+
+  if (!token) {
+    throw new Error(
+      'Missing Deriv OAuth access token.',
+    );
+  }
+
+  if (
+    !path.startsWith('/')
+  ) {
+    throw new Error(
+      'Deriv Options API path must begin with "/".',
+    );
+  }
+
+  const url =
+    `${DERIV_OPTIONS_API_BASE_URL}${path}`;
+
+  const headers =
+    new Headers(init.headers);
+
+  headers.set(
+    'Authorization',
+    `Bearer ${token}`,
+  );
+
+  headers.set(
+    'Accept',
+    'application/json',
+  );
+
+  if (
+    init.body &&
+    !headers.has('Content-Type')
+  ) {
+    headers.set(
+      'Content-Type',
+      'application/json',
+    );
+  }
+
+  const response =
+    await fetch(
+      url,
+      {
+        ...init,
+        headers,
+        cache: 'no-store',
+      },
+    );
+
+  const responseText =
+    await response.text();
+
+  let payload: unknown;
+
+  try {
+    payload =
+      responseText
+        ? JSON.parse(responseText)
+        : {};
+  } catch {
+    payload = {};
+  }
+
+  if (!response.ok) {
+    const record =
+      payload &&
+      typeof payload === 'object'
+        ? payload as Record<string, unknown>
+        : {};
+
+    const error =
+      typeof record.error === 'string'
+        ? record.error
+        : typeof record.message === 'string'
+          ? record.message
+          : `HTTP_${response.status}`;
+
+    throw new Error(
+      `Deriv Options API request failed: ${error}`,
+    );
+  }
+
+  return payload as T;
+}
+
+/**
+ * Extracts an account array from the Deriv Options
+ * REST API response.
+ */
+function extractAccounts(
+  payload: unknown,
+): DerivAccount[] {
+  if (
+    Array.isArray(payload)
+  ) {
+    return payload.filter(
+      (
+        value,
+      ): value is DerivAccount =>
+        Boolean(
+          value &&
+          typeof value === 'object',
+        ),
+    );
+  }
+
+  if (
+    !payload ||
+    typeof payload !== 'object'
+  ) {
+    return [];
+  }
+
+  const root =
+    payload as Record<string, unknown>;
+
+  const data =
+    root.data;
+
+  if (
+    data &&
+    typeof data === 'object'
+  ) {
+    const dataRecord =
+      data as Record<string, unknown>;
+
+    if (
+      Array.isArray(
+        dataRecord.accounts,
+      )
+    ) {
+      return dataRecord.accounts.filter(
+        (
+          value,
+        ): value is DerivAccount =>
+          Boolean(
+            value &&
+            typeof value === 'object',
+          ),
+      );
+    }
+
+    if (
+      Array.isArray(data)
+    ) {
+      return data.filter(
+        (
+          value,
+        ): value is DerivAccount =>
+          Boolean(
+            value &&
+            typeof value === 'object',
+          ),
+      );
+    }
+  }
+
+  if (
+    Array.isArray(root.accounts)
+  ) {
+    return root.accounts.filter(
+      (
+        value,
+      ): value is DerivAccount =>
+        Boolean(
+          value &&
+          typeof value === 'object',
+        ),
+    );
+  }
+
+  if (
+    typeof root.account_id === 'string'
+  ) {
+    return [
+      root as DerivAccount,
+    ];
+  }
+
+  return [];
+}
+
+/**
+ * Fetches all Deriv Options accounts associated
+ * with the authenticated OAuth user.
+ *
+ * Authentication is OAuth Bearer only.
+ */
+export async function fetchDerivAccounts(
+  accessToken: string,
+): Promise<DerivAccount[]> {
+  const payload =
+    await derivOptionsRequest<unknown>(
+      accessToken,
+      '/accounts',
+      {
+        method: 'GET',
+      },
+    );
+
+  const accounts =
+    extractAccounts(payload);
+
+  if (accounts.length === 0) {
+    throw new Error(
+      'Deriv OAuth authentication succeeded but no Options accounts were returned.',
+    );
+  }
+
+  return accounts;
+}
+
+/**
+ * Compatibility helper for existing callers.
+ *
+ * Despite the historical name, this function now
+ * retrieves authenticated Deriv Options account data
+ * exclusively through the new REST API.
  */
 export async function fetchUserProfile(
   accessToken: string,
-  appId?: string,
 ): Promise<{
   loginid?: string;
   currency?: string;
@@ -480,132 +750,214 @@ export async function fetchUserProfile(
   email?: string;
   fullname?: string;
   scopes?: unknown;
-  account_list?: unknown[];
+  account_list?: DerivAccount[];
 } | null> {
-  const token = clean(accessToken);
-
-  if (!token) {
-    return null;
-  }
-
-  const legacyAppId =
-    clean(appId) || getDerivAppId();
-
   try {
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-    };
+    const accounts =
+      await fetchDerivAccounts(
+        accessToken,
+      );
 
-    if (legacyAppId) {
-      headers['Deriv-App-ID'] = legacyAppId;
-    }
+    const account =
+      accounts[0];
 
-    const response = await fetch(
-      'https://api.derivws.com/trading/v1/options/accounts',
-      {
-        method: 'GET',
-        headers,
-        cache: 'no-store',
-      },
-    );
-
-    if (!response.ok) {
+    if (!account) {
       return null;
     }
 
-    const data = await response.json();
+    const accountId =
+      account.account_id ||
+      account.loginid ||
+      account.id;
 
-    const rawList: unknown[] =
-      Array.isArray(data)
-        ? data
-        : Array.isArray(data?.accounts)
-          ? data.accounts
-          : data?.account_id
-            ? [data]
-            : [];
-
-    if (rawList.length === 0) {
-      return null;
-    }
-
-    const item =
-      rawList[0] as Record<string, unknown>;
-
-    const loginid =
-      item.account_id ||
-      item.loginid ||
-      item.id;
-
-    const currency =
-      typeof item.currency === 'string'
-        ? item.currency
-        : 'USD';
-
-    const rawBalance = item.balance;
+    const rawBalance =
+      account.balance;
 
     const balance =
       typeof rawBalance === 'number'
         ? rawBalance
         : Number.parseFloat(
-            String(rawBalance ?? '0'),
+            String(
+              rawBalance ?? '0',
+            ),
           );
 
     const accountType =
-      typeof item.account_type === 'string'
-        ? item.account_type
-        : '';
+      clean(
+        account.account_type,
+      );
+
+    const loginId =
+      accountId !== undefined
+        ? String(accountId)
+        : undefined;
 
     const isVirtual =
+      account.is_virtual === true ||
+      account.is_virtual === 1 ||
       accountType === 'demo' ||
       Boolean(
-        loginid &&
-        String(loginid).startsWith('VR'),
+        loginId &&
+        loginId.startsWith('VR'),
       )
         ? 1
         : 0;
 
     return {
-      loginid:
-        loginid !== undefined
-          ? String(loginid)
+      loginid: loginId,
+
+      currency:
+        typeof account.currency === 'string'
+          ? account.currency
           : undefined,
-      currency,
+
       balance:
         Number.isFinite(balance)
           ? balance
           : 0,
-      is_virtual: isVirtual,
+
+      is_virtual:
+        isVirtual,
+
       email:
-        typeof item.email === 'string'
-          ? item.email
+        typeof account.email === 'string'
+          ? account.email
           : undefined,
+
       fullname:
-        typeof item.fullname === 'string'
-          ? item.fullname
-          : typeof item.full_name === 'string'
-            ? item.full_name
+        typeof account.fullname === 'string'
+          ? account.fullname
+          : typeof account.full_name === 'string'
+            ? account.full_name
             : undefined,
-      scopes: item.scopes,
+
+      scopes:
+        account.scopes,
+
       account_list:
-        rawList as unknown[],
+        accounts,
     };
   } catch {
     return null;
   }
 }
 
+/**
+ * Validates that a Deriv account belongs to the
+ * currently authenticated OAuth user.
+ *
+ * This performs fresh REST account discovery.
+ */
+export async function findDerivAccount(
+  accessToken: string,
+  accountId: string,
+): Promise<DerivAccount | null> {
+  const requestedId =
+    clean(accountId);
+
+  if (!requestedId) {
+    throw new Error(
+      'Missing Deriv account ID.',
+    );
+  }
+
+  const accounts =
+    await fetchDerivAccounts(
+      accessToken,
+    );
+
+  return (
+    accounts.find(
+      (account) => {
+        const id =
+          clean(
+            account.account_id,
+          ) ||
+          clean(
+            account.loginid,
+          ) ||
+          clean(account.id);
+
+        return id === requestedId;
+      },
+    ) || null
+  );
+}
+
+/**
+ * Returns a normalized account ID.
+ */
+export function getDerivAccountId(
+  account: DerivAccount,
+): string {
+  const accountId =
+    clean(account.account_id) ||
+    clean(account.loginid) ||
+    clean(account.id);
+
+  if (!accountId) {
+    throw new Error(
+      'Deriv account response contains no account ID.',
+    );
+  }
+
+  return accountId;
+}
+
+/**
+ * Returns the Deriv account currency.
+ */
+export function getDerivAccountCurrency(
+  account: DerivAccount,
+): string {
+  return (
+    clean(account.currency) ||
+    'USD'
+  );
+}
+
+/**
+ * Returns whether a Deriv account is virtual/demo.
+ */
+export function isDerivDemoAccount(
+  account: DerivAccount,
+): boolean {
+  const accountId =
+    clean(account.account_id) ||
+    clean(account.loginid) ||
+    clean(account.id);
+
+  const accountType =
+    clean(account.account_type)
+      .toLowerCase();
+
+  return (
+    account.is_virtual === true ||
+    account.is_virtual === 1 ||
+    accountType === 'demo' ||
+    accountType === 'virtual' ||
+    accountId.startsWith('VR')
+  );
+}
+
 export const oauthService = {
   buildAuthUrl,
   buildLoginGatewayUrl,
   exchangeCodeForToken,
+  fetchDerivAccounts,
   fetchUserProfile,
+  findDerivAccount,
+  getDerivAccountId,
+  getDerivAccountCurrency,
   getDerivAppId,
   getDerivOAuthClientId,
   getDerivRedirectUri,
+  isDerivDemoAccount,
+
   DERIV_OAUTH_SCOPE,
   DERIV_AUTH_BASE_URL,
   DERIV_TOKEN_ENDPOINT,
+  DERIV_OPTIONS_API_BASE_URL,
 };
 
 export default oauthService;

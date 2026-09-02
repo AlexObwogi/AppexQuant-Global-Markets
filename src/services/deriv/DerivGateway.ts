@@ -1,44 +1,53 @@
 /**
  * AppeX Quant Global Markets
- * DerivGateway
  *
- * Authoritative backend gateway for Deriv real-time market and
- * account streaming.
+ * Deriv Options API Gateway
  *
- * Responsibilities:
- * - Maintain one persistent Deriv upstream WebSocket per gateway instance.
- * - Authorize the upstream connection when an access token is available.
- * - Fetch authoritative market metadata.
- * - Maintain upstream tick subscriptions.
- * - Multiplex genuine Deriv data to connected frontend clients.
- * - Stream genuine balance/profile updates.
- * - Reconnect automatically after upstream failures.
- * - Restore subscriptions after reconnect.
- * - Never fabricate prices, balances, profiles, or market data.
+ * Architecture:
+ *   OAuth 2.0 access token
+ *          │
+ *          ▼
+ *   Options REST API
+ *          │
+ *          ├── account discovery
+ *          │
+ *          └── OTP
+ *                │
+ *                ▼
+ *       authenticated Options WS
+ *
+ * Public market data uses the public Options WebSocket.
+ *
+ * Important:
+ * - No legacy API authentication.
+ * - No legacy WebSocket endpoints.
+ * - No token authentication message over WebSocket.
+ * - Authenticated WebSocket URLs are obtained through the OTP REST endpoint.
+ * - Access tokens and OTP values are never logged.
  */
 
-import NodeWebSocket, { WebSocketServer } from 'ws';
-import type { IncomingMessage } from 'http';
+import WebSocket, {
+  WebSocketServer,
+  type Server as WebSocketServerType,
+} from 'ws';
 
-import type {
-  DerivRequest,
-  DerivResponse,
+import type { IncomingMessage, Server as HttpServer } from 'http';
+
+import {
   DerivActiveSymbol,
-  DerivCandle,
   DerivContractCategory,
-  NormalizedTick,
   NormalizedCandle,
+  NormalizedTick,
 } from './derivTypes.js';
 
 import {
-  normalizeDerivActiveSymbols,
-  extractAvailableSymbols,
   isSymbolBlacklisted,
+  normalizeDerivActiveSymbols,
 } from './marketNormalization.js';
 
 import { logger } from '../../observability/logger.js';
 
-export type GatewayConnectionState =
+export type DerivConnectionState =
   | 'CONNECTED'
   | 'CONNECTING'
   | 'RECONNECTING'
@@ -46,2190 +55,2161 @@ export type GatewayConnectionState =
   | 'ERROR'
   | 'DISCONNECTED';
 
-export interface GatewayProfileData {
-  loginid: string;
-  email: string;
-  fullname: string;
-  currency: string;
-  balance: number;
-  totalbalance: number;
-  country?: string;
-  is_virtual?: number;
-}
-
-export interface GatewayBalanceData {
-  loginid: string;
+export type TickCallback = (tick: NormalizedTick) => void;
+export type BalanceCallback = (balance: {
   balance: number;
   currency: string;
-  payout: number;
-  totalbalance: number;
-  timestamp: number;
+  loginid: string;
+}) => void;
+export type ProfileCallback = (profile: DerivAccountProfile) => void;
+export type StatusCallback = (state: DerivConnectionState) => void;
+
+export interface DerivAccountProfile {
+  loginid: string;
+  balance?: number;
+  currency?: string;
+  email?: string;
+  fullname?: string;
+  [key: string]: unknown;
 }
 
-export interface GatewayStatus {
-  state: GatewayConnectionState;
+export interface DerivGatewayStatus {
+  state: DerivConnectionState;
   isAuthorized: boolean;
   activeSymbolsCount: number;
   subscribedSymbolsCount: number;
   connectedClientsCount: number;
-  latencyMs: number;
+  latencyMs: number | null;
   uptimeSeconds: number;
 }
 
-export type TickStreamCallback = (tick: NormalizedTick) => void;
-export type BalanceStreamCallback = (balance: GatewayBalanceData) => void;
-export type ProfileStreamCallback = (profile: GatewayProfileData) => void;
-export type StatusStreamCallback = (status: GatewayStatus) => void;
-
 interface PendingRequest {
-  resolve: (response: DerivResponse) => void;
-  reject: (error: Error) => void;
-  timer: NodeJS.Timeout;
+  resolve: (value: any) => void;
+  reject: (reason?: unknown) => void;
+  timer: ReturnType<typeof setTimeout>;
 }
 
-interface UpstreamSymbolSubscription {
-  symbol: string;
-  subscriptionId: string | null;
-  clientSubscribers: Set<TickStreamCallback>;
+interface TickSubscription {
+  callbacks: Set<TickCallback>;
+  subscriptionId?: string;
+  isSubscribing?: boolean;
 }
 
-interface FrontendClient {
-  ws: any;
-  cleanup: Array<() => void>;
+interface RestErrorPayload {
+  errors?: Array<{
+    status?: number;
+    code?: string;
+    message?: string;
+  }>;
+  message?: string;
+}
+
+interface OptionsAccount {
+  account_id?: string;
+  account_type?: string;
+  balance?: number;
+  currency?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+interface OptionsAccountsResponse {
+  data?: OptionsAccount[] | OptionsAccount;
+  errors?: Array<{
+    status?: number;
+    code?: string;
+    message?: string;
+  }>;
+}
+
+interface OptionsOtpResponse {
+  data?: {
+    url?: string;
+  };
+  errors?: Array<{
+    status?: number;
+    code?: string;
+    message?: string;
+  }>;
+}
+
+interface GatewayClientMessage {
+  action?: string;
+  type?: string;
+  symbol?: string;
+  symbols?: string[];
+  req_id?: number;
+  [key: string]: unknown;
+}
+
+const OPTIONS_REST_BASE = 'https://api.derivws.com';
+const OPTIONS_PUBLIC_WS =
+  'wss://api.derivws.com/trading/v1/options/ws/public';
+
+const DEFAULT_REQUEST_TIMEOUT = 15_000;
+const DEFAULT_RECONNECT_DELAY = 1_000;
+const MAX_RECONNECT_DELAY = 30_000;
+
+const WS_OPEN = WebSocket.OPEN;
+
+function cleanErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message.replace(/\s+/g, ' ').trim();
+  }
+
+  return String(error).replace(/\s+/g, ' ').trim();
+}
+
+function isValidAccountId(accountId: string): boolean {
+  return /^[A-Za-z0-9_-]{3,64}$/.test(accountId);
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
 }
 
 export class DerivGateway {
-  private static instance: DerivGateway | null = null;
+  private static _instance: DerivGateway | null = null;
 
-  /**
-   * Deriv application ID.
-   */
-  private readonly appId: string;
+  private publicWs: WebSocket | null = null;
+  private accountWs: WebSocket | null = null;
 
-  /**
-   * Upstream Deriv WebSocket endpoints.
-   *
-   * The primary endpoint is attempted first. A secondary endpoint is
-   * retained as a fallback if the primary becomes unavailable.
-   */
-  private readonly endpoints: string[];
+  private accountId: string | null = null;
+  private accessToken: string | null = null;
 
-  private currentEndpointIndex = 0;
+  private connectionState: DerivConnectionState = 'DISCONNECTED';
 
-  /**
-   * Upstream WebSocket connection.
-   */
-  private ws: NodeWebSocket | null = null;
+  private publicConnectPromise: Promise<void> | null = null;
+  private accountConnectPromise: Promise<void> | null = null;
 
-  /**
-   * Gateway lifecycle.
-   */
-  private connectionState: GatewayConnectionState = 'DISCONNECTED';
-  private connectPromise: Promise<void> | null = null;
+  private publicReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private accountReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private publicReconnectAttempts = 0;
+  private accountReconnectAttempts = 0;
+
   private explicitShutdown = false;
 
-  /**
-   * Authentication token.
-   *
-   * This is intentionally kept in gateway state instead of mutating
-   * process.env during a request.
-   */
-  private authToken: string | null = null;
+  private requestId = 1;
 
-  /**
-   * Whether the current upstream connection has successfully completed
-   * Deriv authorization.
-   */
-  private authorized = false;
+  private pendingPublicRequests = new Map<number, PendingRequest>();
+  private pendingAccountRequests = new Map<number, PendingRequest>();
 
-  /**
-   * Request correlation.
-   */
-  private requestIdCounter = 1;
+  private tickSubscriptions = new Map<string, TickSubscription>();
+  private tickHistory = new Map<string, NormalizedTick>();
 
-  private readonly pendingRequests = new Map<number, PendingRequest>();
-
-  /**
-   * Authoritative market state.
-   */
   private availableSymbols = new Set<string>();
   private activeSymbolsCache: DerivActiveSymbol[] = [];
-  private lastSymbolsFetchTime = 0;
+  private lastActiveSymbolsFetchTime = 0;
+  private fetchActiveSymbolsPromise: Promise<DerivActiveSymbol[]> | null = null;
+  private tickSubQueue: string[] = [];
+  private isProcessingTickSubQueue = false;
 
-  /**
-   * Upstream tick subscriptions.
-   */
-  private readonly symbolSubscriptions =
-    new Map<string, UpstreamSymbolSubscription>();
+  private balance: {
+    balance: number;
+    currency: string;
+    loginid: string;
+  } | null = null;
 
-  /**
-   * Last genuine tick received per symbol.
-   */
-  private readonly tickHistory = new Map<string, NormalizedTick>();
+  private profile: DerivAccountProfile | null = null;
 
-  /**
-   * Gateway callbacks.
-   */
-  private readonly tickCallbacks = new Set<TickStreamCallback>();
-  private readonly balanceCallbacks = new Set<BalanceStreamCallback>();
-  private readonly profileCallbacks = new Set<ProfileStreamCallback>();
-  private readonly statusCallbacks = new Set<StatusStreamCallback>();
+  private statusListeners = new Set<StatusCallback>();
+  private balanceListeners = new Set<BalanceCallback>();
+  private profileListeners = new Set<ProfileCallback>();
 
-  /**
-   * Connected frontend clients.
-   */
-  private readonly connectedClients = new Set<FrontendClient>();
+  private clients = new Set<WebSocket>();
 
-  /**
-   * Reconnection.
-   */
-  private reconnectBackoffMs = 1000;
-  private readonly maxReconnectBackoffMs = 30000;
-  private reconnectAttempts = 0;
-  private reconnectTimeoutHandle: NodeJS.Timeout | null = null;
+  private webSocketServer: WebSocketServer | null = null;
 
-  /**
-   * Heartbeat.
-   */
-  private pingIntervalHandle: NodeJS.Timeout | null = null;
-  private lastPongTime = Date.now();
-  private readonly pingIntervalMs = 30000;
-  private readonly pingTimeoutMs = 10000;
+  private connectedAt: number | null = null;
 
-  /**
-   * Account state.
-   */
-  private currentProfile: GatewayProfileData | null = null;
-  private currentBalance: GatewayBalanceData | null = null;
+  private lastLatencyMs: number | null = null;
 
-  /**
-   * Process start time.
-   */
-  private readonly startTime = Date.now();
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(appId = '1089') {
-    this.appId = appId.trim() || '1089';
+  private constructor() {}
 
-    this.endpoints = [
-      `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(this.appId)}`,
-      `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(this.appId)}`,
-    ];
-  }
-
-  /**
-   * Singleton accessor.
-   */
-  public static getInstance(appId = '1089'): DerivGateway {
-    if (!DerivGateway.instance) {
-      DerivGateway.instance = new DerivGateway(appId);
+  public static getInstance(): DerivGateway {
+    if (!DerivGateway._instance) {
+      DerivGateway._instance = new DerivGateway();
     }
 
-    return DerivGateway.instance;
+    return DerivGateway._instance;
   }
 
   /**
-   * Set or replace the Deriv authorization token.
+   * Returns the gateway singleton.
+   */
+  public static instance(): DerivGateway {
+    return DerivGateway.getInstance();
+  }
+
+  /**
+   * Current gateway state.
+   */
+  public getConnectionState(): DerivConnectionState {
+    return this.connectionState;
+  }
+
+  /**
+   * Configure the authenticated OAuth session.
    *
-   * If the upstream connection is already open, the new token is
-   * immediately authorized against that connection.
+   * Ownership of the OAuth token remains server-side.
    */
-  public async setAuthToken(
-    token: string
-  ): Promise<GatewayProfileData | null> {
-    const cleanToken = typeof token === 'string' ? token.trim() : '';
+  public setAuthToken(token: string, accountId?: string): void {
+    const normalizedToken = token?.trim();
 
-    if (!cleanToken) {
-      this.authToken = null;
-      this.authorized = false;
-      this.currentProfile = null;
-      this.currentBalance = null;
-
-      this.emitStatus();
-
-      return null;
+    if (!normalizedToken) {
+      throw new Error('A valid OAuth access token is required.');
     }
 
-    const tokenChanged = this.authToken !== cleanToken;
+    this.accessToken = normalizedToken;
 
-    this.authToken = cleanToken;
-
-    if (!tokenChanged) {
-      return this.currentProfile;
+    if (accountId) {
+      this.setAccountId(accountId);
     }
-
-    this.authorized = false;
-    this.currentProfile = null;
-    this.currentBalance = null;
-
-    if (!this.isUpstreamOpen()) {
-      await this.connect();
-    }
-
-    return this.authorizeOnce();
   }
 
   /**
-   * Return whether the gateway currently has an open upstream connection.
+   * Set the Options account associated with the current OAuth session.
    */
-  private isUpstreamOpen(): boolean {
-    return this.ws !== null && this.ws.readyState === NodeWebSocket.OPEN;
+  public setAccountId(accountId: string): void {
+    const normalized = accountId?.trim();
+
+    if (!normalized || !isValidAccountId(normalized)) {
+      throw new Error('Invalid Options account ID.');
+    }
+
+    if (this.accountId !== normalized) {
+      this.closeAccountSocket();
+
+      this.accountId = normalized;
+      this.balance = null;
+      this.profile = null;
+    }
   }
 
   /**
-   * Establish the upstream Deriv WebSocket.
+   * Explicitly configure the current authenticated session.
+   */
+  public configureSession(
+    accessToken: string,
+    accountId: string,
+  ): void {
+    this.setAuthToken(accessToken);
+    this.setAccountId(accountId);
+  }
+
+  /**
+   * Establish public market-data connectivity.
    *
-   * Connection and authorization are intentionally separate:
-   *
-   * 1. Open WebSocket.
-   * 2. Authorize if a token exists.
-   * 3. Fetch active symbols.
-   * 4. Restore subscriptions.
+   * Public Options WebSocket requires no authentication.
    */
   public async connect(): Promise<void> {
-    if (this.explicitShutdown) {
-      return;
-    }
+    this.explicitShutdown = false;
 
-    if (this.isUpstreamOpen() && this.connectionState === 'CONNECTED') {
-      return;
-    }
+    await this.connectPublic();
 
-    if (this.connectPromise) {
-      return this.connectPromise;
-    }
-
-    this.connectPromise = this.establishConnection();
-
-    try {
-      await this.connectPromise;
-    } finally {
-      this.connectPromise = null;
+    if (this.accessToken && this.accountId) {
+      await this.connectAccount().catch((error) => {
+        logger.warn('[DerivGateway] Authenticated Options connection unavailable.', {
+          error: cleanErrorMessage(error),
+        });
+      });
     }
   }
 
   /**
-   * Internal connection procedure.
+   * Connect to the public Options market-data WebSocket.
    */
-  private async establishConnection(): Promise<void> {
+  private async connectPublic(): Promise<void> {
+    if (this.publicWs?.readyState === WS_OPEN) {
+      return;
+    }
+
+    if (this.publicConnectPromise) {
+      return this.publicConnectPromise;
+    }
+
     this.setConnectionState(
-      this.reconnectAttempts > 0 ? 'RECONNECTING' : 'CONNECTING'
+      this.publicReconnectAttempts > 0 ? 'RECONNECTING' : 'CONNECTING',
     );
 
-    const endpoint =
-      this.endpoints[
-        this.currentEndpointIndex % this.endpoints.length
-      ];
-
-    logger.info('[DerivGateway] Connecting to Deriv upstream', {
-      endpoint: endpoint.replace(
-        `app_id=${encodeURIComponent(this.appId)}`,
-        'app_id=[configured]'
-      ),
-      attempt: this.reconnectAttempts + 1,
-    });
-
-    const ws = new NodeWebSocket(endpoint, {
-      handshakeTimeout: 10000,
-      perMessageDeflate: false,
-    });
-
-    ws.on('message', this.handleUpstreamMessage);
-    ws.on('close', this.handleUpstreamClose);
-    ws.on('error', (error: any) => {
-      logger.warn('[DerivGateway] Upstream WebSocket error', {
-        error: error?.message || String(error),
-      });
-    });
-
-    this.ws = ws;
-
-    try {
-      await this.waitForOpen(ws);
-
-      if (this.ws !== ws) {
-        throw new Error('Deriv upstream connection was replaced');
-      }
-
-      this.reconnectAttempts = 0;
-      this.reconnectBackoffMs = 1000;
-
-      this.setConnectionState('CONNECTED');
-
-      this.startHeartbeat();
-
-      logger.info('[DerivGateway] Deriv upstream WebSocket connected');
-
-      if (this.authToken) {
-        const profile = await this.authorizeOnce();
-
-        if (!profile) {
-          logger.warn(
-            '[DerivGateway] Upstream connected but authorization failed'
-          );
-        }
-      } else {
-        logger.info(
-          '[DerivGateway] Upstream connected without account authorization'
-        );
-      }
-
-      await this.refreshActiveSymbols();
-
-      await this.restoreSubscriptions();
-    } catch (error: any) {
-      logger.error('[DerivGateway] Upstream connection failed', {
-        error: error?.message || String(error),
-      });
-
-      if (this.ws === ws) {
-        this.ws = null;
-      }
-
-      this.authorized = false;
-      this.stopHeartbeat();
-
-      try {
-        if (
-          ws.readyState === NodeWebSocket.OPEN ||
-          ws.readyState === NodeWebSocket.CONNECTING
-        ) {
-          ws.close();
-        }
-      } catch {}
-
-      this.setConnectionState('ERROR');
-
-      this.scheduleReconnect();
-
-      throw error instanceof Error
-        ? error
-        : new Error(String(error));
-    }
-  }
-
-  /**
-   * Wait for a WebSocket connection to open.
-   */
-  private waitForOpen(ws: NodeWebSocket): Promise<void> {
-    return new Promise((resolve, reject) => {
+    this.publicConnectPromise = new Promise<void>((resolve, reject) => {
       let settled = false;
 
-      const cleanup = () => {
-        ws.removeListener('open', handleOpen);
-        ws.removeListener('error', handleError);
-        ws.removeListener('close', handleClose);
-      };
+      const ws = new WebSocket(OPTIONS_PUBLIC_WS);
 
-      const handleOpen = () => {
+      this.publicWs = ws;
+
+      const finishResolve = () => {
         if (settled) return;
 
         settled = true;
-        cleanup();
+        this.publicConnectPromise = null;
         resolve();
       };
 
-      const handleError = (error: Error) => {
+      const finishReject = (error: Error) => {
         if (settled) return;
 
         settled = true;
-        cleanup();
+        this.publicConnectPromise = null;
         reject(error);
       };
 
-      const handleClose = (
-        code: number,
-        reason: Buffer
-      ) => {
+      ws.once('open', () => {
+        this.publicReconnectAttempts = 0;
+        this.connectedAt ??= Date.now();
+
+        this.setConnectionState(
+          this.accountWs?.readyState === WS_OPEN
+            ? 'CONNECTED'
+            : 'CONNECTED',
+        );
+
+        this.startHeartbeat();
+
+        this.restoreTickSubscriptions();
+
+        finishResolve();
+      });
+
+      ws.on('message', (raw: WebSocket.RawData) => {
+        this.handlePublicMessage(raw);
+      });
+
+      ws.on('pong', () => {
+        this.lastLatencyMs = Date.now() - Number(ws['__appexPingAt'] ?? Date.now());
+      });
+
+      ws.on('error', (error) => {
+        logger.warn('[DerivGateway] Public Options WebSocket error.', {
+          error: cleanErrorMessage(error),
+        });
+
+        finishReject(error instanceof Error ? error : new Error(String(error)));
+      });
+
+      ws.once('close', () => {
+        if (this.publicWs === ws) {
+          this.publicWs = null;
+        }
+
+        this.rejectPendingRequests(
+          this.pendingPublicRequests,
+          new Error('Public Options WebSocket disconnected.'),
+        );
+
+        if (!this.explicitShutdown) {
+          this.schedulePublicReconnect();
+        }
+
+        if (this.accountWs?.readyState !== WS_OPEN) {
+          this.setConnectionState('DISCONNECTED');
+        }
+      });
+    });
+
+    return this.publicConnectPromise;
+  }
+
+  /**
+   * Connect the authenticated Options account channel.
+   *
+   * Authentication is performed by:
+   *
+   * OAuth Bearer token
+   *      ↓
+   * OTP REST endpoint
+   *      ↓
+   * ready-to-use authenticated WebSocket URL
+   */
+  private async connectAccount(): Promise<void> {
+    if (!this.accessToken || !this.accountId) {
+      throw new Error(
+        'Authenticated Options connection requires both access token and account ID.',
+      );
+    }
+
+    if (this.accountWs?.readyState === WS_OPEN) {
+      return;
+    }
+
+    if (this.accountConnectPromise) {
+      return this.accountConnectPromise;
+    }
+
+    this.accountConnectPromise = this.openAuthenticatedAccountSocket()
+      .finally(() => {
+        this.accountConnectPromise = null;
+      });
+
+    return this.accountConnectPromise;
+  }
+
+  /**
+   * Obtain a fresh one-time WebSocket URL.
+   */
+  private async requestOtpUrl(): Promise<string> {
+    if (!this.accessToken) {
+      throw new Error('OAuth access token is not configured.');
+    }
+
+    if (!this.accountId) {
+      throw new Error('Options account ID is not configured.');
+    }
+
+    const endpoint =
+      `${OPTIONS_REST_BASE}/trading/v1/options/accounts/` +
+      `${encodeURIComponent(this.accountId)}/otp`;
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        'Deriv-App-ID': this.getApplicationId(),
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store',
+    });
+
+    const body = (await response.json().catch(() => null)) as
+      | OptionsOtpResponse
+      | RestErrorPayload
+      | null;
+
+    if (!response.ok) {
+      throw new Error(
+        this.extractRestError(
+          body,
+          `Options OTP request failed with HTTP ${response.status}.`,
+        ),
+      );
+    }
+
+    const url = body && 'data' in body ? body.data?.url : undefined;
+
+    if (!url || !url.startsWith('wss://api.derivws.com/')) {
+      throw new Error(
+        'Deriv returned an invalid authenticated Options WebSocket URL.',
+      );
+    }
+
+    return url;
+  }
+
+  /**
+   * The current OAuth client identifier is the application identifier
+   * required by the new Deriv API.
+   */
+  private getApplicationId(): string {
+    const clientId =
+      process.env.DERIV_OAUTH_CLIENT_ID?.trim();
+
+    if (!clientId) {
+      throw new Error(
+        'DERIV_OAUTH_CLIENT_ID is not configured.',
+      );
+    }
+
+    return clientId;
+  }
+
+  /**
+   * Open the authenticated Options WebSocket using a fresh OTP URL.
+   */
+  private async openAuthenticatedAccountSocket(): Promise<void> {
+    const wsUrl = await this.requestOtpUrl();
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+
+      const ws = new WebSocket(wsUrl);
+
+      this.accountWs = ws;
+
+      const finishResolve = () => {
         if (settled) return;
 
         settled = true;
-        cleanup();
-
-        const reasonText = reason?.toString() || '';
-
-        reject(
-          new Error(
-            `Deriv upstream closed during connection: ${code}${
-              reasonText ? ` - ${reasonText}` : ''
-            }`
-          )
-        );
+        resolve();
       };
 
-      ws.once('open', handleOpen);
-      ws.once('error', handleError);
-      ws.once('close', handleClose);
-    });
-  }
+      const finishReject = (error: Error) => {
+        if (settled) return;
 
-  /**
-   * Schedule a reconnect using exponential backoff with jitter.
-   */
-  private scheduleReconnect(): void {
-    if (this.explicitShutdown) {
-      return;
-    }
+        settled = true;
+        reject(error);
+      };
 
-    if (this.reconnectTimeoutHandle) {
-      return;
-    }
+      ws.once('open', () => {
+        this.accountReconnectAttempts = 0;
 
-    const exponentialDelay = Math.min(
-      this.reconnectBackoffMs *
-        Math.pow(2, Math.min(this.reconnectAttempts, 5)),
-      this.maxReconnectBackoffMs
-    );
+        this.setConnectionState('CONNECTED');
 
-    const jitter = Math.floor(Math.random() * 1000);
-
-    const delay = Math.min(
-      exponentialDelay + jitter,
-      this.maxReconnectBackoffMs
-    );
-
-    this.reconnectAttempts += 1;
-
-    logger.warn('[DerivGateway] Scheduling upstream reconnect', {
-      delayMs: delay,
-      attempt: this.reconnectAttempts,
-    });
-
-    this.reconnectTimeoutHandle = setTimeout(() => {
-      this.reconnectTimeoutHandle = null;
-
-      if (this.explicitShutdown) {
-        return;
-      }
-
-      this.connect().catch((error: any) => {
-        logger.warn('[DerivGateway] Reconnect attempt failed', {
-          error: error?.message || String(error),
-        });
-      });
-    }, delay);
-  }
-
-  /**
-   * Start heartbeat monitoring.
-   */
-  private startHeartbeat(): void {
-    this.stopHeartbeat();
-
-    this.lastPongTime = Date.now();
-
-    this.pingIntervalHandle = setInterval(() => {
-      if (!this.isUpstreamOpen()) {
-        return;
-      }
-
-      const startedAt = Date.now();
-
-      this.sendRequest({ ping: 1 }, this.pingTimeoutMs)
-        .then(() => {
-          this.lastPongTime = Date.now();
-
-          logger.debug('[DerivGateway] Upstream heartbeat OK', {
-            latencyMs: Date.now() - startedAt,
-          });
-
-          this.emitStatus();
-        })
-        .catch((error: any) => {
-          logger.warn('[DerivGateway] Upstream heartbeat failed', {
-            error: error?.message || String(error),
-          });
-
-          this.forceReconnect();
-        });
-    }, this.pingIntervalMs);
-  }
-
-  /**
-   * Stop heartbeat monitoring.
-   */
-  private stopHeartbeat(): void {
-    if (this.pingIntervalHandle) {
-      clearInterval(this.pingIntervalHandle);
-      this.pingIntervalHandle = null;
-    }
-  }
-
-  /**
-   * Force the current upstream connection closed and schedule recovery.
-   */
-  private forceReconnect(): void {
-    this.authorized = false;
-
-    const ws = this.ws;
-
-    this.ws = null;
-
-    this.stopHeartbeat();
-
-    if (ws) {
-      try {
-        if (
-          ws.readyState === NodeWebSocket.OPEN ||
-          ws.readyState === NodeWebSocket.CONNECTING
-        ) {
-          ws.close();
-        }
-      } catch {}
-    }
-
-    this.rejectPendingRequests(
-      new Error('Deriv upstream connection lost')
-    );
-
-    this.setConnectionState('DISCONNECTED');
-
-    this.scheduleReconnect();
-  }
-
-  /**
-   * Update lifecycle state.
-   */
-  private setConnectionState(
-    state: GatewayConnectionState
-  ): void {
-    if (this.connectionState === state) {
-      this.emitStatus();
-      return;
-    }
-
-    this.connectionState = state;
-
-    logger.debug('[DerivGateway] Connection state changed', {
-      state,
-      authorized: this.authorized,
-    });
-
-    this.emitStatus();
-  }
-
-  /**
-   * Emit gateway status safely.
-   */
-  private emitStatus(): void {
-    const status = this.getStatus();
-
-    this.statusCallbacks.forEach((callback) => {
-      try {
-        callback(status);
-      } catch (error: any) {
-        logger.warn('[DerivGateway] Status callback failed', {
-          error: error?.message || String(error),
-        });
-      }
-    });
-  }
-
-  /**
-   * Handle every upstream Deriv message.
-   */
-  private handleUpstreamMessage = (data: Buffer): void => {
-    try {
-      const text = data.toString();
-
-      const response = JSON.parse(text) as DerivResponse;
-
-      /**
-       * Deriv API errors.
-       */
-      if (response.error) {
-        logger.warn('[DerivGateway] Deriv API error', {
-          code: response.error.code,
-          message: response.error.message,
-          reqId: response.req_id,
-        });
-      }
-
-      /**
-       * Authorization response.
-       */
-      if (
-        response.authorize &&
-        typeof response.authorize === 'object'
-      ) {
-        this.handleAuthorizationResponse(response);
-      }
-
-      /**
-       * Correlate request/response.
-       */
-      if (
-        typeof response.req_id === 'number' &&
-        this.pendingRequests.has(response.req_id)
-      ) {
-        const pending = this.pendingRequests.get(response.req_id)!;
-
-        clearTimeout(pending.timer);
-        this.pendingRequests.delete(response.req_id);
-
-        if (response.error) {
-          pending.reject(
-            new Error(
-              `Deriv API Error: ${response.error.code} - ${response.error.message}`
-            )
+        this.requestInitialAccountState().catch((error) => {
+          logger.warn(
+            '[DerivGateway] Initial account-state request failed.',
+            {
+              error: cleanErrorMessage(error),
+            },
           );
-        } else {
-          pending.resolve(response);
-        }
-      }
-
-      /**
-       * Tick stream.
-       */
-      if (response.tick) {
-        this.handleTick(response);
-      }
-
-      /**
-       * Balance stream.
-       */
-      if (response.balance) {
-        this.handleIncomingBalance(response.balance);
-      }
-
-      /**
-       * Generic ping response.
-       */
-      if ((response as any).ping) {
-        this.lastPongTime = Date.now();
-        this.emitStatus();
-      }
-    } catch (error: any) {
-      logger.error('[DerivGateway] Failed to process upstream message', {
-        error: error?.message || String(error),
-      });
-    }
-  };
-
-  /**
-   * Process authorization response.
-   */
-  private handleAuthorizationResponse(
-    response: DerivResponse
-  ): void {
-    const auth = response.authorize as any;
-
-    if (!auth || typeof auth !== 'object') {
-      return;
-    }
-
-    if (response.error) {
-      this.authorized = false;
-      this.currentProfile = null;
-      return;
-    }
-
-    const loginid = String(auth.loginid || '').trim();
-
-    if (!loginid) {
-      logger.warn(
-        '[DerivGateway] Authorization response contained no login ID'
-      );
-
-      this.authorized = false;
-      return;
-    }
-
-    this.authorized = true;
-
-    this.currentProfile = {
-      loginid,
-      email: String(auth.email || ''),
-      fullname: String(auth.fullname || ''),
-      currency: String(auth.currency || 'USD'),
-      balance:
-        typeof auth.balance === 'number'
-          ? auth.balance
-          : 0,
-      totalbalance:
-        typeof auth.total_balance === 'number'
-          ? auth.total_balance
-          : typeof auth.balance === 'number'
-            ? auth.balance
-            : 0,
-      country:
-        typeof auth.country === 'string'
-          ? auth.country
-          : undefined,
-      is_virtual:
-        typeof auth.is_virtual === 'number'
-          ? auth.is_virtual
-          : undefined,
-    };
-
-    logger.info('[DerivGateway] Deriv account authorized', {
-      loginid: this.currentProfile.loginid,
-    });
-
-    this.profileCallbacks.forEach((callback) => {
-      try {
-        callback(this.currentProfile!);
-      } catch (error: any) {
-        logger.warn('[DerivGateway] Profile callback failed', {
-          error: error?.message || String(error),
         });
-      }
-    });
 
-    this.emitStatus();
-  }
-
-  /**
-   * Process a genuine Deriv tick.
-   */
-  private handleTick(response: DerivResponse): void {
-    const tick = response.tick as any;
-
-    if (!tick) {
-      return;
-    }
-
-    const symbol = String(tick.symbol || '').trim();
-
-    const quote =
-      typeof tick.quote === 'number'
-        ? tick.quote
-        : Number(tick.quote);
-
-    const epoch =
-      typeof tick.epoch === 'number'
-        ? tick.epoch
-        : Number(tick.epoch);
-
-    if (
-      !symbol ||
-      !Number.isFinite(quote) ||
-      !Number.isFinite(epoch)
-    ) {
-      return;
-    }
-
-    const previous = this.tickHistory.get(symbol);
-
-    const prevQuote =
-      previous && Number.isFinite(previous.quote)
-        ? previous.quote
-        : quote;
-
-    const change = quote - prevQuote;
-
-    const changePct =
-      prevQuote !== 0
-        ? (change / prevQuote) * 100
-        : 0;
-
-    const normalized: NormalizedTick = {
-      symbol,
-      quote,
-      bid:
-        typeof tick.bid === 'number'
-          ? tick.bid
-          : undefined,
-      ask:
-        typeof tick.ask === 'number'
-          ? tick.ask
-          : undefined,
-      epoch,
-      change,
-      changePct,
-      prevQuote,
-      lastUpdated: new Date(),
-    };
-
-    this.tickHistory.set(symbol, normalized);
-
-    /**
-     * Global callbacks.
-     */
-    this.tickCallbacks.forEach((callback) => {
-      try {
-        callback(normalized);
-      } catch (error: any) {
-        logger.warn('[DerivGateway] Tick callback failed', {
-          error: error?.message || String(error),
-        });
-      }
-    });
-
-    /**
-     * Symbol-specific callbacks.
-     */
-    const subscription =
-      this.symbolSubscriptions.get(symbol);
-
-    if (!subscription) {
-      return;
-    }
-
-    subscription.clientSubscribers.forEach((callback) => {
-      try {
-        callback(normalized);
-      } catch (error: any) {
-        logger.warn(
-          '[DerivGateway] Symbol tick callback failed',
-          {
-            symbol,
-            error: error?.message || String(error),
-          }
-        );
-      }
-    });
-  }
-
-  /**
-   * Handle genuine Deriv balance data.
-   */
-  private handleIncomingBalance(rawBalance: any): void {
-    if (!rawBalance || typeof rawBalance !== 'object') {
-      return;
-    }
-
-    const balanceValue =
-      typeof rawBalance.balance === 'number'
-        ? rawBalance.balance
-        : Number(rawBalance.balance);
-
-    if (!Number.isFinite(balanceValue)) {
-      return;
-    }
-
-    const totalBalanceValue =
-      typeof rawBalance.total_balance === 'number'
-        ? rawBalance.total_balance
-        : balanceValue;
-
-    const payoutValue =
-      typeof rawBalance.payout === 'number'
-        ? rawBalance.payout
-        : Number(rawBalance.payout || 0);
-
-    const balance: GatewayBalanceData = {
-      loginid: String(rawBalance.loginid || ''),
-      balance: balanceValue,
-      currency: String(rawBalance.currency || 'USD'),
-      payout: Number.isFinite(payoutValue)
-        ? payoutValue
-        : 0,
-      totalbalance: Number.isFinite(totalBalanceValue)
-        ? totalBalanceValue
-        : balanceValue,
-      timestamp: Math.floor(Date.now() / 1000),
-    };
-
-    this.currentBalance = balance;
-
-    this.balanceCallbacks.forEach((callback) => {
-      try {
-        callback(balance);
-      } catch (error: any) {
-        logger.warn('[DerivGateway] Balance callback failed', {
-          error: error?.message || String(error),
-        });
-      }
-    });
-  }
-
-  /**
-   * Authorize the current upstream connection exactly once.
-   */
-  private async authorizeOnce(): Promise<GatewayProfileData | null> {
-    if (!this.authToken) {
-      this.authorized = false;
-      return null;
-    }
-
-    if (!this.isUpstreamOpen()) {
-      return null;
-    }
-
-    try {
-      const response = await this.sendRequest(
-        {
-          authorize: this.authToken,
-        },
-        10000
-      );
-
-      if (
-        response.error ||
-        !response.authorize ||
-        typeof response.authorize !== 'object'
-      ) {
-        this.authorized = false;
-
-        logger.warn(
-          '[DerivGateway] Deriv authorization was rejected',
-          {
-            code: response.error?.code,
-            message: response.error?.message,
-          }
-        );
-
-        return null;
-      }
-
-      this.handleAuthorizationResponse(response);
-
-      return this.currentProfile;
-    } catch (error: any) {
-      this.authorized = false;
-
-      logger.warn('[DerivGateway] Authorization request failed', {
-        error: error?.message || String(error),
+        finishResolve();
       });
 
-      return null;
-    }
-  }
+      ws.on('message', (raw: WebSocket.RawData) => {
+        this.handleAccountMessage(raw);
+      });
 
-  /**
-   * Fetch authoritative active symbols.
-   */
-  public async fetchActiveSymbols(
-    style: 'full' | 'brief' = 'full'
-  ): Promise<DerivActiveSymbol[]> {
-    const now = Date.now();
-
-    if (
-      this.activeSymbolsCache.length > 0 &&
-      now - this.lastSymbolsFetchTime < 30000
-    ) {
-      return this.activeSymbolsCache;
-    }
-
-    if (!this.isUpstreamOpen()) {
-      try {
-        await this.connect();
-      } catch (error: any) {
+      ws.on('error', (error) => {
         logger.warn(
-          '[DerivGateway] Unable to connect before active-symbol request',
+          '[DerivGateway] Authenticated Options WebSocket error.',
           {
-            error: error?.message || String(error),
-          }
+            error: cleanErrorMessage(error),
+          },
         );
 
-        return this.activeSymbolsCache;
-      }
-    }
+        finishReject(
+          error instanceof Error
+            ? error
+            : new Error(String(error)),
+        );
+      });
 
-    try {
-      const response = await this.sendRequest(
-        {
-          active_symbols: style,
-          product_type: 'basic',
-        },
-        10000
-      );
-
-      if (
-        response.active_symbols &&
-        Array.isArray(response.active_symbols)
-      ) {
-        this.activeSymbolsCache = response.active_symbols;
-        this.lastSymbolsFetchTime = Date.now();
-
-        const normalized =
-          normalizeDerivActiveSymbols(
-            response.active_symbols
-          );
-
-        this.availableSymbols =
-          extractAvailableSymbols(normalized);
-
-        logger.info('[DerivGateway] Active symbols updated', {
-          count: response.active_symbols.length,
-          normalizedCount: normalized.length,
-        });
-
-        return this.activeSymbolsCache;
-      }
-    } catch (error: any) {
-      logger.warn(
-        '[DerivGateway] Active symbols fetch failed',
-        {
-          error: error?.message || String(error),
+      ws.once('close', () => {
+        if (this.accountWs === ws) {
+          this.accountWs = null;
         }
-      );
-    }
 
-    return this.activeSymbolsCache;
-  }
-
-  /**
-   * Refresh active symbols after connecting.
-   */
-  private async refreshActiveSymbols(): Promise<void> {
-    try {
-      await this.fetchActiveSymbols('full');
-    } catch (error: any) {
-      logger.warn(
-        '[DerivGateway] Active symbol refresh failed',
-        {
-          error: error?.message || String(error),
-        }
-      );
-    }
-  }
-
-  /**
-   * Fetch authoritative candles.
-   */
-  public async fetchCandles(
-    symbol: string,
-    granularitySeconds: number,
-    count = 300
-  ): Promise<NormalizedCandle[]> {
-    const cleanSymbol = String(symbol || '').trim();
-
-    if (!cleanSymbol || isSymbolBlacklisted(cleanSymbol)) {
-      return [];
-    }
-
-    if (!this.isUpstreamOpen()) {
-      try {
-        await this.connect();
-      } catch {
-        return [];
-      }
-    }
-
-    const safeGranularity =
-      Number.isFinite(granularitySeconds) &&
-      granularitySeconds > 0
-        ? Math.floor(granularitySeconds)
-        : 3600;
-
-    const safeCount =
-      Number.isFinite(count) && count > 0
-        ? Math.min(Math.floor(count), 5000)
-        : 300;
-
-    try {
-      const response = await this.sendRequest(
-        {
-          ticks_history: cleanSymbol,
-          style: 'candles',
-          granularity: safeGranularity,
-          count: safeCount,
-          end: 'latest',
-        },
-        15000
-      );
-
-      if (
-        response.candles &&
-        Array.isArray(response.candles)
-      ) {
-        return response.candles
-          .filter(
-            (c: DerivCandle) =>
-              Number.isFinite(c.open) &&
-              Number.isFinite(c.high) &&
-              Number.isFinite(c.low) &&
-              Number.isFinite(c.close) &&
-              Number.isFinite(c.epoch)
-          )
-          .map((c: DerivCandle) => ({
-            timestamp: c.epoch * 1000,
-            open: c.open,
-            high: c.high,
-            low: c.low,
-            close: c.close,
-          }));
-      }
-
-      /**
-       * Fallback for history responses.
-       */
-      if (
-        response.history &&
-        Array.isArray(response.history.prices) &&
-        Array.isArray(response.history.times)
-      ) {
-        const prices = response.history.prices;
-        const times = response.history.times;
-
-        const candles: NormalizedCandle[] = [];
-
-        const length = Math.min(
-          prices.length,
-          times.length
+        this.rejectPendingRequests(
+          this.pendingAccountRequests,
+          new Error('Authenticated Options WebSocket disconnected.'),
         );
 
-        for (let i = 0; i < length; i++) {
-          const price = Number(prices[i]);
-          const epoch = Number(times[i]);
-
-          if (
-            !Number.isFinite(price) ||
-            !Number.isFinite(epoch)
-          ) {
-            continue;
-          }
-
-          candles.push({
-            timestamp: epoch * 1000,
-            open: price,
-            high: price,
-            low: price,
-            close: price,
-          });
+        if (!this.explicitShutdown && this.accessToken && this.accountId) {
+          this.scheduleAccountReconnect();
         }
 
-        return candles;
-      }
-    } catch (error: any) {
-      logger.warn(
-        `[DerivGateway] Candle request failed for ${cleanSymbol}`,
-        {
-          error: error?.message || String(error),
+        if (this.publicWs?.readyState !== WS_OPEN) {
+          this.setConnectionState('DISCONNECTED');
         }
-      );
-    }
-
-    return [];
+      });
+    });
   }
 
   /**
-   * Fetch authoritative contract categories.
+   * Request initial account data after authenticated connection.
    */
-  public async fetchContractsFor(
-    symbol: string
-  ): Promise<DerivContractCategory[]> {
-    const cleanSymbol = String(symbol || '').trim();
-
-    if (!cleanSymbol || isSymbolBlacklisted(cleanSymbol)) {
-      return [];
-    }
-
-    if (!this.isUpstreamOpen()) {
-      try {
-        await this.connect();
-      } catch {
-        return [];
-      }
+  private async requestInitialAccountState(): Promise<void> {
+    if (!this.accountWs || this.accountWs.readyState !== WS_OPEN) {
+      return;
     }
 
     try {
-      const response = await this.sendRequest(
-        {
-          contracts_for: cleanSymbol,
-        },
-        12000
-      );
+      const response = await this.sendAccountRequest({
+        balance: 1,
+        subscribe: 1,
+      });
 
-      if (
-        response.contracts_for?.available &&
-        Array.isArray(
-          response.contracts_for.available
-        )
-      ) {
-        return response.contracts_for.available;
-      }
-    } catch (error: any) {
-      logger.warn(
-        `[DerivGateway] Contract request failed for ${cleanSymbol}`,
-        {
-          error: error?.message || String(error),
-        }
-      );
+      this.processBalance(response);
+    } catch (error) {
+      logger.warn('[DerivGateway] Balance initialization failed.', {
+        error: cleanErrorMessage(error),
+      });
     }
-
-    return [];
   }
 
   /**
-   * Return last genuine tick received for a symbol.
+   * Send a request through the public Options WebSocket.
    */
-  public getLastTick(
-    symbol: string
-  ): NormalizedTick | undefined {
-    return this.tickHistory.get(
-      String(symbol || '').trim()
+  private sendPublicRequest(
+    payload: Record<string, unknown>,
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT,
+  ): Promise<any> {
+    return this.sendRequestOnSocket(
+      this.publicWs,
+      this.pendingPublicRequests,
+      payload,
+      timeoutMs,
     );
   }
 
   /**
-   * Return currently available authoritative symbols.
+   * Send a request through the authenticated Options WebSocket.
    */
-  public getAvailableSymbols(): Set<string> {
-    return new Set(this.availableSymbols);
+  private sendAccountRequest(
+    payload: Record<string, unknown>,
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT,
+  ): Promise<any> {
+    return this.sendRequestOnSocket(
+      this.accountWs,
+      this.pendingAccountRequests,
+      payload,
+      timeoutMs,
+    );
   }
 
   /**
-   * Send a correlated request to Deriv.
+   * Generic gateway request.
+   *
+   * Routing is deliberately restricted to the new Options WebSocket
+   * channels rather than exposing legacy protocol behavior.
    */
-  public sendRequest(
-    request: DerivRequest,
-    timeoutMs = 15000
-  ): Promise<DerivResponse> {
+  public async sendRequest(
+    payload: Record<string, unknown>,
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT,
+  ): Promise<any> {
+    const requiresAccountChannel =
+      Boolean(
+        payload.balance ||
+        payload.buy ||
+        payload.sell ||
+        payload.proposal_open_contract ||
+        payload.portfolio ||
+        payload.transaction,
+      );
+
+    if (requiresAccountChannel) {
+      if (!this.accessToken || !this.accountId) {
+        throw new Error(
+          'Authenticated Options session is required for this request.',
+        );
+      }
+
+      if (this.accountWs?.readyState !== WS_OPEN) {
+        await this.connectAccount();
+      }
+
+      return this.sendAccountRequest(payload, timeoutMs);
+    }
+
+    if (this.publicWs?.readyState !== WS_OPEN) {
+      await this.connectPublic();
+    }
+
+    return this.sendPublicRequest(payload, timeoutMs);
+  }
+
+  private sendRequestOnSocket(
+    socket: WebSocket | null,
+    pending: Map<number, PendingRequest>,
+    payload: Record<string, unknown>,
+    timeoutMs: number,
+  ): Promise<any> {
+    if (!socket || socket.readyState !== WS_OPEN) {
+      return Promise.reject(
+        new Error('Deriv Options WebSocket is not connected.'),
+      );
+    }
+
+    const reqId = this.requestId++;
+
+    const message = {
+      ...payload,
+      req_id: reqId,
+    };
+
     return new Promise((resolve, reject) => {
-      if (!this.isUpstreamOpen()) {
-        reject(
-          new Error('Deriv upstream not connected')
-        );
-        return;
-      }
-
-      const reqId = this.requestIdCounter++;
-
       const timer = setTimeout(() => {
-        this.pendingRequests.delete(reqId);
+        pending.delete(reqId);
 
         reject(
           new Error(
-            `Deriv request timeout after ${timeoutMs}ms`
-          )
+            `Deriv Options request timed out after ${timeoutMs}ms.`,
+          ),
         );
       }, timeoutMs);
 
-      this.pendingRequests.set(reqId, {
+      pending.set(reqId, {
         resolve,
         reject,
         timer,
       });
 
       try {
-        const payload = {
-          ...request,
-          req_id: reqId,
-        };
-
-        this.ws!.send(JSON.stringify(payload));
-      } catch (error: any) {
+        socket.send(JSON.stringify(message));
+      } catch (error) {
         clearTimeout(timer);
-        this.pendingRequests.delete(reqId);
+        pending.delete(reqId);
 
         reject(
           error instanceof Error
             ? error
-            : new Error(String(error))
+            : new Error(String(error)),
         );
       }
     });
   }
 
   /**
-   * Subscribe to a genuine Deriv tick stream.
+   * Public market-data message handler.
+   */
+  private handlePublicMessage(raw: WebSocket.RawData): void {
+    const data = this.parseMessage(raw);
+
+    if (!data) return;
+
+    this.resolvePendingRequest(
+      this.pendingPublicRequests,
+      data,
+    );
+
+    if (data.error) {
+      return;
+    }
+
+    if (data.msg_type === 'tick' && data.tick) {
+      this.processTick(data.tick, data.subscription?.id);
+    }
+
+    if (
+      data.msg_type === 'active_symbols' &&
+      Array.isArray(data.active_symbols)
+    ) {
+      this.updateAvailableSymbols(data.active_symbols);
+    }
+  }
+
+  /**
+   * Authenticated account message handler.
+   */
+  private handleAccountMessage(raw: WebSocket.RawData): void {
+    const data = this.parseMessage(raw);
+
+    if (!data) return;
+
+    this.resolvePendingRequest(
+      this.pendingAccountRequests,
+      data,
+    );
+
+    if (data.error) {
+      return;
+    }
+
+    if (data.msg_type === 'tick' && data.tick) {
+      this.processTick(data.tick, data.subscription?.id);
+    }
+
+    if (data.msg_type === 'balance' && data.balance) {
+      this.processBalance(data);
+    }
+
+    if (
+      data.msg_type === 'authorize' &&
+      data.authorize
+    ) {
+      this.processProfile(data.authorize);
+    }
+  }
+
+  private parseMessage(
+    raw: WebSocket.RawData,
+  ): any | null {
+    try {
+      const text = raw.toString();
+
+      return JSON.parse(text);
+    } catch (error) {
+      logger.warn('[DerivGateway] Invalid JSON received from Options WS.', {
+        error: cleanErrorMessage(error),
+      });
+
+      return null;
+    }
+  }
+
+  private resolvePendingRequest(
+    pending: Map<number, PendingRequest>,
+    data: any,
+  ): void {
+    const reqId = toNumber(data?.req_id);
+
+    if (reqId === null) {
+      return;
+    }
+
+    const request = pending.get(reqId);
+
+    if (!request) {
+      return;
+    }
+
+    clearTimeout(request.timer);
+    pending.delete(reqId);
+
+    if (data.error) {
+      request.reject(
+        new Error(
+          data.error.message ||
+          data.error.code ||
+          'Deriv Options request failed.',
+        ),
+      );
+
+      return;
+    }
+
+    request.resolve(data);
+  }
+
+  /**
+   * Subscribe to a live Options tick stream.
    */
   public subscribeTick(
     symbol: string,
-    callback: TickStreamCallback
+    callback: TickCallback,
   ): () => void {
-    const cleanSymbol = String(symbol || '').trim();
+    const cleanSymbol = symbol?.trim();
+
+    if (!cleanSymbol) {
+      throw new Error('Symbol is required.');
+    }
+
+    if (isSymbolBlacklisted(cleanSymbol)) {
+      throw new Error(`Symbol is not permitted: ${cleanSymbol}`);
+    }
+
+    let subscription = this.tickSubscriptions.get(cleanSymbol);
+
+    if (!subscription) {
+      subscription = {
+        callbacks: new Set(),
+      };
+
+      this.tickSubscriptions.set(
+        cleanSymbol,
+        subscription,
+      );
+    }
+
+    subscription.callbacks.add(callback);
+
+    this.ensureTickSubscription(cleanSymbol);
+
+    return () => {
+      const current =
+        this.tickSubscriptions.get(cleanSymbol);
+
+      if (!current) return;
+
+      current.callbacks.delete(callback);
+
+      if (current.callbacks.size === 0) {
+        this.tickSubscriptions.delete(cleanSymbol);
+
+        this.unsubscribeTick(cleanSymbol).catch(() => {
+          // Safe cleanup.
+        });
+      }
+    };
+  }
+
+  private ensureTickSubscription(symbol: string): void {
+    const subscription = this.tickSubscriptions.get(symbol);
+
+    if (
+      !subscription ||
+      subscription.subscriptionId ||
+      subscription.isSubscribing
+    ) {
+      return;
+    }
+
+    if (!this.tickSubQueue.includes(symbol)) {
+      this.tickSubQueue.push(symbol);
+    }
+
+    void this.processTickSubQueue();
+  }
+
+  private async processTickSubQueue(): Promise<void> {
+    if (this.isProcessingTickSubQueue) {
+      return;
+    }
+
+    this.isProcessingTickSubQueue = true;
+
+    try {
+      while (this.tickSubQueue.length > 0) {
+        const symbol = this.tickSubQueue.shift();
+
+        if (!symbol) continue;
+
+        const subscription = this.tickSubscriptions.get(symbol);
+
+        if (!subscription || subscription.subscriptionId) {
+          continue;
+        }
+
+        subscription.isSubscribing = true;
+
+        try {
+          if (this.publicWs?.readyState !== WS_OPEN) {
+            await this.connectPublic();
+          }
+
+          const response = await this.sendPublicRequest({
+            ticks: symbol,
+            subscribe: 1,
+          });
+
+          const subscriptionId =
+            response?.subscription?.id;
+
+          if (subscriptionId) {
+            subscription.subscriptionId =
+              String(subscriptionId);
+          }
+        } catch (error: any) {
+          const errMsg = cleanErrorMessage(error);
+
+          if (errMsg.toLowerCase().includes('rate limit')) {
+            logger.warn(
+              `[DerivGateway] Tick subscription rate-limited for ${symbol}. Retrying in 3s...`,
+            );
+
+            this.tickSubQueue.unshift(symbol);
+            await new Promise((r) => setTimeout(r, 3000));
+          } else if (errMsg.toLowerCase().includes('already subscribed')) {
+            // Already subscribed is a benign state, treat as success
+            subscription.subscriptionId = `subscribed-${symbol}`;
+          } else {
+            logger.warn(
+              `[DerivGateway] Tick subscription failed for ${symbol}.`,
+              {
+                error: errMsg,
+              },
+            );
+          }
+        } finally {
+          subscription.isSubscribing = false;
+        }
+
+        // Throttle by 300ms between requests to prevent hitting tick rate limits
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    } finally {
+      this.isProcessingTickSubQueue = false;
+    }
+  }
+
+  private async unsubscribeTick(
+    symbol: string,
+  ): Promise<void> {
+    const subscription =
+      this.tickSubscriptions.get(symbol);
+
+    const subscriptionId =
+      subscription?.subscriptionId;
+
+    if (
+      !subscriptionId ||
+      !this.publicWs ||
+      this.publicWs.readyState !== WS_OPEN
+    ) {
+      return;
+    }
+
+    try {
+      await this.sendPublicRequest({
+        forget: subscriptionId,
+      });
+    } catch {
+      // Safe cleanup.
+    }
+  }
+
+  private restoreTickSubscriptions(): void {
+    for (const symbol of this.tickSubscriptions.keys()) {
+      const subscription =
+        this.tickSubscriptions.get(symbol);
+
+      if (subscription) {
+        subscription.subscriptionId = undefined;
+      }
+
+      void this.ensureTickSubscription(symbol);
+    }
+  }
+
+  /**
+   * Fetch active Options symbols with caching and in-flight deduplication.
+   */
+  public async fetchActiveSymbols(
+    style: 'full' | 'brief' = 'full',
+  ): Promise<DerivActiveSymbol[]> {
+    const now = Date.now();
+
+    // 1. Return cache if available and fresh (within 5 minutes)
+    if (
+      this.activeSymbolsCache.length > 0 &&
+      now - this.lastActiveSymbolsFetchTime < 300_000
+    ) {
+      return this.activeSymbolsCache;
+    }
+
+    // 2. Return in-flight request promise if currently executing
+    if (this.fetchActiveSymbolsPromise) {
+      return this.fetchActiveSymbolsPromise;
+    }
+
+    // 3. Initiate new upstream request
+    this.fetchActiveSymbolsPromise = (async () => {
+      try {
+        if (this.publicWs?.readyState !== WS_OPEN) {
+          await this.connectPublic();
+        }
+
+        const response = await this.sendPublicRequest({
+          active_symbols: style,
+        });
+
+        const symbols = Array.isArray(response?.active_symbols)
+          ? response.active_symbols
+          : [];
+
+        if (symbols.length > 0) {
+          this.activeSymbolsCache = symbols as DerivActiveSymbol[];
+          this.lastActiveSymbolsFetchTime = Date.now();
+          this.updateAvailableSymbols(symbols);
+        }
+
+        return this.activeSymbolsCache.length > 0
+          ? this.activeSymbolsCache
+          : (symbols as DerivActiveSymbol[]);
+      } catch (error) {
+        const errMsg = cleanErrorMessage(error);
+        if (errMsg.toLowerCase().includes('rate limit')) {
+          logger.warn(
+            '[DerivGateway] Active symbols rate-limited. Using cached symbols.',
+          );
+        } else {
+          logger.warn(
+            '[DerivGateway] Active symbols request failed.',
+            {
+              error: errMsg,
+            },
+          );
+        }
+
+        return this.activeSymbolsCache;
+      } finally {
+        this.fetchActiveSymbolsPromise = null;
+      }
+    })();
+
+    return this.fetchActiveSymbolsPromise;
+  }
+
+  /**
+   * Fetch historical candles.
+   *
+   * This method intentionally uses the Options WebSocket request
+   * supported by the current API rather than a legacy connection.
+   */
+  public async fetchCandles(
+    symbol: string,
+    granularitySeconds: number,
+    count = 300,
+  ): Promise<NormalizedCandle[]> {
+    const cleanSymbol = symbol?.trim();
 
     if (
       !cleanSymbol ||
       isSymbolBlacklisted(cleanSymbol)
     ) {
-      return () => {};
+      return [];
     }
 
-    let subscription =
-      this.symbolSubscriptions.get(cleanSymbol);
-
-    if (!subscription) {
-      subscription = {
-        symbol: cleanSymbol,
-        subscriptionId: null,
-        clientSubscribers: new Set(),
-      };
-
-      this.symbolSubscriptions.set(
-        cleanSymbol,
-        subscription
-      );
-
-      this.ensureUpstreamTickSubscription(
-        subscription
-      ).catch((error: any) => {
-        logger.warn(
-          `[DerivGateway] Failed to subscribe to ${cleanSymbol}`,
-          {
-            error: error?.message || String(error),
-          }
-        );
-      });
+    if (!Number.isFinite(granularitySeconds) ||
+        granularitySeconds <= 0) {
+      throw new Error('Invalid candle granularity.');
     }
 
-    subscription.clientSubscribers.add(callback);
-
-    return () => {
-      const current =
-        this.symbolSubscriptions.get(cleanSymbol);
-
-      if (!current) {
-        return;
-      }
-
-      current.clientSubscribers.delete(callback);
-
-      if (current.clientSubscribers.size === 0) {
-        this.removeTickSubscription(cleanSymbol).catch(
-          (error: any) => {
-            logger.warn(
-              `[DerivGateway] Failed to remove ${cleanSymbol} subscription`,
-              {
-                error: error?.message || String(error),
-              }
-            );
-          }
-        );
-      }
-    };
-  }
-
-  /**
-   * Create one upstream tick subscription for a symbol.
-   */
-  private async ensureUpstreamTickSubscription(
-    subscription: UpstreamSymbolSubscription
-  ): Promise<void> {
-    if (!this.isUpstreamOpen()) {
-      await this.connect();
+    if (!Number.isFinite(count) || count <= 0) {
+      throw new Error('Invalid candle count.');
     }
 
-    if (!this.isUpstreamOpen()) {
-      throw new Error('Deriv upstream not connected');
+    if (this.publicWs?.readyState !== WS_OPEN) {
+      await this.connectPublic();
     }
-
-    /**
-     * A subscription already exists upstream.
-     */
-    if (subscription.subscriptionId) {
-      return;
-    }
-
-    const response = await this.sendRequest(
-      {
-        ticks: subscription.symbol,
-        subscribe: 1,
-      } as DerivRequest,
-      10000
-    );
-
-    const responseAny = response as any;
-
-    if (responseAny.subscription?.id) {
-      subscription.subscriptionId = String(
-        responseAny.subscription.id
-      );
-    }
-  }
-
-  /**
-   * Remove an upstream tick subscription.
-   */
-  private async removeTickSubscription(
-    symbol: string
-  ): Promise<void> {
-    const subscription =
-      this.symbolSubscriptions.get(symbol);
-
-    if (!subscription) {
-      return;
-    }
-
-    this.symbolSubscriptions.delete(symbol);
-
-    if (
-      subscription.subscriptionId &&
-      this.isUpstreamOpen()
-    ) {
-      try {
-        await this.sendRequest(
-          {
-            forget: subscription.subscriptionId,
-          },
-          5000
-        );
-      } catch (error: any) {
-        logger.debug(
-          '[DerivGateway] Upstream forget failed',
-          {
-            symbol,
-            error: error?.message || String(error),
-          }
-        );
-      }
-    }
-  }
-
-  /**
-   * Restore all active subscriptions after reconnect.
-   */
-  private async restoreSubscriptions(): Promise<void> {
-    if (!this.isUpstreamOpen()) {
-      return;
-    }
-
-    const subscriptions = Array.from(
-      this.symbolSubscriptions.values()
-    );
-
-    for (const subscription of subscriptions) {
-      subscription.subscriptionId = null;
-
-      if (subscription.clientSubscribers.size === 0) {
-        continue;
-      }
-
-      try {
-        await this.ensureUpstreamTickSubscription(
-          subscription
-        );
-      } catch (error: any) {
-        logger.warn(
-          `[DerivGateway] Failed to restore ${subscription.symbol}`,
-          {
-            error: error?.message || String(error),
-          }
-        );
-      }
-    }
-  }
-
-  /**
-   * Global tick callback.
-   */
-  public onTick(
-    callback: TickStreamCallback
-  ): () => void {
-    this.tickCallbacks.add(callback);
-
-    return () => {
-      this.tickCallbacks.delete(callback);
-    };
-  }
-
-  /**
-   * Global balance callback.
-   */
-  public onBalanceChange(
-    callback: BalanceStreamCallback
-  ): () => void {
-    this.balanceCallbacks.add(callback);
-
-    return () => {
-      this.balanceCallbacks.delete(callback);
-    };
-  }
-
-  /**
-   * Global profile callback.
-   */
-  public onProfileChange(
-    callback: ProfileStreamCallback
-  ): () => void {
-    this.profileCallbacks.add(callback);
-
-    return () => {
-      this.profileCallbacks.delete(callback);
-    };
-  }
-
-  /**
-   * Global status callback.
-   */
-  public onStatusChange(
-    callback: StatusStreamCallback
-  ): () => void {
-    this.statusCallbacks.add(callback);
-
-    return () => {
-      this.statusCallbacks.delete(callback);
-    };
-  }
-
-  /**
-   * Attach frontend WebSocket upgrade handling.
-   */
-  public attachWebSocketServer(
-    server: any,
-    path = '/api/deriv/stream'
-  ): void {
-    server.on(
-      'upgrade',
-      (
-        request: IncomingMessage,
-        socket: any,
-        head: Buffer
-      ) => {
-        try {
-          const host =
-            request.headers.host || 'localhost';
-
-          const pathname = new URL(
-            request.url || '/',
-            `http://${host}`
-          ).pathname;
-
-          if (
-            pathname === path ||
-            pathname === '/deriv/stream' ||
-            pathname === '/api/deriv/stream'
-          ) {
-            this.handleUpgrade(
-              request,
-              socket,
-              head
-            );
-          }
-        } catch (error: any) {
-          logger.warn(
-            '[DerivGateway] Invalid WebSocket upgrade request',
-            {
-              error: error?.message || String(error),
-            }
-          );
-
-          try {
-            socket.destroy();
-          } catch {}
-        }
-      }
-    );
-  }
-
-  /**
-   * Handle a frontend WebSocket connection.
-   */
-  public handleUpgrade(
-    req: IncomingMessage,
-    socket: any,
-    head: Buffer
-  ): void {
-    const wsServer = new WebSocketServer({
-      noServer: true,
-    });
-
-    wsServer.handleUpgrade(
-      req,
-      socket,
-      head,
-      (ws) => {
-        this.handleFrontendClient(ws);
-      }
-    );
-  }
-
-  /**
-   * Register a frontend client.
-   */
-  private handleFrontendClient(ws: any): void {
-    const client: FrontendClient = {
-      ws,
-      cleanup: [],
-    };
-
-    this.connectedClients.add(client);
-
-    logger.debug(
-      '[DerivGateway] Frontend client connected',
-      {
-        clientCount: this.connectedClients.size,
-      }
-    );
-
-    /**
-     * Global tick stream.
-     */
-    client.cleanup.push(
-      this.onTick((tick) => {
-        this.sendToClient(ws, {
-          type: 'tick',
-          data: tick,
-        });
-      })
-    );
-
-    /**
-     * Global balance stream.
-     */
-    client.cleanup.push(
-      this.onBalanceChange((balance) => {
-        this.sendToClient(ws, {
-          type: 'balance',
-          data: balance,
-        });
-      })
-    );
-
-    /**
-     * Global profile stream.
-     */
-    client.cleanup.push(
-      this.onProfileChange((profile) => {
-        this.sendToClient(ws, {
-          type: 'profile',
-          data: profile,
-        });
-      })
-    );
-
-    /**
-     * Gateway status stream.
-     */
-    client.cleanup.push(
-      this.onStatusChange((status) => {
-        this.sendToClient(ws, {
-          type: 'status',
-          data: status,
-        });
-      })
-    );
-
-    /**
-     * Immediately expose current gateway state.
-     */
-    this.sendToClient(ws, {
-      type: 'status',
-      data: this.getStatus(),
-    });
-
-    /**
-     * Existing profile.
-     */
-    if (this.currentProfile) {
-      this.sendToClient(ws, {
-        type: 'profile',
-        data: this.currentProfile,
-      });
-    }
-
-    /**
-     * Existing balance.
-     */
-    if (this.currentBalance) {
-      this.sendToClient(ws, {
-        type: 'balance',
-        data: this.currentBalance,
-      });
-    }
-
-    /**
-     * Ensure the upstream connection exists.
-     */
-    this.connect().catch((error: any) => {
-      logger.warn(
-        '[DerivGateway] Frontend connection could not initialize upstream',
-        {
-          error: error?.message || String(error),
-        }
-      );
-    });
-
-    ws.on('message', (rawMessage: any) => {
-      this.handleFrontendMessage(
-        client,
-        rawMessage
-      ).catch((error: any) => {
-        logger.warn(
-          '[DerivGateway] Frontend message failed',
-          {
-            error: error?.message || String(error),
-          }
-        );
-      });
-    });
-
-    ws.on('close', () => {
-      this.removeFrontendClient(client);
-    });
-
-    ws.on('error', (error: any) => {
-      logger.warn(
-        '[DerivGateway] Frontend WebSocket error',
-        {
-          error: error?.message || String(error),
-        }
-      );
-    });
-  }
-
-  /**
-   * Process frontend WebSocket messages.
-   */
-  private async handleFrontendMessage(
-    client: FrontendClient,
-    rawMessage: any
-  ): Promise<void> {
-    const ws = client.ws;
-
-    if (!ws || ws.readyState !== NodeWebSocket.OPEN) {
-      return;
-    }
-
-    let payload: any;
 
     try {
-      payload = JSON.parse(
-        rawMessage.toString()
-      );
-    } catch {
-      this.sendToClient(ws, {
-        type: 'error',
-        error: {
-          message: 'Invalid JSON message',
-        },
-      });
-
-      return;
-    }
-
-    const reqId =
-      payload &&
-      Object.prototype.hasOwnProperty.call(
-        payload,
-        'req_id'
-      )
-        ? payload.req_id
-        : undefined;
-
-    /**
-     * Frontend ping.
-     */
-    if (
-      payload?.ping ||
-      payload?.action === 'ping'
-    ) {
-      this.sendToClient(ws, {
-        type: 'pong',
-        ping: 'pong',
-        req_id: reqId,
-      });
-
-      return;
-    }
-
-    /**
-     * Tick subscription.
-     */
-    if (
-      payload?.action === 'subscribe_tick' &&
-      payload?.symbol
-    ) {
-      const symbol = String(
-        payload.symbol
-      ).trim();
-
-      if (!symbol) {
-        this.sendToClient(ws, {
-          req_id: reqId,
-          error: {
-            message: 'Symbol is required',
-          },
+      const response =
+        await this.sendPublicRequest({
+          ticks_history: cleanSymbol,
+          style: 'candles',
+          granularity: Math.floor(granularitySeconds),
+          count: Math.min(Math.floor(count), 5000),
+          end: 'latest',
         });
-
-        return;
-      }
-
-      const unsubscribe = this.subscribeTick(
-        symbol,
-        (tick) => {
-          this.sendToClient(ws, {
-            type: 'tick',
-            data: tick,
-          });
-        }
-      );
-
-      client.cleanup.push(unsubscribe);
-
-      this.sendToClient(ws, {
-        req_id: reqId,
-        status: 'subscribed',
-        symbol,
-      });
-
-      return;
-    }
-
-    /**
-     * Tick unsubscription.
-     *
-     * The individual callback cleanup is handled when the
-     * frontend connection is closed. A fresh subscription
-     * is created for each subscribe request.
-     */
-    if (
-      payload?.action === 'unsubscribe_tick' &&
-      payload?.symbol
-    ) {
-      this.sendToClient(ws, {
-        req_id: reqId,
-        status: 'unsubscribed',
-        symbol: String(payload.symbol).trim(),
-      });
-
-      return;
-    }
-
-    /**
-     * Candle request.
-     */
-    if (
-      payload?.action === 'fetch_candles' ||
-      payload?.ticks_history
-    ) {
-      const symbol = String(
-        payload.symbol ||
-          payload.ticks_history ||
-          ''
-      ).trim();
-
-      const granularity =
-        Number(payload.granularity) || 3600;
-
-      const count =
-        Number(payload.count) || 300;
 
       const candles =
-        await this.fetchCandles(
-          symbol,
-          granularity,
-          count
-        );
+        Array.isArray(response?.candles)
+          ? response.candles
+          : [];
 
-      this.sendToClient(ws, {
-        req_id: reqId,
-        data: candles,
-      });
+      return candles
+        .filter((c: any) =>
+          Number.isFinite(Number(c?.open)) &&
+          Number.isFinite(Number(c?.high)) &&
+          Number.isFinite(Number(c?.low)) &&
+          Number.isFinite(Number(c?.close)) &&
+          Number.isFinite(Number(c?.epoch)),
+        )
+        .map((c: any): NormalizedCandle => ({
+          timestamp: Number(c.epoch) * 1000,
+          open: Number(c.open),
+          high: Number(c.high),
+          low: Number(c.low),
+          close: Number(c.close),
+        }));
+    } catch (error) {
+      logger.warn(
+        `[DerivGateway] Candle request failed for ${cleanSymbol}.`,
+        {
+          error: cleanErrorMessage(error),
+        },
+      );
 
-      return;
+      return [];
+    }
+  }
+
+  /**
+   * Fetch available contract metadata for a symbol.
+   */
+  public async fetchContractsFor(
+    symbol: string,
+  ): Promise<DerivContractCategory[]> {
+    const cleanSymbol = symbol?.trim();
+
+    if (
+      !cleanSymbol ||
+      isSymbolBlacklisted(cleanSymbol)
+    ) {
+      return [];
     }
 
-    /**
-     * Active symbols request.
-     */
-    if (
-      payload?.active_symbols ||
-      payload?.action === 'active_symbols'
-    ) {
-      const symbols =
-        await this.fetchActiveSymbols();
-
-      this.sendToClient(ws, {
-        req_id: reqId,
-        active_symbols: symbols,
-        data: symbols,
-      });
-
-      return;
+    if (this.publicWs?.readyState !== WS_OPEN) {
+      await this.connectPublic();
     }
 
-    /**
-     * Contract request.
-     */
-    if (
-      payload?.action === 'fetch_contracts' ||
-      payload?.contracts_for
-    ) {
-      const symbol = String(
-        payload.symbol ||
-          payload.contracts_for ||
-          ''
-      ).trim();
+    try {
+      const response =
+        await this.sendPublicRequest({
+          contracts_for: cleanSymbol,
+        });
 
       const contracts =
-        await this.fetchContractsFor(symbol);
+        response?.contracts_for?.available;
 
-      this.sendToClient(ws, {
-        req_id: reqId,
-        data: contracts,
-      });
+      return Array.isArray(contracts)
+        ? contracts as DerivContractCategory[]
+        : [];
+    } catch (error) {
+      logger.warn(
+        `[DerivGateway] Contract metadata request failed for ${cleanSymbol}.`,
+        {
+          error: cleanErrorMessage(error),
+        },
+      );
 
+      return [];
+    }
+  }
+
+  /**
+   * Return last received tick.
+   */
+  public getLastTick(
+    symbol: string,
+  ): NormalizedTick | null {
+    return this.tickHistory.get(symbol?.trim()) ?? null;
+  }
+
+  /**
+   * Return available symbols.
+   */
+  public getAvailableSymbols(): Set<string> {
+    return new Set(this.availableSymbols);
+  }
+
+  /**
+   * Return current account profile.
+   */
+  public getProfile(): DerivAccountProfile | null {
+    return this.profile
+      ? { ...this.profile }
+      : null;
+  }
+
+  /**
+   * Return current account balance.
+   */
+  public getBalance(): {
+    balance: number;
+    currency: string;
+    loginid: string;
+  } | null {
+    return this.balance
+      ? { ...this.balance }
+      : null;
+  }
+
+  /**
+   * Return current account ID.
+   */
+  public getAccountId(): string | null {
+    return this.accountId;
+  }
+
+  /**
+   * Register balance listener.
+   */
+  public onBalanceChange(
+    callback: BalanceCallback,
+  ): () => void {
+    this.balanceListeners.add(callback);
+
+    if (this.balance) {
+      callback({ ...this.balance });
+    }
+
+    return () => {
+      this.balanceListeners.delete(callback);
+    };
+  }
+
+  /**
+   * Register profile listener.
+   */
+  public onProfileChange(
+    callback: ProfileCallback,
+  ): () => void {
+    this.profileListeners.add(callback);
+
+    if (this.profile) {
+      callback({ ...this.profile });
+    }
+
+    return () => {
+      this.profileListeners.delete(callback);
+    };
+  }
+
+  /**
+   * Register status listener.
+   */
+  public onStatusChange(
+    callback: StatusCallback,
+  ): () => void {
+    this.statusListeners.add(callback);
+
+    callback(this.connectionState);
+
+    return () => {
+      this.statusListeners.delete(callback);
+    };
+  }
+
+  /**
+   * Update account balance from an Options WS response.
+   */
+  private processBalance(data: any): void {
+    const raw = data?.balance ?? data;
+
+    const balanceValue =
+      toNumber(raw?.balance);
+
+    if (balanceValue === null) {
       return;
     }
 
-    /**
-     * Generic Deriv request.
-     *
-     * Only allow this when the frontend supplied req_id.
-     */
-    if (reqId !== undefined) {
-      try {
-        const response =
-          await this.sendRequest(
-            payload as DerivRequest,
-            10000
-          );
+    const currency =
+      typeof raw?.currency === 'string'
+        ? raw.currency
+        : this.balance?.currency || 'USD';
 
-        this.sendToClient(ws, {
-          req_id: reqId,
-          data: response,
-        });
-      } catch (error: any) {
-        this.sendToClient(ws, {
-          req_id: reqId,
-          error: {
-            message:
-              error?.message ||
-              String(error),
+    const loginid =
+      typeof raw?.loginid === 'string'
+        ? raw.loginid
+        : this.accountId || '';
+
+    this.balance = {
+      balance: balanceValue,
+      currency,
+      loginid,
+    };
+
+    if (this.profile) {
+      this.profile.balance = balanceValue;
+      this.profile.currency = currency;
+      this.profile.loginid =
+        loginid || this.profile.loginid;
+    }
+
+    for (const listener of this.balanceListeners) {
+      try {
+        listener({ ...this.balance });
+      } catch (error) {
+        logger.warn(
+          '[DerivGateway] Balance listener failed.',
+          {
+            error: cleanErrorMessage(error),
           },
-        });
+        );
       }
     }
   }
 
   /**
-   * Safely send data to a frontend client.
+   * Process account profile data if supplied by the API.
    */
-  private sendToClient(
-    ws: any,
-    payload: unknown
-  ): void {
-    try {
-      if (
-        ws &&
-        ws.readyState === NodeWebSocket.OPEN
-      ) {
-        ws.send(JSON.stringify(payload));
+  private processProfile(raw: any): void {
+    if (!raw || typeof raw !== 'object') {
+      return;
+    }
+
+    const loginid =
+      typeof raw.loginid === 'string'
+        ? raw.loginid
+        : this.accountId;
+
+    if (!loginid) {
+      return;
+    }
+
+    this.profile = {
+      ...raw,
+      loginid,
+      balance:
+        toNumber(raw.balance) ??
+        this.balance?.balance,
+      currency:
+        typeof raw.currency === 'string'
+          ? raw.currency
+          : this.balance?.currency,
+    };
+
+    for (const listener of this.profileListeners) {
+      try {
+        listener({ ...this.profile });
+      } catch (error) {
+        logger.warn(
+          '[DerivGateway] Profile listener failed.',
+          {
+            error: cleanErrorMessage(error),
+          },
+        );
       }
-    } catch (error: any) {
-      logger.debug(
-        '[DerivGateway] Failed to send frontend message',
-        {
-          error: error?.message || String(error),
-        }
+    }
+  }
+
+  /**
+   * Normalize incoming ticks.
+   */
+  private processTick(
+    tickData: any,
+    subscriptionId?: string,
+  ): void {
+    const symbol =
+      typeof tickData?.symbol === 'string'
+        ? tickData.symbol.trim()
+        : '';
+
+    const quote =
+      toNumber(tickData?.quote);
+
+    if (!symbol || quote === null) {
+      return;
+    }
+
+    const previous =
+      this.tickHistory.get(symbol);
+
+    const previousQuote =
+      previous?.quote ?? quote;
+
+    const change =
+      quote - previousQuote;
+
+    const changePct =
+      previousQuote !== 0
+        ? (change / previousQuote) * 100
+        : 0;
+
+    const epoch =
+      toNumber(tickData?.epoch) ??
+      Math.floor(Date.now() / 1000);
+
+    const normalized: NormalizedTick = {
+      symbol,
+      quote,
+      bid:
+        toNumber(tickData?.bid) ??
+        quote,
+      ask:
+        toNumber(tickData?.ask) ??
+        quote,
+      epoch,
+      change,
+      changePct,
+      prevQuote: previousQuote,
+      lastUpdated: new Date(epoch * 1000),
+    };
+
+    this.tickHistory.set(
+      symbol,
+      normalized,
+    );
+
+    const subscription =
+      this.tickSubscriptions.get(symbol);
+
+    if (subscriptionId && subscription) {
+      subscription.subscriptionId =
+        subscriptionId;
+    }
+
+    if (!subscription) {
+      return;
+    }
+
+    for (const callback of subscription.callbacks) {
+      try {
+        callback(normalized);
+      } catch (error) {
+        logger.warn(
+          `[DerivGateway] Tick callback failed for ${symbol}.`,
+          {
+            error: cleanErrorMessage(error),
+          },
+        );
+      }
+    }
+  }
+
+  /**
+   * Update authoritative symbol set.
+   */
+  private updateAvailableSymbols(
+    symbols: unknown[],
+  ): void {
+    const normalized =
+      normalizeDerivActiveSymbols(
+        symbols as DerivActiveSymbol[],
+      );
+
+    this.availableSymbols.clear();
+
+    for (const item of normalized) {
+      const symbol =
+        typeof item?.symbol === 'string'
+          ? item.symbol.trim()
+          : '';
+
+      if (
+        symbol &&
+        !isSymbolBlacklisted(symbol)
+      ) {
+        this.availableSymbols.add(symbol);
+      }
+    }
+  }
+
+  /**
+   * Get account data through REST.
+   *
+   * This method is intentionally useful for server-side session
+   * synchronization without exposing credentials to clients.
+   */
+  public async fetchAccounts(): Promise<OptionsAccount[]> {
+    if (!this.accessToken) {
+      throw new Error('OAuth access token is not configured.');
+    }
+
+    const response = await fetch(
+      `${OPTIONS_REST_BASE}/trading/v1/options/accounts`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Deriv-App-ID': this.getApplicationId(),
+          Accept: 'application/json',
+        },
+        cache: 'no-store',
+      },
+    );
+
+    const body =
+      (await response.json().catch(() => null)) as
+        | OptionsAccountsResponse
+        | RestErrorPayload
+        | null;
+
+    if (!response.ok) {
+      throw new Error(
+        this.extractRestError(
+          body,
+          `Options account lookup failed with HTTP ${response.status}.`,
+        ),
       );
     }
+
+    const data =
+      body && 'data' in body
+        ? body.data
+        : undefined;
+
+    if (Array.isArray(data)) {
+      return data;
+    }
+
+    if (data && typeof data === 'object') {
+      return [data];
+    }
+
+    return [];
   }
 
   /**
-   * Remove frontend client and its callbacks.
+   * Find a specific Options account.
    */
-  private removeFrontendClient(
-    client: FrontendClient
-  ): void {
-    if (!this.connectedClients.has(client)) {
+  public async findAccount(
+    accountId: string,
+  ): Promise<OptionsAccount | null> {
+    const cleanAccountId =
+      accountId?.trim();
+
+    if (
+      !cleanAccountId ||
+      !isValidAccountId(cleanAccountId)
+    ) {
+      return null;
+    }
+
+    const accounts =
+      await this.fetchAccounts();
+
+    return (
+      accounts.find(
+        (account) =>
+          account.account_id === cleanAccountId,
+      ) ?? null
+    );
+  }
+
+  /**
+   * Extract useful REST error information without
+   * exposing credentials or raw sensitive payloads.
+   */
+  private extractRestError(
+    body: unknown,
+    fallback: string,
+  ): string {
+    if (!body || typeof body !== 'object') {
+      return fallback;
+    }
+
+    const candidate =
+      body as RestErrorPayload;
+
+    const firstError =
+      Array.isArray(candidate.errors)
+        ? candidate.errors[0]
+        : undefined;
+
+    return (
+      firstError?.message ||
+      firstError?.code ||
+      candidate.message ||
+      fallback
+    );
+  }
+
+  /**
+   * Schedule public market-data reconnect.
+   */
+  private schedulePublicReconnect(): void {
+    if (
+      this.explicitShutdown ||
+      this.publicReconnectTimer
+    ) {
       return;
     }
 
-    client.cleanup.forEach((cleanup) => {
-      try {
-        cleanup();
-      } catch {}
-    });
+    this.publicReconnectAttempts += 1;
 
-    client.cleanup = [];
+    const delay =
+      Math.min(
+        DEFAULT_RECONNECT_DELAY *
+          2 ** Math.min(
+            this.publicReconnectAttempts - 1,
+            5,
+          ),
+        MAX_RECONNECT_DELAY,
+      );
 
-    this.connectedClients.delete(client);
+    this.setConnectionState('RECONNECTING');
 
-    logger.debug(
-      '[DerivGateway] Frontend client disconnected',
-      {
-        clientCount: this.connectedClients.size,
-      }
-    );
+    this.publicReconnectTimer =
+      setTimeout(() => {
+        this.publicReconnectTimer = null;
+
+        this.connectPublic().catch(() => {
+          // close handler schedules the next attempt.
+        });
+      }, delay);
   }
 
   /**
-   * Handle upstream close.
+   * Schedule authenticated account reconnect.
+   *
+   * A fresh OTP is requested on every reconnect.
    */
-  private handleUpstreamClose = (
-    code: number,
-    reason: Buffer
-  ): void => {
-    const reasonText =
-      reason?.toString() || '';
-
-    logger.warn(
-      '[DerivGateway] Deriv upstream WebSocket closed',
-      {
-        code,
-        reason: reasonText,
-      }
-    );
-
-    this.authorized = false;
-
-    if (this.ws) {
-      this.ws.removeAllListeners();
+  private scheduleAccountReconnect(): void {
+    if (
+      this.explicitShutdown ||
+      this.accountReconnectTimer ||
+      !this.accessToken ||
+      !this.accountId
+    ) {
+      return;
     }
 
-    this.ws = null;
+    this.accountReconnectAttempts += 1;
 
-    this.stopHeartbeat();
+    const delay =
+      Math.min(
+        DEFAULT_RECONNECT_DELAY *
+          2 ** Math.min(
+            this.accountReconnectAttempts - 1,
+            5,
+          ),
+        MAX_RECONNECT_DELAY,
+      );
 
-    this.rejectPendingRequests(
-      new Error(
-        `Deriv upstream closed: ${code}${
-          reasonText
-            ? ` - ${reasonText}`
-            : ''
-        }`
-      )
-    );
+    this.setConnectionState('RECONNECTING');
 
-    this.setConnectionState(
-      this.explicitShutdown
-        ? 'DISCONNECTED'
-        : 'OFFLINE'
-    );
+    this.accountReconnectTimer =
+      setTimeout(() => {
+        this.accountReconnectTimer = null;
 
-    if (!this.explicitShutdown) {
-      /**
-       * Move to the next endpoint after a failed
-       * upstream connection.
-       */
-      this.currentEndpointIndex =
-        (this.currentEndpointIndex + 1) %
-        this.endpoints.length;
+        this.connectAccount().catch((error) => {
+          logger.warn(
+            '[DerivGateway] Authenticated Options reconnect failed.',
+            {
+              error: cleanErrorMessage(error),
+            },
+          );
 
-      this.scheduleReconnect();
-    }
-  };
+          this.scheduleAccountReconnect();
+        });
+      }, delay);
+  }
 
   /**
-   * Reject all outstanding upstream requests.
+   * Reject all outstanding requests for a disconnected socket.
    */
   private rejectPendingRequests(
-    error: Error
+    pending: Map<number, PendingRequest>,
+    error: Error,
   ): void {
-    for (const [
-      reqId,
-      pending,
-    ] of this.pendingRequests) {
-      clearTimeout(pending.timer);
-      pending.reject(error);
-      this.pendingRequests.delete(reqId);
+    for (const [reqId, request] of pending) {
+      clearTimeout(request.timer);
+      request.reject(error);
+      pending.delete(reqId);
     }
   }
 
   /**
-   * Current connection state.
+   * Start server-side WebSocket heartbeat.
    */
-  public getConnectionState():
-    GatewayConnectionState {
-    return this.connectionState;
+  private startHeartbeat(): void {
+    if (this.pingTimer) {
+      return;
+    }
+
+    this.pingTimer =
+      setInterval(() => {
+        const sockets = [
+          this.publicWs,
+          this.accountWs,
+        ];
+
+        for (const socket of sockets) {
+          if (socket?.readyState === WS_OPEN) {
+            try {
+              socket['__appexPingAt'] =
+                Date.now();
+
+              socket.ping();
+            } catch {
+              // Socket cleanup is handled by close/error.
+            }
+          }
+        }
+      }, 15_000);
   }
 
   /**
-   * Current gateway diagnostics.
+   * Stop heartbeat timer.
    */
-  public getStatus(): GatewayStatus {
-    const latencyMs =
-      this.lastPongTime > 0
+  private stopHeartbeat(): void {
+    if (!this.pingTimer) {
+      return;
+    }
+
+    clearInterval(this.pingTimer);
+    this.pingTimer = null;
+  }
+
+  private setConnectionState(
+    state: DerivConnectionState,
+  ): void {
+    if (this.connectionState === state) {
+      return;
+    }
+
+    this.connectionState = state;
+
+    for (const listener of this.statusListeners) {
+      try {
+        listener(state);
+      } catch (error) {
+        logger.warn(
+          '[DerivGateway] Status listener failed.',
+          {
+            error: cleanErrorMessage(error),
+          },
+        );
+      }
+    }
+  }
+
+  /**
+   * Gateway status for HTTP/SSE diagnostics.
+   */
+  public getStatus(): DerivGatewayStatus {
+    const uptimeSeconds =
+      this.connectedAt
         ? Math.max(
             0,
-            Date.now() -
-              this.lastPongTime
+            Math.floor(
+              (Date.now() - this.connectedAt) / 1000,
+            ),
           )
         : 0;
 
     return {
       state: this.connectionState,
-      isAuthorized: this.authorized,
+      isAuthorized:
+        Boolean(
+          this.accessToken &&
+          this.accountId &&
+          this.accountWs?.readyState === WS_OPEN,
+        ),
       activeSymbolsCount:
-        this.activeSymbolsCache.length,
+        this.availableSymbols.size,
       subscribedSymbolsCount:
-        this.symbolSubscriptions.size,
+        this.tickSubscriptions.size,
       connectedClientsCount:
-        this.connectedClients.size,
-      latencyMs,
-      uptimeSeconds: Math.round(
-        (Date.now() -
-          this.startTime) /
-          1000
-      ),
+        this.clients.size,
+      latencyMs:
+        this.lastLatencyMs,
+      uptimeSeconds,
     };
   }
 
   /**
-   * Gracefully shut down the gateway.
+   * Attach the gateway WebSocket server to an existing HTTP server.
+   *
+   * The browser connects to AppeX; AppeX remains responsible for
+   * brokering public market data and server-owned account state.
    */
-  public shutdown(): void {
-    logger.info(
-      '[DerivGateway] Shutting down'
+  public attachWebSocketServer(
+    server: HttpServer,
+    path = '/api/deriv/stream',
+  ): WebSocketServerType {
+    if (this.webSocketServer) {
+      return this.webSocketServer;
+    }
+
+    this.webSocketServer =
+      new WebSocketServer({
+        noServer: true,
+      });
+
+    server.on(
+      'upgrade',
+      (request: IncomingMessage, socket, head) => {
+        const requestUrl =
+          request.url
+            ? new URL(
+                request.url,
+                'http://localhost',
+              )
+            : null;
+
+        if (
+          !requestUrl ||
+          requestUrl.pathname !== path
+        ) {
+          return;
+        }
+
+        this.webSocketServer?.handleUpgrade(
+          request,
+          socket,
+          head,
+          (client) => {
+            this.webSocketServer?.emit(
+              'connection',
+              client,
+              request,
+            );
+          },
+        );
+      },
     );
 
+    this.webSocketServer.on(
+      'connection',
+      (client) => {
+        this.clients.add(client);
+
+        client.send(
+          JSON.stringify({
+            type: 'status',
+            data: this.getStatus(),
+          }),
+        );
+
+        client.on(
+          'message',
+          (raw) => {
+            this.handleClientMessage(
+              client,
+              raw,
+            );
+          },
+        );
+
+        client.on(
+          'close',
+          () => {
+            this.clients.delete(client);
+          },
+        );
+
+        client.on(
+          'error',
+          () => {
+            this.clients.delete(client);
+          },
+        );
+      },
+    );
+
+    return this.webSocketServer;
+  }
+
+  /**
+   * Directly handle HTTP 101 WebSocket Upgrade request from Vercel/Node stream handler.
+   */
+  public handleUpgrade(
+    request: IncomingMessage,
+    socket: any,
+    head: Buffer,
+  ): void {
+    if (!this.webSocketServer) {
+      this.webSocketServer = new WebSocketServer({
+        noServer: true,
+      });
+
+      this.webSocketServer.on('connection', (client) => {
+        this.clients.add(client);
+
+        client.send(
+          JSON.stringify({
+            type: 'status',
+            data: this.getStatus(),
+          }),
+        );
+
+        client.on('message', (raw) => {
+          this.handleClientMessage(client, raw);
+        });
+
+        client.on('close', () => {
+          this.clients.delete(client);
+        });
+
+        client.on('error', () => {
+          this.clients.delete(client);
+        });
+      });
+    }
+
+    this.webSocketServer.handleUpgrade(
+      request,
+      socket,
+      head,
+      (client) => {
+        this.webSocketServer?.emit('connection', client, request);
+      },
+    );
+  }
+
+  /**
+   * Handle browser gateway commands.
+   *
+   * Browser clients never receive OAuth tokens.
+   */
+  private handleClientMessage(
+    client: WebSocket,
+    raw: WebSocket.RawData,
+  ): void {
+    let message: GatewayClientMessage;
+
+    try {
+      message =
+        JSON.parse(
+          raw.toString(),
+        ) as GatewayClientMessage;
+    } catch {
+      client.send(
+        JSON.stringify({
+          type: 'error',
+          code: 'INVALID_JSON',
+          message: 'Invalid JSON message.',
+        }),
+      );
+
+      return;
+    }
+
+    const action =
+      typeof message.action === 'string'
+        ? message.action
+        : typeof message.type === 'string'
+          ? message.type
+          : '';
+
+    if (
+      action === 'subscribe' ||
+      action === 'subscribe_tick'
+    ) {
+      const symbol =
+        typeof message.symbol === 'string'
+          ? message.symbol.trim()
+          : '';
+
+      if (!symbol) {
+        client.send(
+          JSON.stringify({
+            type: 'error',
+            code: 'SYMBOL_REQUIRED',
+            message: 'Symbol is required.',
+          }),
+        );
+
+        return;
+      }
+
+      const unsubscribe =
+        this.subscribeTick(
+          symbol,
+          (tick) => {
+            if (
+              client.readyState === WS_OPEN
+            ) {
+              client.send(
+                JSON.stringify({
+                  type: 'tick',
+                  data: tick,
+                }),
+              );
+            }
+          },
+        );
+
+      client.once(
+        'close',
+        unsubscribe,
+      );
+
+      return;
+    }
+
+    if (action === 'status') {
+      client.send(
+        JSON.stringify({
+          type: 'status',
+          data: this.getStatus(),
+        }),
+      );
+
+      return;
+    }
+
+    if (action === 'active_symbols') {
+      void this.fetchActiveSymbols()
+        .then((symbols) => {
+          if (
+            client.readyState === WS_OPEN
+          ) {
+            client.send(
+              JSON.stringify({
+                type: 'active_symbols',
+                data: symbols,
+              }),
+            );
+          }
+        })
+        .catch((error) => {
+          if (
+            client.readyState === WS_OPEN
+          ) {
+            client.send(
+              JSON.stringify({
+                type: 'error',
+                code: 'ACTIVE_SYMBOLS_FAILED',
+                message: cleanErrorMessage(error),
+              }),
+            );
+          }
+        });
+
+      return;
+    }
+
+    client.send(
+      JSON.stringify({
+        type: 'error',
+        code: 'UNSUPPORTED_ACTION',
+        message: 'Unsupported gateway action.',
+      }),
+    );
+  }
+
+  /**
+   * Gracefully shut down all connections.
+   */
+  public shutdown(): void {
     this.explicitShutdown = true;
 
-    if (this.reconnectTimeoutHandle) {
+    if (this.publicReconnectTimer) {
       clearTimeout(
-        this.reconnectTimeoutHandle
+        this.publicReconnectTimer,
       );
-      this.reconnectTimeoutHandle = null;
+
+      this.publicReconnectTimer = null;
+    }
+
+    if (this.accountReconnectTimer) {
+      clearTimeout(
+        this.accountReconnectTimer,
+      );
+
+      this.accountReconnectTimer = null;
     }
 
     this.stopHeartbeat();
 
     this.rejectPendingRequests(
-      new Error(
-        'DerivGateway shutting down'
-      )
+      this.pendingPublicRequests,
+      new Error('Gateway shutting down.'),
     );
 
-    this.tickCallbacks.clear();
-    this.balanceCallbacks.clear();
-    this.profileCallbacks.clear();
-    this.statusCallbacks.clear();
-
-    this.symbolSubscriptions.clear();
-    this.availableSymbols.clear();
-    this.activeSymbolsCache = [];
-    this.tickHistory.clear();
-
-    for (const client of this.connectedClients) {
-      try {
-        client.cleanup.forEach(
-          (cleanup) => {
-            try {
-              cleanup();
-            } catch {}
-          }
-        );
-
-        client.cleanup = [];
-
-        if (
-          client.ws &&
-          client.ws.readyState ===
-            NodeWebSocket.OPEN
-        ) {
-          client.ws.close();
-        }
-      } catch {}
-    }
-
-    this.connectedClients.clear();
-
-    const ws = this.ws;
-    this.ws = null;
-
-    if (ws) {
-      try {
-        if (
-          ws.readyState ===
-            NodeWebSocket.OPEN ||
-          ws.readyState ===
-            NodeWebSocket.CONNECTING
-        ) {
-          ws.close();
-        }
-      } catch {}
-    }
-
-    this.authToken = null;
-    this.authorized = false;
-    this.currentProfile = null;
-    this.currentBalance = null;
-
-    this.setConnectionState(
-      'DISCONNECTED'
+    this.rejectPendingRequests(
+      this.pendingAccountRequests,
+      new Error('Gateway shutting down.'),
     );
+
+    this.closePublicSocket();
+    this.closeAccountSocket();
+
+    for (const client of this.clients) {
+      try {
+        client.close();
+      } catch {
+        // Safe cleanup.
+      }
+    }
+
+    this.clients.clear();
+
+    if (this.webSocketServer) {
+      try {
+        this.webSocketServer.close();
+      } catch {
+        // Safe cleanup.
+      }
+
+      this.webSocketServer = null;
+    }
+
+    this.accessToken = null;
+    this.accountId = null;
+    this.balance = null;
+    this.profile = null;
+
+    this.setConnectionState('DISCONNECTED');
+  }
+
+  private closePublicSocket(): void {
+    const socket = this.publicWs;
+
+    this.publicWs = null;
+
+    if (!socket) {
+      return;
+    }
+
+    try {
+      socket.removeAllListeners();
+      socket.close();
+    } catch {
+      // Safe cleanup.
+    }
+  }
+
+  private closeAccountSocket(): void {
+    const socket = this.accountWs;
+
+    this.accountWs = null;
+
+    if (!socket) {
+      return;
+    }
+
+    try {
+      socket.removeAllListeners();
+      socket.close();
+    } catch {
+      // Safe cleanup.
+    }
   }
 }
 
-/**
- * Global gateway singleton.
- */
 export const derivGateway =
   DerivGateway.getInstance();
-
-export default derivGateway;

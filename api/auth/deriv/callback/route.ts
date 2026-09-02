@@ -76,7 +76,7 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   // Strict WebSocket authorize verification requirement
-  const verifiedLoginId = result.rawAccountDetails?.derivAccountId || result.rawAccountDetails?.loginid || result.loginid || result.accountId;
+  const verifiedLoginId = result.rawAccountDetails?.derivAccountId || result.connectionRecord?.derivAccountId;
   if (!verifiedLoginId || !isValidDerivAccountId(verifiedLoginId)) {
     const errorMsg = 'Deriv account verification failed: No genuine Deriv account loginid discovered via WebSocket authorize.';
     headers.set('Location', new URL(`/?auth_error=discovery_failed&message=${encodeURIComponent(errorMsg)}`, request.url).toString());

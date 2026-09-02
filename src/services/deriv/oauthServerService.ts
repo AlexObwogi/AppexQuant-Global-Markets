@@ -909,10 +909,135 @@ export interface HydrateDerivAccountResult {
 }
 
 /**
+ * Authorize access token via Deriv WebSocket (Phase 1 & 8)
+ * Sends `{"authorize": "TOKEN"}` over a secure WebSocket and awaits `msg_type: "authorize"`.
+ * Extracts only verified loginid, account_list, currency, balance, is_virtual, landing_company_name, scopes.
+ */
+export async function authorizeDerivWebSocket(
+  token: string,
+  appId: string = '1089',
+  timeoutMs: number = 10000
+): Promise<{ success: boolean; profile?: DerivAccountProfileData; error?: string; errorCode?: string }> {
+  const cleanToken = token ? token.trim() : '';
+  if (!cleanToken || cleanToken.startsWith('usr-') || cleanToken.startsWith('user-')) {
+    logger.warn('[DerivOAuth] OAUTH_FAILED: Invalid token supplied for WebSocket authorization', { tokenPrefix: cleanToken.substring(0, 4) });
+    return { success: false, error: 'Invalid access token for WebSocket authorization', errorCode: 'INVALID_TOKEN' };
+  }
+
+  const cleanAppId = (appId || '1089').toString().trim().replace(/['"]/g, '') || '1089';
+  const wsUrl = `wss://ws.derivws.com/websockets/v3?app_id=${cleanAppId}`;
+  const reqId = crypto.randomInt(100000, 999999);
+
+  logger.info('[DerivOAuth] OAUTH_STARTED: Opening secure WebSocket for authorization', { reqId });
+
+  return new Promise((resolve) => {
+    let ws: any;
+    try {
+      const WSImpl: any = (NodeWebSocket as any).default || NodeWebSocket;
+      ws = new WSImpl(wsUrl);
+    } catch (err: any) {
+      resolve({ success: false, error: `WebSocket construction error: ${err?.message || String(err)}`, errorCode: 'WS_CONSTRUCT_ERROR' });
+      return;
+    }
+
+    let settled = false;
+
+    const finish = (result: { success: boolean; profile?: DerivAccountProfileData; error?: string; errorCode?: string }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        ws.close();
+      } catch {}
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => {
+      logger.warn('[DerivOAuth] ACCOUNT_DISCOVERY_FAILED: WebSocket authorize timeout', { reqId, timeoutMs });
+      finish({ success: false, error: `WebSocket authorize timeout after ${timeoutMs}ms`, errorCode: 'TIMEOUT' });
+    }, timeoutMs);
+
+    ws.on('open', () => {
+      try {
+        logger.info('[DerivOAuth] TOKEN_EXCHANGED & WS_OPEN - sending authorize message', { reqId });
+        ws.send(JSON.stringify({
+          authorize: cleanToken,
+          req_id: reqId,
+        }));
+      } catch (e: any) {
+        finish({ success: false, error: `Failed to send authorize message: ${e?.message || String(e)}`, errorCode: 'SEND_FAILED' });
+      }
+    });
+
+    ws.on('message', (data: any) => {
+      try {
+        const raw = typeof data === 'string' ? data : data?.toString('utf8') || '';
+        const parsed = JSON.parse(raw);
+
+        if (parsed.msg_type === 'authorize' || parsed.authorize) {
+          const authObj = parsed.authorize || parsed;
+          if (parsed.error || authObj.error) {
+            const errInfo = parsed.error || authObj.error;
+            const errCode = errInfo.code || 'AUTHORIZE_REJECTED';
+            const errMsg = errInfo.message || 'Authorization failed';
+            logger.warn('[DerivOAuth] WS_AUTHORIZE_FAILED', { reqId, errCode, errMsg });
+            finish({ success: false, error: errMsg, errorCode: errCode });
+            return;
+          }
+
+          const loginid = authObj.loginid || authObj.id;
+          if (!loginid || !isValidDerivAccountId(loginid)) {
+            logger.warn('[DerivOAuth] ACCOUNT_DISCOVERY_FAILED: missing or invalid loginid in authorize response', { reqId, loginid });
+            finish({ success: false, error: `Invalid or missing loginid in authorize response: ${loginid}`, errorCode: 'INVALID_LOGINID' });
+            return;
+          }
+
+          const currency = authObj.currency || 'USD';
+          const balance = typeof authObj.balance === 'number' ? authObj.balance : parseFloat(authObj.balance || '0');
+          const isVirtual = authObj.is_virtual === 1 || authObj.is_virtual === true || loginid.startsWith('VR') ? 1 : 0;
+          const landingCompanyName = authObj.landing_company_name;
+          const scopes = Array.isArray(authObj.scopes) ? authObj.scopes : (authObj.scope ? authObj.scope.split(/[\s,]+/) : ['trade', 'account_manage']);
+          const accountList = authObj.account_list || [];
+
+          logger.info('[DerivOAuth] WS_AUTHORIZE_SUCCESS & ACCOUNT_DISCOVERED', { reqId, loginid, currency, isVirtual });
+
+          const profile: DerivAccountProfileData = {
+            loginid,
+            currency,
+            balance: isNaN(balance) ? 0 : balance,
+            is_virtual: isVirtual,
+            landing_company_name: landingCompanyName,
+            scopes,
+            email: authObj.email,
+            fullname: authObj.fullname || authObj.full_name,
+            account_list: accountList,
+          };
+
+          finish({ success: true, profile });
+        }
+      } catch (err: any) {
+        finish({ success: false, error: `Parse error on message: ${err?.message || String(err)}`, errorCode: 'PARSE_ERROR' });
+      }
+    });
+
+    ws.on('error', (err: any) => {
+      logger.warn('[DerivOAuth] WS_ERROR', { reqId, error: err?.message });
+      finish({ success: false, error: `WebSocket error: ${err?.message || String(err)}`, errorCode: 'WS_ERROR' });
+    });
+
+    ws.on('close', (code: number) => {
+      if (!settled && code !== 1000) {
+        logger.warn('[DerivOAuth] WS_CLOSED unexpectedly', { reqId, code });
+        finish({ success: false, error: `WebSocket closed unexpectedly code=${code}`, errorCode: 'WS_CLOSED' });
+      }
+    });
+  });
+}
+
+/**
  * Canonical Deriv Account Hydration & Reconciliation Service
- * Acts as the authoritative source of truth for discovering accounts,
+ * Acts as the authoritative source of truth for discovering accounts via WebSocket authorize flow,
  * updating internal records, and executing idempotent upserts into database.
- * Strictly operates over HTTP / Token Exchange data — never uses WebSockets for authentication.
  */
 export async function hydrateDerivAccount(params: HydrateDerivAccountParams): Promise<HydrateDerivAccountResult> {
   const { userId, accessToken, appId, refreshToken, tokenExpiry, accountInfo } = params;
@@ -955,23 +1080,23 @@ export async function hydrateDerivAccount(params: HydrateDerivAccountParams): Pr
     scopes = candidateAccount.scopes || scopes;
     accountList = candidateAccount.accountList;
   } else {
-    // Query authoritative account profile via HTTP REST (No WebSockets)
-    const profile = await fetchDerivAccountProfile(cleanToken, effectiveAppId).catch((err) => {
-      console.warn('[hydrateDerivAccount] HTTP REST account discovery error:', err?.message || err);
-      return null;
-    });
+    // Query authoritative account profile via WebSocket authorize (Phase 1)
+    const wsAuthRes = (await authorizeDerivWebSocket(cleanToken, effectiveAppId).catch((err) => {
+      console.warn('[hydrateDerivAccount] WebSocket authorize discovery error:', err?.message || err);
+      return { success: false, error: err?.message || String(err) };
+    })) as any;
 
-    if (profile && profile.loginid && isValidDerivAccountId(profile.loginid)) {
-      resolvedProfile = profile;
-      derivAccountId = profile.loginid;
-      isVirtual = Boolean(profile.is_virtual) ? 1 : 0;
+    if (wsAuthRes.success && wsAuthRes.profile && wsAuthRes.profile.loginid && isValidDerivAccountId(wsAuthRes.profile.loginid)) {
+      resolvedProfile = wsAuthRes.profile;
+      derivAccountId = wsAuthRes.profile.loginid;
+      isVirtual = Boolean(wsAuthRes.profile.is_virtual) ? 1 : 0;
       accountType = isVirtual ? 'demo' : (derivAccountId.startsWith('VR') ? 'demo' : 'real');
-      currency = profile.currency || 'USD';
-      balance = typeof profile.balance === 'number' ? profile.balance : 0;
-      email = profile.email || '';
-      fullName = profile.fullname || '';
-      scopes = profile.scopes || scopes;
-      accountList = profile.account_list;
+      currency = wsAuthRes.profile.currency || 'USD';
+      balance = typeof wsAuthRes.profile.balance === 'number' ? wsAuthRes.profile.balance : 0;
+      email = wsAuthRes.profile.email || '';
+      fullName = wsAuthRes.profile.fullname || '';
+      scopes = wsAuthRes.profile.scopes || scopes;
+      accountList = wsAuthRes.profile.account_list;
     }
   }
 
@@ -979,6 +1104,7 @@ export async function hydrateDerivAccount(params: HydrateDerivAccountParams): Pr
 
   // Strictly verify that loginid is a genuine Deriv account identifier
   if (derivAccountId && isValidDerivAccountId(derivAccountId)) {
+    logger.info('[DerivOAuth] ACCOUNT_PERSISTED & CONNECTED', { loginid: derivAccountId });
     const connectionRecord: DerivConnectionRecord = {
       userId,
       derivAccountId,

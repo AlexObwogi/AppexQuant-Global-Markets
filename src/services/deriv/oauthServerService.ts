@@ -1,16 +1,16 @@
 /**
  * AppexQuant Markets Global - Server-Side Deriv OAuth 2.0 PKCE Engine
- * Handles cryptographically secure PKCE flow, state validation, partner attribution,
- * server-side token exchange, credential encryption/storage, and multi-user isolation.
+ * Handles cryptographically secure PKCE flow, state validation, server-side token exchange,
+ * WebSocket authorization, database persistence, and multi-user connection management.
  * Strictly server-authoritative token exchange: access tokens are never returned to client URLs.
  */
 
-export const runtime = 'nodejs'; // REQUIRED: the 'ws' package does not work on the Edge runtime
+export const runtime = 'nodejs'; // REQUIRED: Node runtime for WebSocket package compatibility
 
 import crypto from 'crypto';
 import NodeWebSocket from 'ws';
 import { derivGateway } from './DerivGateway.ts';
-import { syncUserToSupabase, syncDerivConnectionToSupabase } from '../../lib/supabase.ts';
+import { syncDerivConnectionToSupabase } from '../../lib/supabase.ts';
 import { dbQueries } from '../../lib/db/prisma.ts';
 import { logger } from '../../observability/logger.ts';
 import { buildAuthUrl, DERIV_OAUTH_SCOPE, exchangeCodeForToken, getDerivAppId } from '../oauthService.ts';
@@ -114,165 +114,54 @@ export interface OAuthTransaction {
   createdAt: number;
 }
 
-// Temporary in-memory state store for active PKCE OAuth transactions (TTL: 10 minutes)
+export interface HydrateDerivAccountParams {
+  userId: string;
+  accessToken: string;
+  appId?: string;
+  refreshToken?: string;
+  tokenExpiry?: string | null;
+  scopes?: string[];
+  accountInfo?: {
+    loginid?: string;
+    email?: string;
+    fullName?: string;
+    balance?: number;
+    currency?: string;
+    accountType?: 'demo' | 'real';
+    scopes?: string[];
+    accountList?: any[];
+  };
+}
+
+export interface HydrateDerivAccountResult {
+  success: boolean;
+  metadata: SafeDerivConnectionMetadata;
+  profile?: DerivAccountProfileData;
+  error?: string;
+  rawAccountDetails?: {
+    derivAccountId: string;
+    email?: string;
+    fullName?: string;
+    balance?: number;
+    accountType: 'demo' | 'real';
+    currency: string;
+    token: string;
+    accountList?: any[];
+  };
+}
+
+// In-memory store for active PKCE OAuth transactions (TTL: 10 minutes)
 const oauthTransactionsStore = new Map<string, OAuthTransaction>();
 
-// Server-side persistent connection store per user (Isolated by userId)
+// Server-side isolated connection store per user
 const derivConnectionsStore = new Map<string, DerivConnectionRecord>();
-
-/**
- * Requests an OTP (One-Time Password) for an authenticated Deriv Options account.
- * Sequence: POST /trading/v1/options/accounts/{accountId}/otp
- * Headers: Authorization: Bearer <ACCESS_TOKEN>, Deriv-App-ID: <APP_ID>
- * Response: { otp: string, url: string }
- */
-export async function requestDerivAccountOtp(
-  accountId: string,
-  token: string,
-  appId: string = getDerivAppId()
-): Promise<{ success: boolean; otp?: string; url?: string; accountId?: string; error?: string }> {
-  const cleanToken = token ? token.trim() : '';
-  const cleanAccountId = accountId ? accountId.trim() : '';
-  const cleanAppId = (appId || getDerivAppId()).trim();
-
-  if (!cleanToken || !cleanAccountId) {
-    return { success: false, error: 'Missing access token or account ID for OTP request' };
-  }
-
-  const url = `https://api.derivws.com/trading/v1/options/accounts/${encodeURIComponent(cleanAccountId)}/otp`;
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${cleanToken}`,
-        'Deriv-App-ID': cleanAppId,
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      const otp = data.otp || data.token;
-      let readyWsUrl = data.url || data.websocket_url || data.ws_url;
-
-      // If Deriv returned an OTP and the URL lacks the query parameter, append it safely
-      if (otp && readyWsUrl && !readyWsUrl.includes('otp=')) {
-        const sep = readyWsUrl.includes('?') ? '&' : '?';
-        readyWsUrl = `${readyWsUrl}${sep}otp=${encodeURIComponent(otp)}`;
-      }
-
-      if (readyWsUrl) {
-        return {
-          success: true,
-          otp,
-          url: readyWsUrl,
-          accountId: cleanAccountId,
-        };
-      }
-    } else {
-      const errorBody = await response.text().catch(() => '');
-      console.warn(`[DerivOTP] OTP request returned ${response.status} from ${url}:`, errorBody);
-    }
-  } catch (err: any) {
-    console.warn(`[DerivOTP] OTP request failed on ${url}:`, err?.message || String(err));
-  }
-
-  return { success: false, error: `Failed to obtain WebSocket OTP for account ${cleanAccountId}` };
-}
-
-export const requestDerivOTP = async (
-  accountId: string,
-  token: string,
-  appId: string = getDerivAppId()
-): Promise<{ success: boolean; wsUrl?: string; otp?: string; accountId?: string; error?: string; expiresInSeconds?: number }> => {
-  const res = await requestDerivAccountOtp(accountId, token, appId);
-  return {
-    success: res.success,
-    wsUrl: res.url,
-    otp: res.otp,
-    accountId: res.accountId,
-    error: res.error,
-    expiresInSeconds: 300,
-  };
-};
-
-/**
- * Validates connection to the authenticated WebSocket URL returned by the OTP endpoint.
- * Connects to the returned URL without manually crafting authentication tokens.
- */
-export function verifyDerivWebSocketWithOtp(
-  wsUrl: string,
-  timeoutMs: number = 8000
-): Promise<{ success: boolean; error?: string }> {
-  return new Promise((resolve) => {
-    let ws: any;
-    try {
-      const WSImpl: any = (NodeWebSocket as any).default || NodeWebSocket;
-      ws = new WSImpl(wsUrl);
-    } catch (err: any) {
-      resolve({ success: false, error: `WebSocket construction error: ${err?.message || String(err)}` });
-      return;
-    }
-
-    let settled = false;
-
-    const finish = (success: boolean, error?: string) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      try {
-        ws.close();
-      } catch {}
-      resolve({ success, error });
-    };
-
-    const timer = setTimeout(() => {
-      finish(false, `Timed out connecting to authenticated WebSocket: ${wsUrl}`);
-    }, timeoutMs);
-
-    ws.on('open', () => {
-      // Send a ping or balance check to verify handshake
-      try {
-        ws.send(JSON.stringify({ ping: 1 }));
-      } catch {}
-      finish(true);
-    });
-
-    ws.on('message', (data: any) => {
-      try {
-        const raw = typeof data === 'string' ? data : data?.toString('utf8') || '';
-        const parsed = JSON.parse(raw);
-        if (parsed.error && parsed.error.code === 'AuthorizationRequired') {
-          finish(false, `WebSocket rejected authorization: ${parsed.error.message}`);
-        } else {
-          finish(true);
-        }
-      } catch {
-        finish(true);
-      }
-    });
-
-    ws.on('error', (err: any) => {
-      const detail = err?.message || err?.code || String(err);
-      finish(false, `WebSocket error: ${detail}`);
-    });
-
-    ws.on('close', (code: number) => {
-      if (!settled && code !== 1000) {
-        finish(false, `WebSocket closed unexpectedly (code: ${code})`);
-      }
-    });
-  });
-}
 
 /**
  * Cleanup expired OAuth transactions older than 10 minutes
  */
-function cleanupExpiredTransactions() {
+function cleanupExpiredTransactions(): void {
   const now = Date.now();
-  const maxAge = 10 * 60 * 1000; // 10 minutes
+  const maxAge = 10 * 60 * 1000;
   for (const [state, tx] of oauthTransactionsStore.entries()) {
     if (now - tx.createdAt > maxAge) {
       oauthTransactionsStore.delete(state);
@@ -281,7 +170,7 @@ function cleanupExpiredTransactions() {
 }
 
 /**
- * Helper to get configured Deriv OAuth credentials
+ * Get configured Deriv OAuth credentials & endpoints
  */
 export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: string) {
   const clientId = getDerivAppId();
@@ -300,9 +189,8 @@ export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: stri
       parsedHost = 'localhost:3000';
     }
   }
-  const host = parsedHost;
 
-  let redirectUri = `${proto}://${host}/api/auth/deriv/callback`;
+  let redirectUri = `${proto}://${parsedHost}/api/auth/deriv/callback`;
 
   const configuredUri = process.env.OAUTH_REDIRECT_URI || process.env.REDIRECT_URI || process.env.VITE_REDIRECT_URI;
   if (configuredUri && typeof configuredUri === 'string' && configuredUri.trim()) {
@@ -353,11 +241,9 @@ export function initiateDerivOAuth(params: {
     createdAt: Date.now(),
   };
 
-  // Store transaction state server-side
   oauthTransactionsStore.set(state, transaction);
   const cookieValue = encodeOAuthStateCookie(transaction);
 
-  // Construct query parameters for Deriv OAuth 2.0 PKCE using centralized builder
   const authUrl = buildAuthUrl({
     appId: oauthConfig.clientId,
     redirectUri: oauthConfig.redirectUri,
@@ -367,7 +253,384 @@ export function initiateDerivOAuth(params: {
     codeChallengeMethod: 'S256',
     action,
   });
+
+  logger.info('[DerivOAuth] Initiated PKCE flow', { userId, state, redirectUri: oauthConfig.redirectUri });
+
   return { authUrl, state, cookieValue, redirectUri: oauthConfig.redirectUri };
+}
+
+/**
+ * Authorize access token via Deriv WebSocket
+ * Strictly connects to wss://ws.derivws.com/websockets/v3?app_id=<APP_ID>
+ * Sends {"authorize": "TOKEN", "req_id": ...} and waits specifically for msg_type === 'authorize'.
+ * Rejects immediately on error responses or invalid loginids.
+ */
+export async function authorizeDerivWebSocket(
+  token: string,
+  appId: string = getDerivAppId(),
+  timeoutMs: number = 10000
+): Promise<{ success: boolean; profile?: DerivAccountProfileData; error?: string; errorCode?: string }> {
+  const cleanToken = token ? token.trim() : '';
+  if (!cleanToken || cleanToken.startsWith('usr-') || cleanToken.startsWith('user-')) {
+    logger.warn('[DerivOAuth] Invalid token supplied for WebSocket authorization');
+    return { success: false, error: 'Invalid access token for WebSocket authorization', errorCode: 'INVALID_TOKEN' };
+  }
+
+  const cleanAppId = (appId || getDerivAppId()).toString().trim().replace(/['"]/g, '') || getDerivAppId();
+  const wsUrl = `wss://ws.derivws.com/websockets/v3?app_id=${cleanAppId}`;
+  const reqId = crypto.randomInt(100000, 999999);
+
+  return new Promise((resolve) => {
+    let ws: any = null;
+    let settled = false;
+
+    const finish = (result: { success: boolean; profile?: DerivAccountProfileData; error?: string; errorCode?: string }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (ws) {
+        try {
+          ws.close();
+        } catch {}
+      }
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => {
+      logger.warn('[DerivOAuth] WebSocket authorize timeout', { reqId, timeoutMs });
+      finish({ success: false, error: `WebSocket authorize timeout after ${timeoutMs}ms`, errorCode: 'TIMEOUT' });
+    }, timeoutMs);
+
+    try {
+      const WSImpl: any = (NodeWebSocket as any).default || NodeWebSocket;
+      ws = new WSImpl(wsUrl);
+    } catch (err: any) {
+      finish({ success: false, error: `WebSocket initialization error: ${err?.message || String(err)}`, errorCode: 'WS_CONSTRUCT_ERROR' });
+      return;
+    }
+
+    ws.on('open', () => {
+      try {
+        logger.info('[DerivOAuth] WebSocket connected, sending authorize request', { reqId, appId: cleanAppId });
+        ws.send(
+          JSON.stringify({
+            authorize: cleanToken,
+            req_id: reqId,
+          })
+        );
+      } catch (err: any) {
+        finish({ success: false, error: `Failed to send authorize request: ${err?.message || String(err)}`, errorCode: 'SEND_FAILED' });
+      }
+    });
+
+    ws.on('message', (data: any) => {
+      try {
+        const raw = typeof data === 'string' ? data : data?.toString('utf8') || '';
+        const parsed = JSON.parse(raw);
+
+        // Immediate rejection on error
+        if (parsed.error) {
+          const errCode = parsed.error.code || 'AUTHORIZE_REJECTED';
+          const errMsg = parsed.error.message || 'Authorization rejected by Deriv';
+          logger.warn('[DerivOAuth] WebSocket authorize rejected by Deriv', { reqId, errCode, errMsg });
+          finish({ success: false, error: errMsg, errorCode: errCode });
+          return;
+        }
+
+        // Specifically process authorize response
+        if (parsed.msg_type === 'authorize' || parsed.authorize) {
+          const authObj = parsed.authorize || parsed;
+          if (authObj.error) {
+            const errCode = authObj.error.code || 'AUTHORIZE_REJECTED';
+            const errMsg = authObj.error.message || 'Authorization failed';
+            logger.warn('[DerivOAuth] Inner authorize object contains error', { reqId, errCode, errMsg });
+            finish({ success: false, error: errMsg, errorCode: errCode });
+            return;
+          }
+
+          const loginid = authObj.loginid || authObj.id;
+          if (!loginid || !isValidDerivAccountId(loginid)) {
+            logger.warn('[DerivOAuth] Missing or invalid loginid in authorize response', { reqId, loginid });
+            finish({ success: false, error: `Invalid or unverified loginid received from Deriv: ${loginid}`, errorCode: 'INVALID_LOGINID' });
+            return;
+          }
+
+          const currency = authObj.currency || 'USD';
+          const balance = typeof authObj.balance === 'number' ? authObj.balance : parseFloat(authObj.balance || '0');
+          const isVirtual = authObj.is_virtual === 1 || authObj.is_virtual === true || loginid.startsWith('VR') ? 1 : 0;
+          const landingCompanyName = authObj.landing_company_name;
+          const scopes = Array.isArray(authObj.scopes) ? authObj.scopes : authObj.scope ? authObj.scope.split(/[\s,]+/) : ['trade', 'account_manage'];
+          const accountList = authObj.account_list || [];
+
+          logger.info('[DerivOAuth] WebSocket authorize verified successfully', { reqId, loginid, currency, isVirtual });
+
+          const profile: DerivAccountProfileData = {
+            loginid,
+            currency,
+            balance: isNaN(balance) ? 0 : balance,
+            is_virtual: isVirtual,
+            landing_company_name: landingCompanyName,
+            scopes,
+            email: authObj.email,
+            fullname: authObj.fullname || authObj.full_name,
+            account_list: accountList,
+          };
+
+          finish({ success: true, profile });
+        }
+      } catch (err: any) {
+        finish({ success: false, error: `Message parsing failed: ${err?.message || String(err)}`, errorCode: 'PARSE_ERROR' });
+      }
+    });
+
+    ws.on('error', (err: any) => {
+      logger.warn('[DerivOAuth] WebSocket error during authorize', { reqId, error: err?.message || String(err) });
+      finish({ success: false, error: `WebSocket error: ${err?.message || String(err)}`, errorCode: 'WS_ERROR' });
+    });
+
+    ws.on('close', (code: number) => {
+      if (!settled && code !== 1000) {
+        logger.warn('[DerivOAuth] WebSocket closed unexpectedly', { reqId, code });
+        finish({ success: false, error: `WebSocket closed unexpectedly (code: ${code})`, errorCode: 'WS_CLOSED' });
+      }
+    });
+  });
+}
+
+/**
+ * Canonical Deriv Account Hydration & Reconciliation Authority
+ * Responsibilities:
+ * 1. WebSocket authorization & verification
+ * 2. Account type, currency, and balance derivation
+ * 3. Prisma database persistence
+ * 4. Supabase sync
+ * 5. In-memory connection store update
+ * 6. Gateway token update
+ * 7. State machine transitions
+ */
+export async function hydrateDerivAccount(params: HydrateDerivAccountParams): Promise<HydrateDerivAccountResult> {
+  const { userId, accessToken, appId, refreshToken, tokenExpiry, accountInfo } = params;
+  const cleanToken = accessToken ? accessToken.trim() : '';
+
+  if (!cleanToken) {
+    logger.warn('[DerivOAuth] Hydration aborted: Missing access token', { userId });
+    return {
+      success: false,
+      metadata: {
+        connected: false,
+        connectionStatus: 'SYNC_FAILED',
+      },
+      error: 'Missing access token for Deriv account hydration',
+    };
+  }
+
+  const oauthConfig = getDerivOAuthConfig();
+  const effectiveAppId = appId || oauthConfig.clientId || getDerivAppId();
+
+  logger.info('[DerivOAuth] Starting account hydration', { userId });
+
+  try {
+    transitionSyncState(DerivSyncState.DISCONNECTED, DerivSyncState.ACCOUNT_DISCOVERY_STARTED, {
+      derivAccountId: '',
+      persisted: false,
+      discoverySucceeded: false,
+    });
+  } catch {}
+
+  // 1. WebSocket Authorization & Verification
+  const wsAuthRes = await authorizeDerivWebSocket(cleanToken, effectiveAppId).catch((err) => {
+    logger.error('[DerivOAuth] Exception during WebSocket authorize', { userId, error: err?.message || String(err) });
+    return { success: false, error: err?.message || String(err), errorCode: 'WS_ERROR', profile: undefined };
+  });
+
+  if (!wsAuthRes.success || !wsAuthRes.profile || !wsAuthRes.profile.loginid || !isValidDerivAccountId(wsAuthRes.profile.loginid)) {
+    const errorMsg = wsAuthRes.error || `Invalid or unverified loginid: ${wsAuthRes.profile?.loginid}`;
+    logger.error('[DerivOAuth] Account verification failed during WebSocket authorize', { userId, error: errorMsg });
+
+    try {
+      transitionSyncState(DerivSyncState.ACCOUNT_DISCOVERY_STARTED, DerivSyncState.ACCOUNT_DISCOVERY_FAILED, {
+        derivAccountId: wsAuthRes.profile?.loginid || '',
+        persisted: false,
+        discoverySucceeded: false,
+      });
+    } catch {}
+
+    const nowIso = new Date().toISOString();
+    const failedRecord: DerivConnectionRecord = {
+      userId,
+      derivAccountId: '',
+      accountType: 'real',
+      currency: 'USD',
+      connectionStatus: 'SYNC_FAILED',
+      scopes: [],
+      accessToken: cleanToken,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      lastSyncedAt: nowIso,
+    };
+    derivConnectionsStore.set(userId, failedRecord);
+
+    return {
+      success: false,
+      metadata: {
+        connected: false,
+        connectionStatus: 'SYNC_FAILED',
+      },
+      error: errorMsg,
+    };
+  }
+
+  const profile = wsAuthRes.profile;
+  const derivAccountId = profile.loginid;
+
+  try {
+    transitionSyncState(DerivSyncState.ACCOUNT_DISCOVERY_STARTED, DerivSyncState.ACCOUNT_DISCOVERED, {
+      derivAccountId,
+      persisted: false,
+      discoverySucceeded: true,
+    });
+    transitionSyncState(DerivSyncState.ACCOUNT_DISCOVERED, DerivSyncState.ACCOUNT_VERIFIED, {
+      derivAccountId,
+      persisted: false,
+      discoverySucceeded: true,
+    });
+  } catch {}
+
+  const isVirtual = Boolean(profile.is_virtual) ? 1 : 0;
+  const accountType: 'demo' | 'real' = isVirtual ? 'demo' : derivAccountId.startsWith('VR') ? 'demo' : 'real';
+  const currency = profile.currency || accountInfo?.currency || 'USD';
+  const balance = typeof profile.balance === 'number' ? profile.balance : accountInfo?.balance || 0;
+  const email = profile.email || accountInfo?.email || '';
+  const fullName = profile.fullname || accountInfo?.fullName || '';
+  const scopes = profile.scopes || params.scopes || accountInfo?.scopes || ['trade', 'account_manage'];
+  const accountList = profile.account_list || accountInfo?.accountList;
+  const nowIso = new Date().toISOString();
+
+  // 2. Database Persistence (Prisma)
+  try {
+    await dbQueries.upsertDerivAccount({
+      id: derivAccountId,
+      userId,
+      accountType,
+      currency,
+      balance,
+      equity: balance,
+      isVirtual: Boolean(isVirtual),
+      status: 'ACTIVE',
+      lastSyncedAt: nowIso,
+    });
+
+    await dbQueries.recordAccountSnapshot({
+      derivAccountId,
+      userId,
+      balance,
+      equity: balance,
+      currency,
+      timestamp: new Date(),
+    });
+
+    await dbQueries.mapDerivAccountToUserSession(derivAccountId, userId);
+
+    try {
+      transitionSyncState(DerivSyncState.ACCOUNT_VERIFIED, DerivSyncState.ACCOUNT_PERSISTED, {
+        derivAccountId,
+        persisted: true,
+        discoverySucceeded: true,
+      });
+    } catch {}
+
+    logger.info('[DerivOAuth] Account persisted to database successfully', { userId, loginid: derivAccountId });
+  } catch (dbErr: any) {
+    logger.error('[DerivOAuth] Database persistence failed during account hydration', { userId, loginid: derivAccountId, error: dbErr?.message });
+    try {
+      transitionSyncState(DerivSyncState.ACCOUNT_VERIFIED, DerivSyncState.ACCOUNT_PERSIST_FAILED, {
+        derivAccountId,
+        persisted: false,
+        discoverySucceeded: true,
+      });
+    } catch {}
+    derivConnectionsStore.delete(userId);
+    throw new Error(`Database persistence failure: ${dbErr?.message || String(dbErr)}`);
+  }
+
+  // 3. Supabase Sync (Fire-and-forget)
+  syncDerivConnectionToSupabase({
+    userId,
+    derivAccountId,
+    accountType,
+    currency,
+    connectionStatus: 'CONNECTED',
+    scopes,
+    accessToken: cleanToken,
+    refreshToken,
+    tokenExpiry,
+  }).catch((err) => {
+    logger.warn('[DerivOAuth] Supabase sync background notice', { userId, error: err?.message || String(err) });
+  });
+
+  // 4. Memory Store & Gateway Token Update
+  try {
+    transitionSyncState(DerivSyncState.ACCOUNT_PERSISTED, DerivSyncState.CONNECTED, {
+      derivAccountId,
+      persisted: true,
+      discoverySucceeded: true,
+    });
+  } catch {}
+
+  const connectionRecord: DerivConnectionRecord = {
+    userId,
+    derivAccountId,
+    email,
+    fullName,
+    balance,
+    accountType,
+    currency,
+    connectionStatus: 'CONNECTED',
+    scopes,
+    accessToken: cleanToken,
+    refreshToken,
+    tokenExpiry,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    lastSyncedAt: nowIso,
+  };
+
+  derivConnectionsStore.set(userId, connectionRecord);
+  derivGateway.setAuthToken(cleanToken).catch(() => {});
+
+  const metadata: SafeDerivConnectionMetadata = {
+    connected: true,
+    userId,
+    loginid: derivAccountId,
+    accountId: derivAccountId,
+    derivAccountId,
+    email,
+    fullName,
+    balance,
+    accountType,
+    currency,
+    connectionStatus: 'CONNECTED',
+    scopes,
+    lastSync: nowIso,
+    lastSyncedAt: nowIso,
+    accountList,
+  };
+
+  return {
+    success: true,
+    metadata,
+    profile,
+    rawAccountDetails: {
+      derivAccountId,
+      email,
+      fullName,
+      balance,
+      accountType,
+      currency,
+      token: cleanToken,
+      accountList,
+    },
+  };
 }
 
 /**
@@ -417,12 +680,11 @@ export async function handleDerivOAuthCallback(params: {
 }> {
   cleanupExpiredTransactions();
 
-  const { code, state, verifier, cookieState, error, errorDescription } = params;
+  const { code, state, cookieState, error, errorDescription } = params;
 
   if (error) {
     const detailMsg = errorDescription || error || 'Deriv returned an authorization error.';
-    console.error('[DERIV_OAUTH_CALLBACK_ERROR]', { error, errorDescription, state, timestamp: new Date().toISOString() });
-    logger.warn('[DerivOAuth] Callback received error from Deriv', { error, errorDescription, state });
+    logger.warn('[DerivOAuth] Callback received authorization error from Deriv', { error, errorDescription, state });
     return {
       success: false,
       destination: `/dashboard/error?error=${encodeURIComponent(error)}&message=${encodeURIComponent(detailMsg)}`,
@@ -432,17 +694,17 @@ export async function handleDerivOAuthCallback(params: {
 
   const oauthConfig = getDerivOAuthConfig(params.requestHost, params.requestProtocol);
 
-  // 1. Validate Code (Authorization Code Flow)
+  // 1. Validate Code
   if (!code) {
     logger.warn('[DerivOAuth] Missing authorization code in callback');
     return {
       success: false,
-      destination: '/dashboard/error?error=missing_code&message=Authorization%20code%20was%20missing%20in%20callback',
-      errorMessage: 'Deriv OAuth Error: Authorization code was missing in callback query parameters.',
+      destination: '/dashboard/error?error=missing_code&message=Authorization%20code%20was%20missing',
+      errorMessage: 'Deriv OAuth Error: Authorization code was missing in callback.',
     };
   }
 
-  // 2. Validate State (CSRF & State Integrity)
+  // 2. Validate State
   if (!state) {
     logger.warn('[DerivOAuth] Missing state parameter in callback');
     return {
@@ -452,9 +714,7 @@ export async function handleDerivOAuthCallback(params: {
     };
   }
 
-  // Retrieve transaction from memory store OR decode from verified signed cookie
-  let transaction: OAuthTransaction | undefined = undefined;
-
+  let transaction: OAuthTransaction | undefined;
   if (state) {
     transaction = oauthTransactionsStore.get(state);
   }
@@ -473,16 +733,14 @@ export async function handleDerivOAuthCallback(params: {
   }
 
   if (!transaction) {
-    const errDetail = 'OAuth transaction state expired or could not be verified from cookie/memory.';
-    logger.warn('[DerivOAuth] State mismatch or expired transaction', { stateReceived: state, hasCookieState: Boolean(cookieState) });
+    logger.warn('[DerivOAuth] Invalid state or expired OAuth transaction', { state, hasCookieState: Boolean(cookieState) });
     return {
       success: false,
       destination: '/dashboard/error?error=invalid_state&message=OAuth%20session%20expired%20or%20state%20mismatch',
-      errorMessage: `Deriv OAuth State Error: ${errDetail} Please initiate login again from the application.`,
+      errorMessage: 'Deriv OAuth State Error: OAuth transaction state expired or could not be verified. Please initiate login again.',
     };
   }
 
-  // Remove used transaction immediately (Strict single-use state)
   if (state) {
     oauthTransactionsStore.delete(state);
   }
@@ -490,521 +748,109 @@ export async function handleDerivOAuthCallback(params: {
   // 3. Validate PKCE Verifier
   const codeVerifier = transaction.codeVerifier?.trim();
   if (!codeVerifier || codeVerifier.length < 43) {
-    logger.error('[DerivOAuth] Invalid or missing PKCE code verifier in transaction', { state });
+    logger.error('[DerivOAuth] Invalid or missing PKCE code verifier', { state });
     return {
       success: false,
-      destination: '/dashboard/error?error=invalid_verifier&message=PKCE%20code%20verifier%20missing%20or%20invalid',
-      errorMessage: 'Deriv OAuth PKCE Error: PKCE code verifier was missing or did not meet RFC 7636 entropy requirements.',
+      destination: '/dashboard/error?error=invalid_verifier&message=PKCE%20verifier%20missing%20or%20invalid',
+      errorMessage: 'Deriv OAuth PKCE Error: PKCE code verifier was missing or invalid.',
     };
   }
 
-  // 4. Token Exchange (Single authoritative exchange path via exchangeCodeForToken)
+  // 4. Token Exchange via exchangeCodeForToken
+  let tokenData: any;
   try {
-    let tokenData: any = null;
-    try {
-      tokenData = await exchangeCodeForToken(
-        code,
-        transaction.codeVerifier,
-        transaction.redirectUri,
-        oauthConfig.clientId,
-        oauthConfig.clientSecret
-      );
-    } catch (exErr: any) {
-      const specificReason = `Deriv Token Exchange Error: ${exErr?.message || 'Exchange failed'}`;
-      logger.error('[DerivOAuth] Token exchange failed:', { error: exErr?.message, state });
-      return {
-        success: false,
-        destination: `/?auth_error=token_failed&message=${encodeURIComponent(specificReason)}`,
-        errorMessage: specificReason,
-      };
-    }
-
-    const resolvedAccessToken = tokenData?.access_token || tokenData?.token1 || tokenData?.token;
-    if (!resolvedAccessToken) {
-      return {
-        success: false,
-        destination: '/?auth_error=token_failed&message=Missing%20access%20token%20in%20Deriv%20response',
-        errorMessage: 'Deriv OAuth Error: Access token was missing in token exchange response.',
-      };
-    }
-
-    const tokenExpiryDate = tokenData.expires_in
-      ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
-      : null;
-
-    const tokenScopes = Array.isArray(tokenData.scopes)
-      ? tokenData.scopes
-      : tokenData.scope
-      ? tokenData.scope.split(/[\s,]+/)
-      : ['trade', 'account_manage', 'payments'];
-
-    // 5. Account Discovery: Discover and verify genuine loginid via WebSocket authorize ONLY
-    const hydrationResult = await hydrateDerivAccount({
-      userId: transaction.userId,
-      accessToken: resolvedAccessToken,
-      appId: oauthConfig.clientId,
-      refreshToken: tokenData.refresh_token,
-      tokenExpiry: tokenExpiryDate,
-      scopes: tokenScopes,
-    });
-
-    if (!hydrationResult.success || !hydrationResult.metadata?.connected || !hydrationResult.metadata?.derivAccountId || !isValidDerivAccountId(hydrationResult.metadata.derivAccountId)) {
-      const discError = hydrationResult.error || 'Failed to discover or verify Deriv trading account identifier via WebSocket authorize.';
-      logger.error('[DerivOAuth] ACCOUNT_DISCOVERY_FAILED: WebSocket authorize failed to return verified loginid:', { error: discError });
-      return {
-        success: false,
-        destination: `/?auth_error=discovery_failed&message=${encodeURIComponent(discError)}`,
-        errorMessage: `Deriv Account Discovery Failure: ${discError}`,
-      };
-    }
-
-    const verifiedLoginId = hydrationResult.metadata.derivAccountId;
-    const accountType: 'demo' | 'real' = hydrationResult.metadata.accountType || (verifiedLoginId.startsWith('VR') ? 'demo' : 'real');
-    const currency = hydrationResult.metadata.currency || 'USD';
-    const scopes = hydrationResult.metadata.scopes || tokenScopes;
-
-    logger.info('[DerivOAuth] ACCOUNT_DISCOVERED & CONNECTED: PKCE exchange verified via WebSocket authorize', {
-      loginid: verifiedLoginId,
-      accountType,
-      currency,
-      scopes,
-    });
-
-    return {
-      success: true,
-      userId: transaction.userId,
-      loginid: verifiedLoginId,
-      accountId: verifiedLoginId,
-      derivAccountId: verifiedLoginId,
-      accountType,
-      currency,
-      scopes,
-      destination: transaction.destination || '/',
-      connectionRecord: hydrationResult.metadata,
-      rawAccountDetails: {
-        derivAccountId: verifiedLoginId,
-        loginid: verifiedLoginId,
-        accountId: verifiedLoginId,
-        currency,
-        accountType,
-        scopes,
-        token: resolvedAccessToken,
-        balance: hydrationResult.metadata?.balance,
-        email: hydrationResult.metadata?.email,
-        fullName: hydrationResult.metadata?.fullName,
-        accountList: hydrationResult.metadata?.accountList,
-      },
-    };
-  } catch (err: any) {
-    const tokenEndpoint = oauthConfig.tokenEndpoint;
-    const errorMsg = err?.message || 'Network communication error';
-    console.error('[DERIV_OAUTH_TOKEN_NETWORK_FAILURE]', {
-      message: errorMsg,
-      name: err?.name,
-      stack: err?.stack,
-      code: err?.code,
-      cause: err?.cause,
-      tokenEndpoint,
-      timestamp: new Date().toISOString(),
-    });
-    logger.error('[DerivOAuth] Token exchange network failure reaching Deriv:', {
-      error: errorMsg,
-      stack: err?.stack,
-      tokenEndpoint,
-    });
-    const specificReason = `Deriv Token Exchange Network Failure: Unable to reach Deriv endpoint (${tokenEndpoint}). Network error: ${errorMsg}`;
+    tokenData = await exchangeCodeForToken(
+      code,
+      transaction.codeVerifier,
+      transaction.redirectUri,
+      oauthConfig.clientId,
+      oauthConfig.clientSecret
+    );
+  } catch (exErr: any) {
+    const specificReason = `Deriv Token Exchange Error: ${exErr?.message || 'Token exchange failed'}`;
+    logger.error('[DerivOAuth] Token exchange failed', { error: exErr?.message, state });
     return {
       success: false,
-      destination: `/?auth_error=network_failure&message=${encodeURIComponent(specificReason)}`,
+      destination: `/?auth_error=token_failed&message=${encodeURIComponent(specificReason)}`,
       errorMessage: specificReason,
     };
   }
-}
 
-export interface HydrateDerivAccountParams {
-  userId: string;
-  accessToken: string;
-  appId?: string;
-  refreshToken?: string;
-  tokenExpiry?: string | null;
-  scopes?: string[];
-  accountInfo?: {
-    loginid?: string;
-    email?: string;
-    fullName?: string;
-    balance?: number;
-    currency?: string;
-    accountType?: 'demo' | 'real';
-    scopes?: string[];
-    accountList?: any[];
-  };
-}
-
-export interface HydrateDerivAccountResult {
-  success: boolean;
-  metadata: SafeDerivConnectionMetadata;
-  profile?: DerivAccountProfileData;
-  error?: string;
-  rawAccountDetails?: {
-    derivAccountId: string;
-    email?: string;
-    fullName?: string;
-    balance?: number;
-    accountType: 'demo' | 'real';
-    currency: string;
-    token: string;
-    accountList?: any[];
-  };
-}
-
-/**
- * Authorize access token via Deriv WebSocket (Phase 1 & 8)
- * Sends `{"authorize": "TOKEN"}` over a secure WebSocket and awaits `msg_type: "authorize"`.
- * Extracts only verified loginid, account_list, currency, balance, is_virtual, landing_company_name, scopes.
- */
-export async function authorizeDerivWebSocket(
-  token: string,
-  appId: string = getDerivAppId(),
-  timeoutMs: number = 10000
-): Promise<{ success: boolean; profile?: DerivAccountProfileData; error?: string; errorCode?: string }> {
-  const cleanToken = token ? token.trim() : '';
-  if (!cleanToken || cleanToken.startsWith('usr-') || cleanToken.startsWith('user-')) {
-    logger.warn('[DerivOAuth] OAUTH_FAILED: Invalid token supplied for WebSocket authorization', { tokenPrefix: cleanToken.substring(0, 4) });
-    return { success: false, error: 'Invalid access token for WebSocket authorization', errorCode: 'INVALID_TOKEN' };
-  }
-
-  const cleanAppId = (appId || getDerivAppId()).toString().trim().replace(/['"]/g, '') || getDerivAppId();
-  const wsUrl = `wss://ws.derivws.com/websockets/v3?app_id=${cleanAppId}`;
-  const reqId = crypto.randomInt(100000, 999999);
-
-  logger.info('[DerivOAuth] OAUTH_STARTED: Opening secure WebSocket for authorization', { reqId });
-
-  return new Promise((resolve) => {
-    let ws: any;
-    try {
-      const WSImpl: any = (NodeWebSocket as any).default || NodeWebSocket;
-      ws = new WSImpl(wsUrl);
-    } catch (err: any) {
-      resolve({ success: false, error: `WebSocket construction error: ${err?.message || String(err)}`, errorCode: 'WS_CONSTRUCT_ERROR' });
-      return;
-    }
-
-    let settled = false;
-
-    const finish = (result: { success: boolean; profile?: DerivAccountProfileData; error?: string; errorCode?: string }) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      try {
-        ws.close();
-      } catch {}
-      resolve(result);
-    };
-
-    const timer = setTimeout(() => {
-      logger.warn('[DerivOAuth] ACCOUNT_DISCOVERY_FAILED: WebSocket authorize timeout', { reqId, timeoutMs });
-      finish({ success: false, error: `WebSocket authorize timeout after ${timeoutMs}ms`, errorCode: 'TIMEOUT' });
-    }, timeoutMs);
-
-    ws.on('open', () => {
-      try {
-        logger.info('[DerivOAuth] TOKEN_EXCHANGED & WS_OPEN - sending authorize message', { reqId });
-        ws.send(JSON.stringify({
-          authorize: cleanToken,
-          req_id: reqId,
-        }));
-      } catch (e: any) {
-        finish({ success: false, error: `Failed to send authorize message: ${e?.message || String(e)}`, errorCode: 'SEND_FAILED' });
-      }
-    });
-
-    ws.on('message', (data: any) => {
-      try {
-        const raw = typeof data === 'string' ? data : data?.toString('utf8') || '';
-        const parsed = JSON.parse(raw);
-
-        if (parsed.msg_type === 'authorize' || parsed.authorize) {
-          const authObj = parsed.authorize || parsed;
-          if (parsed.error || authObj.error) {
-            const errInfo = parsed.error || authObj.error;
-            const errCode = errInfo.code || 'AUTHORIZE_REJECTED';
-            const errMsg = errInfo.message || 'Authorization failed';
-            logger.warn('[DerivOAuth] WS_AUTHORIZE_FAILED', { reqId, errCode, errMsg });
-            finish({ success: false, error: errMsg, errorCode: errCode });
-            return;
-          }
-
-          const loginid = authObj.loginid || authObj.id;
-          if (!loginid || !isValidDerivAccountId(loginid)) {
-            logger.warn('[DerivOAuth] ACCOUNT_DISCOVERY_FAILED: missing or invalid loginid in authorize response', { reqId, loginid });
-            finish({ success: false, error: `Invalid or missing loginid in authorize response: ${loginid}`, errorCode: 'INVALID_LOGINID' });
-            return;
-          }
-
-          const currency = authObj.currency || 'USD';
-          const balance = typeof authObj.balance === 'number' ? authObj.balance : parseFloat(authObj.balance || '0');
-          const isVirtual = authObj.is_virtual === 1 || authObj.is_virtual === true || loginid.startsWith('VR') ? 1 : 0;
-          const landingCompanyName = authObj.landing_company_name;
-          const scopes = Array.isArray(authObj.scopes) ? authObj.scopes : (authObj.scope ? authObj.scope.split(/[\s,]+/) : ['trade', 'account_manage']);
-          const accountList = authObj.account_list || [];
-
-          logger.info('[DerivOAuth] WS_AUTHORIZE_SUCCESS & ACCOUNT_DISCOVERED', { reqId, loginid, currency, isVirtual });
-
-          const profile: DerivAccountProfileData = {
-            loginid,
-            currency,
-            balance: isNaN(balance) ? 0 : balance,
-            is_virtual: isVirtual,
-            landing_company_name: landingCompanyName,
-            scopes,
-            email: authObj.email,
-            fullname: authObj.fullname || authObj.full_name,
-            account_list: accountList,
-          };
-
-          finish({ success: true, profile });
-        }
-      } catch (err: any) {
-        finish({ success: false, error: `Parse error on message: ${err?.message || String(err)}`, errorCode: 'PARSE_ERROR' });
-      }
-    });
-
-    ws.on('error', (err: any) => {
-      logger.warn('[DerivOAuth] WS_ERROR', { reqId, error: err?.message });
-      finish({ success: false, error: `WebSocket error: ${err?.message || String(err)}`, errorCode: 'WS_ERROR' });
-    });
-
-    ws.on('close', (code: number) => {
-      if (!settled && code !== 1000) {
-        logger.warn('[DerivOAuth] WS_CLOSED unexpectedly', { reqId, code });
-        finish({ success: false, error: `WebSocket closed unexpectedly code=${code}`, errorCode: 'WS_CLOSED' });
-      }
-    });
-  });
-}
-
-/**
- * Canonical Deriv Account Hydration & Reconciliation Service
- * Acts as the authoritative source of truth for discovering accounts via WebSocket authorize flow,
- * updating internal records, and executing idempotent upserts into database.
- */
-export async function hydrateDerivAccount(params: HydrateDerivAccountParams): Promise<HydrateDerivAccountResult> {
-  const { userId, accessToken, appId, refreshToken, tokenExpiry, accountInfo } = params;
-  const cleanToken = accessToken ? accessToken.trim() : '';
-
-  if (!cleanToken) {
+  const resolvedAccessToken = tokenData?.access_token || tokenData?.token1 || tokenData?.token;
+  if (!resolvedAccessToken) {
+    logger.error('[DerivOAuth] Token exchange response missing access token', { state });
     return {
       success: false,
-      metadata: {
-        connected: false,
-        connectionStatus: 'SYNC_FAILED',
-      },
-      error: 'Missing access token for Deriv account hydration',
+      destination: '/?auth_error=token_failed&message=Missing%20access%20token%20in%20response',
+      errorMessage: 'Deriv OAuth Error: Access token was missing in token exchange response.',
     };
   }
 
-  const oauthConfig = getDerivOAuthConfig();
-  const effectiveAppId = appId || oauthConfig.clientId || getDerivAppId();
+  const tokenExpiryDate = tokenData.expires_in
+    ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
+    : null;
 
-  logger.info('[DerivOAuth] ACCOUNT_DISCOVERY_STARTED: Authenticating token via WebSocket authorize', { userId });
+  const tokenScopes = Array.isArray(tokenData.scopes)
+    ? tokenData.scopes
+    : tokenData.scope
+    ? tokenData.scope.split(/[\s,]+/)
+    : ['trade', 'account_manage', 'payments'];
 
-  // 1. Open authenticated WebSocket, send {"authorize":"ACCESS_TOKEN"}, and read authorize.loginid
-  const wsAuthRes: { success: boolean; profile?: DerivAccountProfileData; error?: string; errorCode?: string } =
-    await authorizeDerivWebSocket(cleanToken, effectiveAppId).catch((err) => {
-      logger.warn('[DerivOAuth] ACCOUNT_DISCOVERY_FAILED: WebSocket authorize error:', { error: err?.message || String(err) });
-      return { success: false, error: err?.message || String(err), errorCode: 'WS_ERROR', profile: undefined };
-    });
+  // 5. Account Verification & Hydration via hydrateDerivAccount
+  const hydrationResult = await hydrateDerivAccount({
+    userId: transaction.userId,
+    accessToken: resolvedAccessToken,
+    appId: oauthConfig.clientId,
+    refreshToken: tokenData.refresh_token,
+    tokenExpiry: tokenExpiryDate,
+    scopes: tokenScopes,
+  });
 
-  if (!wsAuthRes.success || !wsAuthRes.profile || !wsAuthRes.profile.loginid || !isValidDerivAccountId(wsAuthRes.profile.loginid)) {
-    const errorMsg = wsAuthRes.error || `Invalid or missing loginid in WebSocket authorize response: ${wsAuthRes.profile?.loginid}`;
-    logger.error('[DerivOAuth] ACCOUNT_DISCOVERY_FAILED: WebSocket authorize response lacked verified loginid', {
-      error: errorMsg,
-      loginid: wsAuthRes.profile?.loginid,
-    });
-
-    try {
-      transitionSyncState(DerivSyncState.ACCOUNT_DISCOVERY_STARTED, DerivSyncState.ACCOUNT_DISCOVERY_FAILED, {
-        derivAccountId: wsAuthRes.profile?.loginid || '',
-        persisted: false,
-        discoverySucceeded: false,
-      });
-    } catch {}
-
-    const nowIso = new Date().toISOString();
-    const failedRecord: DerivConnectionRecord = {
-      userId,
-      derivAccountId: '',
-      accountType: 'real',
-      currency: 'USD',
-      connectionStatus: 'SYNC_FAILED',
-      scopes: [],
-      accessToken: cleanToken,
-      createdAt: nowIso,
-      updatedAt: nowIso,
-      lastSyncedAt: nowIso,
-    };
-    derivConnectionsStore.set(userId, failedRecord);
-
+  if (!hydrationResult.success || !hydrationResult.metadata?.connected || !hydrationResult.metadata?.derivAccountId || !isValidDerivAccountId(hydrationResult.metadata.derivAccountId)) {
+    const discError = hydrationResult.error || 'Failed to verify account identifier via WebSocket authorize.';
+    logger.error('[DerivOAuth] Account verification failed after token exchange', { error: discError, userId: transaction.userId });
     return {
       success: false,
-      metadata: {
-        connected: false,
-        connectionStatus: 'SYNC_FAILED',
-      },
-      error: errorMsg,
+      destination: `/?auth_error=discovery_failed&message=${encodeURIComponent(discError)}`,
+      errorMessage: `Deriv Account Discovery Failure: ${discError}`,
     };
   }
 
-  const profile = wsAuthRes.profile;
-  const derivAccountId = profile.loginid;
+  const verifiedLoginId = hydrationResult.metadata.derivAccountId;
+  const accountType: 'demo' | 'real' = hydrationResult.metadata.accountType || (verifiedLoginId.startsWith('VR') ? 'demo' : 'real');
+  const currency = hydrationResult.metadata.currency || 'USD';
+  const scopes = hydrationResult.metadata.scopes || tokenScopes;
 
-  // Transition sequence: ACCOUNT_DISCOVERED -> ACCOUNT_VERIFIED
-  transitionSyncState(DerivSyncState.ACCOUNT_DISCOVERY_STARTED, DerivSyncState.ACCOUNT_DISCOVERED, {
-    derivAccountId,
-    persisted: false,
-    discoverySucceeded: true,
-  });
-
-  transitionSyncState(DerivSyncState.ACCOUNT_DISCOVERED, DerivSyncState.ACCOUNT_VERIFIED, {
-    derivAccountId,
-    persisted: false,
-    discoverySucceeded: true,
-  });
-
-  logger.info('[DerivOAuth] ACCOUNT_DISCOVERED & ACCOUNT_VERIFIED: loginid verified via authorize', {
-    loginid: derivAccountId,
-    currency: profile.currency,
-    isVirtual: profile.is_virtual,
-  });
-
-  const isVirtual = Boolean(profile.is_virtual) ? 1 : 0;
-  const accountType: 'demo' | 'real' = isVirtual ? 'demo' : (derivAccountId.startsWith('VR') ? 'demo' : 'real');
-  const currency = profile.currency || 'USD';
-  const balance = typeof profile.balance === 'number' ? profile.balance : 0;
-  const email = profile.email || '';
-  const fullName = profile.fullname || '';
-  const scopes = profile.scopes || params.scopes || ['trade', 'account_manage'];
-  const accountList = profile.account_list;
-  const nowIso = new Date().toISOString();
-
-  // Database persistence (Prisma) - Idempotent upsert of account & snapshot
-  try {
-    await dbQueries.upsertDerivAccount({
-      id: derivAccountId,
-      userId,
-      accountType,
-      currency,
-      balance,
-      equity: balance,
-      isVirtual: Boolean(isVirtual),
-      status: 'ACTIVE',
-      lastSyncedAt: nowIso,
-    });
-
-    await dbQueries.recordAccountSnapshot({
-      derivAccountId,
-      userId,
-      balance,
-      equity: balance,
-      currency,
-      timestamp: new Date(),
-    });
-
-    await dbQueries.mapDerivAccountToUserSession(derivAccountId, userId);
-
-    // Transition: ACCOUNT_PERSISTED
-    transitionSyncState(DerivSyncState.ACCOUNT_VERIFIED, DerivSyncState.ACCOUNT_PERSISTED, {
-      derivAccountId,
-      persisted: true,
-      discoverySucceeded: true,
-    });
-
-    logger.info('[DerivOAuth] ACCOUNT_PERSISTED: Deriv account record stored in database', { loginid: derivAccountId });
-  } catch (dbErr: any) {
-    logger.error('[DerivOAuth] ACCOUNT_PERSIST_FAILED: Prisma database persistence failed:', { error: dbErr?.message });
-    try {
-      transitionSyncState(DerivSyncState.ACCOUNT_VERIFIED, DerivSyncState.ACCOUNT_PERSIST_FAILED, {
-        derivAccountId,
-        persisted: false,
-        discoverySucceeded: true,
-      });
-    } catch {}
-    derivConnectionsStore.delete(userId);
-    throw new Error(`Database persistence failure: Authentication requires database connection (${dbErr?.message || dbErr})`);
-  }
-
-  syncDerivConnectionToSupabase({
-    userId,
-    derivAccountId,
+  logger.info('[DerivOAuth] OAuth callback processed successfully', {
+    userId: transaction.userId,
+    loginid: verifiedLoginId,
     accountType,
     currency,
-    connectionStatus: 'CONNECTED',
-    scopes,
-    accessToken: cleanToken,
-    refreshToken,
-    tokenExpiry,
-  }).catch(() => {});
-
-  // State Transition: CONNECTED
-  transitionSyncState(DerivSyncState.ACCOUNT_PERSISTED, DerivSyncState.CONNECTED, {
-    derivAccountId,
-    persisted: true,
-    discoverySucceeded: true,
   });
-
-  logger.info('[DerivOAuth] CONNECTED: Valid Deriv account verified and connected', { loginid: derivAccountId });
-
-  const connectionRecord: DerivConnectionRecord = {
-    userId,
-    derivAccountId,
-    email,
-    fullName,
-    balance,
-    accountType,
-    currency,
-    connectionStatus: 'CONNECTED',
-    scopes,
-    accessToken: cleanToken,
-    refreshToken,
-    tokenExpiry,
-    createdAt: nowIso,
-    updatedAt: nowIso,
-    lastSyncedAt: nowIso,
-  };
-
-  derivConnectionsStore.set(userId, connectionRecord);
-  derivGateway.setAuthToken(cleanToken).catch(() => {});
-
-  const metadata: SafeDerivConnectionMetadata = {
-    connected: true,
-    loginid: derivAccountId,
-    accountId: derivAccountId,
-    derivAccountId,
-    email,
-    fullName,
-    balance,
-    accountType,
-    currency,
-    connectionStatus: 'CONNECTED',
-    scopes,
-    lastSync: nowIso,
-    lastSyncedAt: nowIso,
-    accountList,
-  };
 
   return {
     success: true,
-    metadata,
-    profile,
+    userId: transaction.userId,
+    loginid: verifiedLoginId,
+    accountId: verifiedLoginId,
+    derivAccountId: verifiedLoginId,
+    accountType,
+    currency,
+    scopes,
+    destination: transaction.destination || '/',
+    connectionRecord: hydrationResult.metadata,
     rawAccountDetails: {
-      derivAccountId,
-      email,
-      fullName,
-      balance,
-      accountType,
+      derivAccountId: verifiedLoginId,
+      loginid: verifiedLoginId,
+      accountId: verifiedLoginId,
       currency,
-      token: cleanToken,
-      accountList,
+      accountType,
+      scopes,
+      token: resolvedAccessToken,
+      balance: hydrationResult.metadata?.balance,
+      email: hydrationResult.metadata?.email,
+      fullName: hydrationResult.metadata?.fullName,
+      accountList: hydrationResult.metadata?.accountList,
     },
   };
 }
@@ -1017,7 +863,7 @@ export function getDerivConnectionRecord(userId: string): DerivConnectionRecord 
 }
 
 /**
- * Get User's Safe Connection Metadata (NO SECRETS EXPOSED TO USERS)
+ * Get User's Safe Connection Metadata (Sanitized: NO TOKENS)
  */
 export async function getUserDerivConnectionAsync(userId: string): Promise<SafeDerivConnectionMetadata> {
   let record = derivConnectionsStore.get(userId);
@@ -1026,6 +872,8 @@ export async function getUserDerivConnectionAsync(userId: string): Promise<SafeD
       const dbAccount = await dbQueries.getDerivAccountByUserId(userId);
       if (dbAccount && isValidDerivAccountId(dbAccount.id)) {
         const balance = Number(dbAccount.balance);
+        const nowIso = new Date().toISOString();
+        const lastSyncIso = dbAccount.lastSyncedAt ? new Date(dbAccount.lastSyncedAt).toISOString() : nowIso;
         record = {
           userId: dbAccount.userId || userId,
           derivAccountId: dbAccount.id,
@@ -1035,9 +883,9 @@ export async function getUserDerivConnectionAsync(userId: string): Promise<SafeD
           connectionStatus: 'CONNECTED',
           scopes: ['trade', 'account_manage'],
           accessToken: '',
-          createdAt: dbAccount.lastSyncedAt ? new Date(dbAccount.lastSyncedAt).toISOString() : new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          lastSyncedAt: dbAccount.lastSyncedAt ? new Date(dbAccount.lastSyncedAt).toISOString() : new Date().toISOString(),
+          createdAt: lastSyncIso,
+          updatedAt: nowIso,
+          lastSyncedAt: lastSyncIso,
         };
         derivConnectionsStore.set(userId, record);
         derivConnectionsStore.set(dbAccount.id, record);
@@ -1052,10 +900,11 @@ export async function getUserDerivConnectionAsync(userId: string): Promise<SafeD
     };
   }
 
-  const isConnected = record.connectionStatus === 'CONNECTED';
-
   return {
-    connected: isConnected,
+    connected: record.connectionStatus === 'CONNECTED',
+    userId: record.userId,
+    loginid: record.derivAccountId,
+    accountId: record.derivAccountId,
     derivAccountId: record.derivAccountId,
     email: record.email,
     fullName: record.fullName,
@@ -1064,12 +913,13 @@ export async function getUserDerivConnectionAsync(userId: string): Promise<SafeD
     currency: record.currency,
     connectionStatus: record.connectionStatus,
     scopes: record.scopes,
+    lastSync: record.lastSyncedAt,
     lastSyncedAt: record.lastSyncedAt,
   };
 }
 
 /**
- * Synchronous getter for backwards compatibility
+ * Synchronous getter for connection metadata
  */
 export function getUserDerivConnection(userId: string): SafeDerivConnectionMetadata {
   const record = derivConnectionsStore.get(userId);
@@ -1082,6 +932,9 @@ export function getUserDerivConnection(userId: string): SafeDerivConnectionMetad
 
   return {
     connected: record.connectionStatus === 'CONNECTED',
+    userId: record.userId,
+    loginid: record.derivAccountId,
+    accountId: record.derivAccountId,
     derivAccountId: record.derivAccountId,
     email: record.email,
     fullName: record.fullName,
@@ -1090,6 +943,7 @@ export function getUserDerivConnection(userId: string): SafeDerivConnectionMetad
     currency: record.currency,
     connectionStatus: record.connectionStatus,
     scopes: record.scopes,
+    lastSync: record.lastSyncedAt,
     lastSyncedAt: record.lastSyncedAt,
   };
 }
@@ -1103,12 +957,12 @@ export async function connectUserWithApiTokenAsync(userId: string, apiToken: str
     userId,
     accessToken: trimmed,
   });
-
   return result.metadata;
 }
 
 export function connectUserWithApiToken(userId: string, apiToken: string): SafeDerivConnectionMetadata {
   const trimmed = apiToken.trim();
+  const nowIso = new Date().toISOString();
 
   const record: DerivConnectionRecord = {
     userId,
@@ -1118,26 +972,25 @@ export function connectUserWithApiToken(userId: string, apiToken: string): SafeD
     connectionStatus: 'CONNECTING',
     scopes: ['trade', 'account_manage'],
     accessToken: trimmed,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    lastSyncedAt: new Date().toISOString(),
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    lastSyncedAt: nowIso,
   };
 
   derivConnectionsStore.set(userId, record);
 
-  // Kick off background authoritative discovery via WebSocket authorize
   hydrateDerivAccount({
     userId,
     accessToken: trimmed,
   }).catch((err) => {
-    logger.warn('[connectUserWithApiToken] Background hydration failed:', { error: err?.message || String(err) });
+    logger.warn('[DerivOAuth] Background API token hydration notice', { userId, error: err?.message || String(err) });
   });
 
   return getUserDerivConnection(userId);
 }
 
 /**
- * Disconnect Deriv Account for User
+ * Disconnect Deriv Account for User and clear sensitive credentials
  */
 export function disconnectUserDeriv(userId: string): boolean {
   const record = derivConnectionsStore.get(userId);
@@ -1145,15 +998,17 @@ export function disconnectUserDeriv(userId: string): boolean {
     record.connectionStatus = 'DISCONNECTED';
     record.accessToken = '';
     record.refreshToken = undefined;
+    record.tokenExpiry = undefined;
     record.updatedAt = new Date().toISOString();
     derivConnectionsStore.set(userId, record);
+    logger.info('[DerivOAuth] User disconnected and access tokens cleared', { userId });
     return true;
   }
   return false;
 }
 
 /**
- * Sync Deriv Account Metadata (Asynchronous Pipeline)
+ * Sync Deriv Account Metadata Async Pipeline
  */
 export async function syncUserDerivAsync(userId: string, providedToken?: string): Promise<SafeDerivConnectionMetadata> {
   const record = derivConnectionsStore.get(userId);
@@ -1166,7 +1021,6 @@ export async function syncUserDerivAsync(userId: string, providedToken?: string)
     };
   }
 
-  // Set state to SYNCING
   if (record) {
     record.connectionStatus = 'SYNCING';
     record.updatedAt = new Date().toISOString();
@@ -1184,7 +1038,7 @@ export async function syncUserDerivAsync(userId: string, providedToken?: string)
 
     return hydrationResult.metadata;
   } catch (err: any) {
-    logger.warn('[DerivSync] User sync failed:', { error: String(err?.message || err) });
+    logger.warn('[DerivOAuth] Account sync failed', { userId, error: err?.message || String(err) });
     if (record) {
       record.connectionStatus = 'SYNC_FAILED';
       record.updatedAt = new Date().toISOString();
@@ -1198,7 +1052,7 @@ export async function syncUserDerivAsync(userId: string, providedToken?: string)
 }
 
 /**
- * Sync Deriv Account Metadata (Synchronous wrapper kicking off background async sync)
+ * Sync Deriv Account Metadata (Synchronous wrapper kicking off background sync)
  */
 export function syncUserDeriv(userId: string): SafeDerivConnectionMetadata {
   const record = derivConnectionsStore.get(userId);
@@ -1208,75 +1062,50 @@ export function syncUserDeriv(userId: string): SafeDerivConnectionMetadata {
     record.updatedAt = new Date().toISOString();
     derivConnectionsStore.set(userId, record);
 
-    // Fire-and-forget async sync in background
     syncUserDerivAsync(userId).catch((err) => {
-      logger.warn('[DerivSync] Background trigger notice:', { error: String(err?.message || err) });
+      logger.warn('[DerivOAuth] Background sync trigger notice', { userId, error: err?.message || String(err) });
     });
   }
   return getUserDerivConnection(userId);
 }
 
 /**
- * ADMIN ONLY: Get full OAuth Gateway Configuration and User Connection Diagnostics
+ * Reconnect User Connection to Deriv Server-Side
  */
-export function getAdminDerivDiagnostics() {
-  const config = getDerivOAuthConfig();
-
-  const partnerAttribution = {
-    affiliateToken: 'NOT_CONFIGURED',
-    utmSource: 'appexquant_global',
-    utmMedium: 'cpa_partner',
-    utmCampaign: 'trading_portal',
-  };
-
-  const connections = Array.from(derivConnectionsStore.values()).map((rec) => ({
-    userId: rec.userId,
-    derivAccountId: rec.derivAccountId,
-    email: rec.email,
-    fullName: rec.fullName,
-    balance: rec.balance,
-    accountType: rec.accountType,
-    currency: rec.currency,
-    connectionStatus: rec.connectionStatus,
-    scopes: rec.scopes,
-    hasAccessToken: Boolean(rec.accessToken),
-    hasRefreshToken: Boolean(rec.refreshToken),
-    tokenExpiry: rec.tokenExpiry,
-    createdAt: rec.createdAt,
-    lastSyncedAt: rec.lastSyncedAt,
-  }));
-
-  return {
-    oauthConfig: {
-      clientId: config.clientId,
-      redirectUri: config.redirectUri,
-      authEndpoint: config.authBaseUrl,
-      tokenEndpoint: config.tokenEndpoint,
-      scopesAllowed: config.scopes.split(/[\s,]+/),
-      partnerAttribution,
-    },
-    activeConnectionsCount: connections.filter((c) => c.connectionStatus === 'CONNECTED').length,
-    totalRegisteredConnections: connections.length,
-    connections,
-  };
-}
-
-/**
- * Sanitized user diagnostic endpoint data
- */
-export function getUserDerivDiagnostics(userId: string) {
+export async function reconnectUserDerivAsync(userId: string): Promise<SafeDerivConnectionMetadata> {
   const record = derivConnectionsStore.get(userId);
-  return {
-    userId,
-    derivAccountId: record?.derivAccountId || null,
-    connectionStatus: record?.connectionStatus || 'DISCONNECTED',
-    currency: record?.currency || 'USD',
-    balance: typeof record?.balance === 'number' ? record.balance : null,
-    accountType: record?.accountType || 'real',
-    hasAccessToken: Boolean(record?.accessToken),
-    lastSyncedAt: record?.lastSyncedAt || null,
-    timestamp: new Date().toISOString(),
-  };
+  if (!record || !record.accessToken || record.connectionStatus === 'DISCONNECTED') {
+    return {
+      connected: false,
+      connectionStatus: 'DISCONNECTED',
+    };
+  }
+
+  record.connectionStatus = 'CONNECTING';
+  record.updatedAt = new Date().toISOString();
+  derivConnectionsStore.set(userId, record);
+
+  try {
+    const hydrationResult = await hydrateDerivAccount({
+      userId,
+      accessToken: record.accessToken,
+      refreshToken: record.refreshToken,
+      tokenExpiry: record.tokenExpiry,
+      scopes: record.scopes,
+    });
+
+    return hydrationResult.metadata;
+  } catch (err: any) {
+    logger.warn('[DerivOAuth] Reconnection attempt failed', { userId, error: err?.message || String(err) });
+    record.connectionStatus = 'RECONNECT_REQUIRED';
+    record.updatedAt = new Date().toISOString();
+    derivConnectionsStore.set(userId, record);
+
+    return {
+      connected: false,
+      connectionStatus: 'RECONNECT_REQUIRED',
+    };
+  }
 }
 
 /**
@@ -1285,13 +1114,18 @@ export function getUserDerivDiagnostics(userId: string) {
 export async function switchUserDerivAccountAsync(userId: string, loginid: string): Promise<SafeDerivConnectionMetadata> {
   const record = derivConnectionsStore.get(userId);
   if (!record) {
-    throw new Error('No active Deriv connection found');
+    throw new Error('No active Deriv connection found for user');
   }
+  if (!isValidDerivAccountId(loginid)) {
+    throw new Error(`Invalid Deriv account identifier: ${loginid}`);
+  }
+
   record.derivAccountId = loginid;
   record.accountType = loginid.startsWith('VR') ? 'demo' : 'real';
   record.updatedAt = new Date().toISOString();
   derivConnectionsStore.set(userId, record);
   derivConnectionsStore.set(loginid, record);
+
   return getUserDerivConnectionAsync(userId);
 }
 
@@ -1330,7 +1164,7 @@ export async function fetchUserDerivBalanceAsync(
           timestamp: new Date(),
         });
       } catch (dbErr: any) {
-        logger.warn('[DerivBalance] DB snapshot update notice:', { error: dbErr?.message });
+        logger.warn('[DerivBalance] DB snapshot update notice', { userId, error: dbErr?.message });
       }
 
       return {
@@ -1342,49 +1176,216 @@ export async function fetchUserDerivBalanceAsync(
     }
     return { success: false, error: wsAuthRes.error || 'Failed to retrieve balance from Deriv gateway' };
   } catch (err: any) {
-    logger.warn('[DerivBalance] Balance gateway request failed:', { error: err?.message || String(err) });
+    logger.warn('[DerivBalance] Balance request failed', { userId, error: err?.message || String(err) });
     return { success: false, error: err?.message || 'Gateway communication error' };
   }
 }
 
 /**
- * Reconnect user connection to Deriv server-side
+ * Requests an OTP for an authenticated Deriv Options account
  */
-export async function reconnectUserDerivAsync(
-  userId: string
-): Promise<SafeDerivConnectionMetadata> {
-  const record = derivConnectionsStore.get(userId);
-  if (!record || !record.accessToken || record.connectionStatus === 'DISCONNECTED') {
-    return {
-      connected: false,
-      connectionStatus: 'DISCONNECTED',
-    };
+export async function requestDerivAccountOtp(
+  accountId: string,
+  token: string,
+  appId: string = getDerivAppId()
+): Promise<{ success: boolean; otp?: string; url?: string; accountId?: string; error?: string }> {
+  const cleanToken = token ? token.trim() : '';
+  const cleanAccountId = accountId ? accountId.trim() : '';
+  const cleanAppId = (appId || getDerivAppId()).toString().trim();
+
+  if (!cleanToken || !cleanAccountId) {
+    logger.warn('[DerivOTP] Missing access token or account ID for OTP request');
+    return { success: false, error: 'Missing access token or account ID for OTP request' };
   }
 
-  record.connectionStatus = 'CONNECTING';
-  record.updatedAt = new Date().toISOString();
-  derivConnectionsStore.set(userId, record);
+  const url = `https://api.derivws.com/trading/v1/options/accounts/${encodeURIComponent(cleanAccountId)}/otp`;
 
   try {
-    const hydrationResult = await hydrateDerivAccount({
-      userId,
-      accessToken: record.accessToken,
-      refreshToken: record.refreshToken,
-      tokenExpiry: record.tokenExpiry,
-      scopes: record.scopes,
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${cleanToken}`,
+        'Deriv-App-ID': cleanAppId,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
     });
 
-    return hydrationResult.metadata;
-  } catch (err: any) {
-    logger.warn('[DerivReconnect] Reconnection attempt failed:', { error: err?.message || String(err) });
-    record.connectionStatus = 'RECONNECT_REQUIRED';
-    record.updatedAt = new Date().toISOString();
-    derivConnectionsStore.set(userId, record);
+    if (response.ok) {
+      const data = await response.json();
+      const otp = data.otp || data.token;
+      let readyWsUrl = data.url || data.websocket_url || data.ws_url;
 
-    return {
-      connected: false,
-      connectionStatus: 'RECONNECT_REQUIRED',
-    };
+      if (otp && readyWsUrl && !readyWsUrl.includes('otp=')) {
+        const sep = readyWsUrl.includes('?') ? '&' : '?';
+        readyWsUrl = `${readyWsUrl}${sep}otp=${encodeURIComponent(otp)}`;
+      }
+
+      if (readyWsUrl) {
+        logger.info('[DerivOTP] OTP requested successfully', { accountId: cleanAccountId });
+        return {
+          success: true,
+          otp,
+          url: readyWsUrl,
+          accountId: cleanAccountId,
+        };
+      }
+    } else {
+      const errorBody = await response.text().catch(() => '');
+      logger.warn('[DerivOTP] OTP HTTP request failed', { status: response.status, accountId: cleanAccountId, error: errorBody });
+    }
+  } catch (err: any) {
+    logger.warn('[DerivOTP] OTP request exception', { accountId: cleanAccountId, error: err?.message || String(err) });
   }
+
+  return { success: false, error: `Failed to obtain WebSocket OTP for account ${cleanAccountId}` };
 }
 
+export const requestDerivOTP = async (
+  accountId: string,
+  token: string,
+  appId: string = getDerivAppId()
+): Promise<{ success: boolean; wsUrl?: string; otp?: string; accountId?: string; error?: string; expiresInSeconds?: number }> => {
+  const res = await requestDerivAccountOtp(accountId, token, appId);
+  return {
+    success: res.success,
+    wsUrl: res.url,
+    otp: res.otp,
+    accountId: res.accountId,
+    error: res.error,
+    expiresInSeconds: 300,
+  };
+};
+
+/**
+ * Validates connection to the authenticated WebSocket URL returned by the OTP endpoint
+ */
+export function verifyDerivWebSocketWithOtp(
+  wsUrl: string,
+  timeoutMs: number = 8000
+): Promise<{ success: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    let ws: any = null;
+    let settled = false;
+
+    const finish = (success: boolean, error?: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (ws) {
+        try {
+          ws.close();
+        } catch {}
+      }
+      resolve({ success, error });
+    };
+
+    const timer = setTimeout(() => {
+      finish(false, `Timed out connecting to authenticated WebSocket: ${wsUrl}`);
+    }, timeoutMs);
+
+    try {
+      const WSImpl: any = (NodeWebSocket as any).default || NodeWebSocket;
+      ws = new WSImpl(wsUrl);
+    } catch (err: any) {
+      finish(false, `WebSocket construction error: ${err?.message || String(err)}`);
+      return;
+    }
+
+    ws.on('open', () => {
+      try {
+        ws.send(JSON.stringify({ ping: 1 }));
+      } catch {}
+      finish(true);
+    });
+
+    ws.on('message', (data: any) => {
+      try {
+        const raw = typeof data === 'string' ? data : data?.toString('utf8') || '';
+        const parsed = JSON.parse(raw);
+        if (parsed.error && parsed.error.code === 'AuthorizationRequired') {
+          finish(false, `WebSocket rejected authorization: ${parsed.error.message}`);
+        } else {
+          finish(true);
+        }
+      } catch {
+        finish(true);
+      }
+    });
+
+    ws.on('error', (err: any) => {
+      const detail = err?.message || err?.code || String(err);
+      finish(false, `WebSocket error: ${detail}`);
+    });
+
+    ws.on('close', (code: number) => {
+      if (!settled && code !== 1000) {
+        finish(false, `WebSocket closed unexpectedly (code: ${code})`);
+      }
+    });
+  });
+}
+
+/**
+ * ADMIN ONLY: Get full OAuth Gateway Configuration and User Connection Diagnostics
+ */
+export function getAdminDerivDiagnostics() {
+  const config = getDerivOAuthConfig();
+
+  const partnerAttribution = {
+    affiliateToken: 'NOT_CONFIGURED',
+    utmSource: 'appexquant_global',
+    utmMedium: 'cpa_partner',
+    utmCampaign: 'trading_portal',
+  };
+
+  const connections = Array.from(derivConnectionsStore.values()).map((rec) => ({
+    userId: rec.userId,
+    derivAccountId: rec.derivAccountId,
+    email: rec.email,
+    fullName: rec.fullName,
+    balance: rec.balance,
+    accountType: rec.accountType,
+    currency: rec.currency,
+    connectionStatus: rec.connectionStatus,
+    scopes: rec.scopes,
+    hasAccessToken: Boolean(rec.accessToken && rec.accessToken.length > 0),
+    hasRefreshToken: Boolean(rec.refreshToken && rec.refreshToken.length > 0),
+    tokenExpiry: rec.tokenExpiry,
+    createdAt: rec.createdAt,
+    lastSyncedAt: rec.lastSyncedAt,
+  }));
+
+  return {
+    oauthConfig: {
+      clientId: config.clientId,
+      redirectUri: config.redirectUri,
+      authEndpoint: config.authBaseUrl,
+      tokenEndpoint: config.tokenEndpoint,
+      scopesAllowed: config.scopes.split(/[\s,]+/),
+      partnerAttribution,
+    },
+    activeConnectionsCount: connections.filter((c) => c.connectionStatus === 'CONNECTED').length,
+    totalRegisteredConnections: connections.length,
+    connections,
+  };
+}
+
+/**
+ * Sanitized user diagnostic endpoint data
+ */
+export function getUserDerivDiagnostics(userId: string) {
+  const record = derivConnectionsStore.get(userId);
+  return {
+    userId,
+    derivAccountId: record?.derivAccountId || null,
+    connectionStatus: record?.connectionStatus || 'DISCONNECTED',
+    currency: record?.currency || 'USD',
+    balance: typeof record?.balance === 'number' ? record.balance : null,
+    accountType: record?.accountType || 'real',
+    hasAccessToken: Boolean(record?.accessToken && record.accessToken.length > 0),
+    hasRefreshToken: Boolean(record?.refreshToken && record.refreshToken.length > 0),
+    lastSyncedAt: record?.lastSyncedAt || null,
+    timestamp: new Date().toISOString(),
+  };
+}

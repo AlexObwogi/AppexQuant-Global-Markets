@@ -8,8 +8,6 @@ import { DerivActiveSymbol } from './derivTypes.js';
 import { MarketInstrument, InstrumentCategory } from '../../types/market.js';
 
 export const BLACKLISTED_SYMBOLS = new Set<string>([
-  '1HZ10V',
-  '1HZ100V',
   'cryETHUSD',
 ]);
 
@@ -17,8 +15,7 @@ export function isSymbolBlacklisted(symbol: string): boolean {
   if (!symbol) return true;
   const clean = symbol.trim();
   if (BLACKLISTED_SYMBOLS.has(clean)) return true;
-  // Exclude legacy or malformed symbols
-  if (clean.startsWith('1HZ10V') || clean.startsWith('1HZ100V') || clean === 'cryETHUSD') return true;
+  if (clean === 'cryETHUSD') return true;
   return false;
 }
 

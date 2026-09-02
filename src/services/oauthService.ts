@@ -33,30 +33,36 @@ export function getDerivAppId(): string {
     const raw =
       process.env.DERIV_APP_ID ||
       process.env.VITE_DERIV_APP_ID ||
-      process.env.CLIENT_ID ||
-      process.env.DERIV_CLIENT_ID ||
-      process.env.DERIV_OAUTH_CLIENT_ID ||
       process.env.NEXT_PUBLIC_DERIV_APP_ID;
 
     if (raw && typeof raw === 'string') {
       const clean = raw.trim();
-      if (clean && clean !== 'undefined' && clean !== 'null' && clean !== '""' && clean !== "''") {
+      if (clean && /^\d+$/.test(clean)) {
         return clean;
       }
     }
+
+    const clientId = process.env.CLIENT_ID || process.env.DERIV_CLIENT_ID;
+    if (clientId && typeof clientId === 'string') {
+      const clean = clientId.trim();
+      if (clean && /^\d+$/.test(clean)) {
+        return clean;
+      }
+    }
+
     return '1089';
   }
-  
+
   // STRICTLY BROWSER-SIDE USAGE
   if (typeof window !== 'undefined') {
     try {
       const getMetaEnv = new Function('return import.meta.env');
       const env = getMetaEnv();
       if (env) {
-        const raw = env.VITE_DERIV_APP_ID || env.VITE_CLIENT_ID || env.NEXT_PUBLIC_DERIV_APP_ID;
+        const raw = env.VITE_DERIV_APP_ID || env.NEXT_PUBLIC_DERIV_APP_ID;
         if (raw && typeof raw === 'string') {
           const clean = raw.trim();
-          if (clean && clean !== 'undefined' && clean !== 'null' && clean !== '""' && clean !== "''") {
+          if (clean && /^\d+$/.test(clean)) {
             return clean;
           }
         }
@@ -65,7 +71,7 @@ export function getDerivAppId(): string {
       // Fallback if compilation/runtime dynamic evaluation fails
     }
   }
-  
+
   return '1089';
 }
 

@@ -46,6 +46,19 @@ import {
 } from './marketNormalization.js';
 
 import { logger } from '../../observability/logger.js';
+import { verifySessionToken } from '../security.js';
+
+function parseCookies(cookieHeader?: string | null): Record<string, string> {
+  if (!cookieHeader) return {};
+  const cookies: Record<string, string> = {};
+  cookieHeader.split(';').forEach((part) => {
+    const [key, ...vals] = part.trim().split('=');
+    if (key && vals.length > 0) {
+      cookies[key.trim()] = decodeURIComponent(vals.join('=').trim());
+    }
+  });
+  return cookies;
+}
 
 export type DerivConnectionState =
   | 'CONNECTED'
@@ -230,6 +243,8 @@ export class DerivGateway {
   private profileListeners = new Set<ProfileCallback>();
 
   private clients = new Set<WebSocket>();
+  private clientSubscriptions = new Map<WebSocket, Set<() => void>>();
+  private clientSessions = new Map<WebSocket, { userId?: string; loginid?: string }>();
 
   private webSocketServer: WebSocketServer | null = null;
 
@@ -347,8 +362,18 @@ export class DerivGateway {
       this.publicReconnectAttempts > 0 ? 'RECONNECTING' : 'CONNECTING',
     );
 
+    console.log('[STREAM_CONNECTING]', { type: 'public', attempt: this.publicReconnectAttempts });
+
     this.publicConnectPromise = new Promise<void>((resolve, reject) => {
       let settled = false;
+
+      if (this.publicWs) {
+        try {
+          this.publicWs.removeAllListeners();
+          this.publicWs.close();
+        } catch {}
+        this.publicWs = null;
+      }
 
       const ws = new WebSocket(OPTIONS_PUBLIC_WS);
 
@@ -374,6 +399,8 @@ export class DerivGateway {
         this.publicReconnectAttempts = 0;
         this.connectedAt ??= Date.now();
 
+        console.log('[STREAM_OPEN]', { type: 'public' });
+
         this.setConnectionState(
           this.accountWs?.readyState === WS_OPEN
             ? 'CONNECTED'
@@ -396,6 +423,10 @@ export class DerivGateway {
       });
 
       ws.on('error', (error) => {
+        console.error('[STREAM_ERROR]', {
+          type: 'public',
+          error: cleanErrorMessage(error),
+        });
         logger.warn('[DerivGateway] Public Options WebSocket error.', {
           error: cleanErrorMessage(error),
         });
@@ -404,6 +435,7 @@ export class DerivGateway {
       });
 
       ws.once('close', () => {
+        console.log('[STREAM_CLOSED]', { type: 'public' });
         if (this.publicWs === ws) {
           this.publicWs = null;
         }
@@ -535,8 +567,18 @@ export class DerivGateway {
   private async openAuthenticatedAccountSocket(): Promise<void> {
     const wsUrl = await this.requestOtpUrl();
 
+    console.log('[ACCOUNT_WS_CONNECTING]', { accountId: this.accountId });
+
     await new Promise<void>((resolve, reject) => {
       let settled = false;
+
+      if (this.accountWs) {
+        try {
+          this.accountWs.removeAllListeners();
+          this.accountWs.close();
+        } catch {}
+        this.accountWs = null;
+      }
 
       const ws = new WebSocket(wsUrl);
 
@@ -559,6 +601,7 @@ export class DerivGateway {
       ws.once('open', () => {
         this.accountReconnectAttempts = 0;
 
+        console.log('[ACCOUNT_WS_OPEN]', { accountId: this.accountId });
         this.setConnectionState('CONNECTED');
 
         this.requestInitialAccountState().catch((error) => {
@@ -578,6 +621,10 @@ export class DerivGateway {
       });
 
       ws.on('error', (error) => {
+        console.error('[ACCOUNT_WS_ERROR]', {
+          accountId: this.accountId,
+          error: cleanErrorMessage(error),
+        });
         logger.warn(
           '[DerivGateway] Authenticated Options WebSocket error.',
           {
@@ -593,6 +640,7 @@ export class DerivGateway {
       });
 
       ws.once('close', () => {
+        console.log('[ACCOUNT_WS_CLOSED]', { accountId: this.accountId });
         if (this.accountWs === ws) {
           this.accountWs = null;
         }
@@ -1845,18 +1893,108 @@ export class DerivGateway {
    * The browser connects to AppeX; AppeX remains responsible for
    * brokering public market data and server-owned account state.
    */
-  public attachWebSocketServer(
-    server: HttpServer,
-    path = '/api/deriv/stream',
-  ): WebSocketServerType {
+  /**
+   * Internal helper to retrieve or create the single WebSocketServer instance
+   * with guaranteed single connection listener and idempotent client cleanup.
+   */
+  private getOrCreateWebSocketServer(): WebSocketServerType {
     if (this.webSocketServer) {
       return this.webSocketServer;
     }
 
-    this.webSocketServer =
-      new WebSocketServer({
-        noServer: true,
+    const wss = new WebSocketServer({
+      noServer: true,
+    });
+    this.webSocketServer = wss;
+
+    wss.on('connection', (client: WebSocket, request?: IncomingMessage) => {
+      this.clients.add(client);
+      this.clientSubscriptions.set(client, new Set());
+
+      // Safe multi-user session context resolution from session_token cookie
+      if (request?.headers?.cookie) {
+        try {
+          const cookies = parseCookies(request.headers.cookie);
+          const sessionToken = cookies['session_token'];
+          if (sessionToken) {
+            const session = verifySessionToken(sessionToken);
+            if (session?.userId) {
+              this.clientSessions.set(client, {
+                userId: session.userId,
+                loginid: session.derivAccountId,
+              });
+            }
+          }
+        } catch {
+          // Ignore session parsing error
+        }
+      }
+
+      console.log('[STREAM_OPEN]', {
+        clientCount: this.clients.size,
+        authenticated: this.clientSessions.has(client),
       });
+
+      if (client.readyState === WS_OPEN) {
+        try {
+          client.send(
+            JSON.stringify({
+              type: 'status',
+              data: this.getStatus(),
+            }),
+          );
+        } catch {}
+      }
+
+      const cleanupClient = () => {
+        if (!this.clients.has(client)) {
+          return;
+        }
+
+        console.log('[STREAM_CLOSED]', { remaining: this.clients.size - 1 });
+        this.clients.delete(client);
+        this.clientSessions.delete(client);
+
+        const subscriptions = this.clientSubscriptions.get(client);
+        if (subscriptions) {
+          for (const unsub of subscriptions) {
+            try {
+              unsub();
+            } catch {}
+          }
+          subscriptions.clear();
+        }
+        this.clientSubscriptions.delete(client);
+
+        try {
+          client.removeAllListeners();
+        } catch {}
+
+        console.log('[STREAM_CLEANUP]', { totalActiveClients: this.clients.size });
+      };
+
+      client.on('message', (raw) => {
+        this.handleClientMessage(client, raw);
+      });
+
+      client.once('close', cleanupClient);
+      client.once('error', (err) => {
+        console.error('[STREAM_ERROR]', { error: cleanErrorMessage(err) });
+        cleanupClient();
+      });
+    });
+
+    return wss;
+  }
+
+  /**
+   * Attach the gateway WebSocket server to an existing HTTP server.
+   */
+  public attachWebSocketServer(
+    server: HttpServer,
+    path = '/api/deriv/stream',
+  ): WebSocketServerType {
+    const wss = this.getOrCreateWebSocketServer();
 
     server.on(
       'upgrade',
@@ -1876,12 +2014,14 @@ export class DerivGateway {
           return;
         }
 
-        this.webSocketServer?.handleUpgrade(
+        console.log('[STREAM_CONNECTING]', { path: requestUrl.pathname });
+
+        wss.handleUpgrade(
           request,
           socket,
           head,
           (client) => {
-            this.webSocketServer?.emit(
+            wss.emit(
               'connection',
               client,
               request,
@@ -1891,45 +2031,7 @@ export class DerivGateway {
       },
     );
 
-    this.webSocketServer.on(
-      'connection',
-      (client) => {
-        this.clients.add(client);
-
-        client.send(
-          JSON.stringify({
-            type: 'status',
-            data: this.getStatus(),
-          }),
-        );
-
-        client.on(
-          'message',
-          (raw) => {
-            this.handleClientMessage(
-              client,
-              raw,
-            );
-          },
-        );
-
-        client.on(
-          'close',
-          () => {
-            this.clients.delete(client);
-          },
-        );
-
-        client.on(
-          'error',
-          () => {
-            this.clients.delete(client);
-          },
-        );
-      },
-    );
-
-    return this.webSocketServer;
+    return wss;
   }
 
   /**
@@ -1940,41 +2042,16 @@ export class DerivGateway {
     socket: any,
     head: Buffer,
   ): void {
-    if (!this.webSocketServer) {
-      this.webSocketServer = new WebSocketServer({
-        noServer: true,
-      });
+    const wss = this.getOrCreateWebSocketServer();
 
-      this.webSocketServer.on('connection', (client) => {
-        this.clients.add(client);
+    console.log('[STREAM_CONNECTING]', { url: '/api/deriv/stream' });
 
-        client.send(
-          JSON.stringify({
-            type: 'status',
-            data: this.getStatus(),
-          }),
-        );
-
-        client.on('message', (raw) => {
-          this.handleClientMessage(client, raw);
-        });
-
-        client.on('close', () => {
-          this.clients.delete(client);
-        });
-
-        client.on('error', () => {
-          this.clients.delete(client);
-        });
-      });
-    }
-
-    this.webSocketServer.handleUpgrade(
+    wss.handleUpgrade(
       request,
       socket,
       head,
       (client) => {
-        this.webSocketServer?.emit('connection', client, request);
+        wss.emit('connection', client, request);
       },
     );
   }
@@ -2042,20 +2119,20 @@ export class DerivGateway {
             if (
               client.readyState === WS_OPEN
             ) {
-              client.send(
-                JSON.stringify({
-                  type: 'tick',
-                  data: tick,
-                }),
-              );
+              try {
+                client.send(
+                  JSON.stringify({
+                    type: 'tick',
+                    data: tick,
+                  }),
+                );
+              } catch {}
             }
           },
         );
 
-      client.once(
-        'close',
-        unsubscribe,
-      );
+      // Register unsubscribe callback into client's subscription set (NO client.once('close') call!)
+      this.clientSubscriptions.get(client)?.add(unsubscribe);
 
       return;
     }

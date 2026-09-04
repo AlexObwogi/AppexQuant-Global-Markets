@@ -51,8 +51,6 @@ import { isValidDerivAccountId } from './syncStateMachine.ts';
 /* Constants                                                                  */
 /* -------------------------------------------------------------------------- */
 
-const DEFAULT_DERIV_APP_ID = '1089';
-
 const DERIV_AUTH_ENDPOINT =
   'https://auth.deriv.com/oauth2/auth';
 
@@ -259,6 +257,13 @@ function cleanString(value: unknown): string {
     .replace(/^['"]|['"]$/g, '');
 }
 
+function cleanErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message.replace(/\s+/g, ' ').trim();
+  }
+  return String(error).replace(/\s+/g, ' ').trim();
+}
+
 function isUsableToken(token: unknown): token is string {
   const clean = cleanString(token);
 
@@ -368,17 +373,17 @@ export function getDerivOAuthConfig(
    */
   const clientId =
     cleanString(
+      process.env.DERIV_OAUTH_CLIENT_ID ||
+      process.env.VITE_DERIV_OAUTH_CLIENT_ID ||
+      process.env.NEXT_PUBLIC_DERIV_OAUTH_CLIENT_ID ||
       getDerivOAuthClientId(),
     );
 
-  /*
-   * Deriv App ID is a separate identifier used by the
-   * authenticated REST API through Deriv-App-ID.
-   */
   const appId =
     cleanString(
+      process.env.DERIV_OAUTH_CLIENT_ID ||
       getDerivAppId(),
-    ) || DEFAULT_DERIV_APP_ID;
+    ) || clientId;
 
   const clientSecret =
     cleanString(
@@ -650,85 +655,86 @@ export function initiateDerivOAuth(params: {
   cookieValue: string;
   redirectUri: string;
 } {
-  cleanupExpiredTransactions();
+  const action = params.action || 'connect';
+  console.log('[OAUTH_INIT_START]', { action });
 
-  const oauthConfig =
-    getDerivOAuthConfig(
-      params.requestHost,
-      params.requestProtocol,
-    );
+  try {
+    cleanupExpiredTransactions();
 
-  if (!oauthConfig.clientId) {
-    throw new Error(
-      'DERIV_OAUTH_CLIENT_ID is not configured.',
-    );
-  }
+    const oauthConfig =
+      getDerivOAuthConfig(
+        params.requestHost,
+        params.requestProtocol,
+      );
 
-  const userId =
-    cleanString(params.userId) ||
-    `usr-${crypto.randomBytes(12).toString('hex')}`;
+    console.log('[OAUTH_CLIENT_ID_PRESENT]', { present: Boolean(oauthConfig.clientId) });
 
-  const action =
-    params.action || 'connect';
+    if (!oauthConfig.clientId) {
+      throw new Error(
+        'DERIV_OAUTH_CLIENT_ID is not configured.',
+      );
+    }
 
-  const destination =
-    cleanString(params.destination) || '/';
+    const userId =
+      cleanString(params.userId) ||
+      `usr-${crypto.randomBytes(12).toString('hex')}`;
 
-  const {
-    codeVerifier,
-    codeChallenge,
-  } = generatePKCE();
+    const destination =
+      cleanString(params.destination) || '/';
 
-  const state =
-    generateState();
-
-  const transaction: OAuthTransaction = {
-    state,
-    codeVerifier,
-    userId,
-    action,
-    destination,
-    redirectUri:
-      oauthConfig.redirectUri,
-    createdAt:
-      Date.now(),
-  };
-
-  oauthTransactionsStore.set(
-    state,
-    transaction,
-  );
-
-  const cookieValue =
-    encodeOAuthStateCookie(transaction);
-
-  /*
-   * IMPORTANT:
-   *
-   * clientId = OAuth client ID.
-   * appId    = optional legacy Deriv App ID.
-   *
-   * Never substitute one for the other.
-   */
-  const authUrl =
-    buildAuthUrl({
-      clientId: oauthConfig.clientId,
-      appId: oauthConfig.appId || undefined,
-      redirectUri: oauthConfig.redirectUri,
-      scope: DERIV_OAUTH_SCOPE,
-      state,
+    const {
+      codeVerifier,
       codeChallenge,
-      codeChallengeMethod: 'S256',
-      action,
-    });
+    } = generatePKCE();
 
-  return {
-    authUrl,
-    state,
-    cookieValue,
-    redirectUri:
-      oauthConfig.redirectUri,
-  };
+    const state =
+      generateState();
+
+    const transaction: OAuthTransaction = {
+      state,
+      codeVerifier,
+      userId,
+      action,
+      destination,
+      redirectUri:
+        oauthConfig.redirectUri,
+      createdAt:
+        Date.now(),
+    };
+
+    oauthTransactionsStore.set(
+      state,
+      transaction,
+    );
+
+    const cookieValue =
+      encodeOAuthStateCookie(transaction);
+
+    const authUrl =
+      buildAuthUrl({
+        clientId: oauthConfig.clientId,
+        appId: oauthConfig.appId || undefined,
+        redirectUri: oauthConfig.redirectUri,
+        scope: DERIV_OAUTH_SCOPE,
+        state,
+        codeChallenge,
+        codeChallengeMethod: 'S256',
+        action,
+      });
+
+    console.log('[OAUTH_INIT_SUCCESS]', { action });
+
+    return {
+      authUrl,
+      state,
+      cookieValue,
+      redirectUri:
+        oauthConfig.redirectUri,
+    };
+  } catch (error: any) {
+    console.error('[OAUTH_INIT_FAILED]', { error: cleanErrorMessage(error) });
+    throw error;
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -916,7 +922,7 @@ export async function discoverDerivAccountsREST(
   const cleanAppId =
     cleanString(appId) ||
     getDerivOAuthConfig().appId ||
-    DEFAULT_DERIV_APP_ID;
+    getDerivOAuthConfig().clientId;
 
   const url =
     `${DERIV_OPTIONS_API_BASE}/accounts`;
@@ -1043,7 +1049,7 @@ export async function requestDerivAccountOtp(
   const cleanAppId =
     cleanString(appId) ||
     getDerivOAuthConfig().appId ||
-    DEFAULT_DERIV_APP_ID;
+    getDerivOAuthConfig().clientId;
 
   if (!isUsableToken(cleanToken)) {
     return {
@@ -1408,7 +1414,7 @@ export async function fetchDerivAccountProfile(
   const cleanAppId =
     cleanString(appId) ||
     getDerivOAuthConfig().appId ||
-    DEFAULT_DERIV_APP_ID;
+    getDerivOAuthConfig().clientId;
 
   const discovery =
     await discoverDerivAccountsREST(
@@ -1565,7 +1571,7 @@ export async function hydrateDerivAccount(
   const effectiveAppId =
     cleanString(appId) ||
     oauthConfig.appId ||
-    DEFAULT_DERIV_APP_ID;
+    oauthConfig.clientId;
 
   const profile =
     await fetchDerivAccountProfile(

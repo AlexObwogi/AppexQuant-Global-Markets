@@ -252,3 +252,6 @@ export interface DerivGatewayStatus {
   latencyMs: number | null;
   uptimeSeconds: number;
 }
+
+export type DerivRequest = Record<string, unknown>;
+export type DerivResponse = Record<string, unknown>;

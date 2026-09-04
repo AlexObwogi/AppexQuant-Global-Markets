@@ -62,9 +62,9 @@ export const DashboardErrorView: React.FC = () => {
       return {
         code: 'INVALID_CLIENT',
         title: 'Deriv OAuth: Client Does Not Exist',
-        description: 'Deriv rejected the authorization request because the specified App ID / Client ID is not registered or was provided as an empty identifier.',
-        technicalDetails: `Deriv API Endpoint returned: invalid_client ("Client does not exist"). Configured App ID must be an integer (e.g. public default 1089 or a registered App ID created in the Deriv Developer Portal).`,
-        suggestedAction: 'Ensure DERIV_APP_ID=1089 or your registered App ID is configured in your environment variables, or click "Use Default App ID (1089)" below.',
+        description: 'Deriv rejected the authorization request because the specified OAuth Client ID is not registered or was provided as an empty identifier.',
+        technicalDetails: `Deriv API Endpoint returned: invalid_client ("Client does not exist"). Registered OAuth Client ID must be configured in deployment settings.`,
+        suggestedAction: 'Ensure DERIV_OAUTH_CLIENT_ID is configured in your deployment environment variables.',
         docLink: 'https://api.deriv.com/apps/',
         severity: 'error',
       };
@@ -291,10 +291,10 @@ export const DashboardErrorView: React.FC = () => {
         <div className="p-4 rounded-xl bg-bg-surface border border-border-color space-y-2">
           <div className="flex items-center gap-2 text-xs font-bold text-text-primary">
             <KeyRound className="w-4 h-4 text-sky-400" />
-            <span>Deriv App ID</span>
+            <span>Deriv OAuth Client ID</span>
           </div>
           <p className="text-[11px] text-text-secondary leading-relaxed">
-            By default, AppexQuant uses public App ID <code className="text-sky-400 font-mono">1089</code>. You can also register a custom App ID at deriv.com.
+            Configure your registered <code className="text-sky-400 font-mono">DERIV_OAUTH_CLIENT_ID</code> in environment variables.
           </p>
         </div>
 

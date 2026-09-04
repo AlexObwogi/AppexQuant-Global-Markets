@@ -298,9 +298,8 @@ export class DerivWebSocketManager {
     if (this.isExplicitDisconnect || this.reconnectTimer) return;
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('[DerivWS-Client] Max reconnect attempts reached');
-      this.setConnectionState('DISCONNECTED');
-      return;
+      console.warn('[DerivWS-Client] Max reconnect attempts reached. Resetting counter for continuous reconnection loop...');
+      this.reconnectAttempts = 0;
     }
 
     this.reconnectAttempts++;

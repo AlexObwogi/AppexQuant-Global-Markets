@@ -45,6 +45,12 @@ import {
   getDerivAppId,
 } from '../oauthService.ts';
 
+import {
+  getLoginScopeString,
+  getBackendScopeString,
+  parseRawScopes,
+} from '../../lib/auth/derivScope.ts';
+
 import { isValidDerivAccountId } from './syncStateMachine.ts';
 
 /* -------------------------------------------------------------------------- */
@@ -301,17 +307,11 @@ function normalizeScopes(
   value: unknown,
   fallback: string[] = ['trade', 'account_manage'],
 ): string[] {
-  if (Array.isArray(value)) {
-    return value
-      .map((scope) => cleanString(scope))
-      .filter(Boolean);
-  }
-
-  if (typeof value === 'string') {
-    return value
-      .split(/[\s,]+/)
-      .map((scope) => scope.trim())
-      .filter(Boolean);
+  if (value) {
+    const parsed = parseRawScopes(typeof value === 'string' ? value : Array.isArray(value) ? value : undefined);
+    if (parsed.length > 0) {
+      return parsed;
+    }
   }
 
   return [...fallback];
@@ -429,9 +429,11 @@ export function getDerivOAuthConfig(
   }
 
   const scopes =
-    cleanString(process.env.DERIV_OAUTH_SCOPE) ||
-    DERIV_OAUTH_SCOPE ||
-    'trade account_manage';
+    getLoginScopeString(
+      cleanString(process.env.deriv_oauth_scope) ||
+      cleanString(process.env.DERIV_OAUTH_SCOPE) ||
+      DERIV_OAUTH_SCOPE
+    );
 
   return {
     clientId,
@@ -879,8 +881,16 @@ function extractAccountsFromResponse(
     return data.authorize.account_list;
   }
 
+  if (Array.isArray(data?.authorize?.accounts_list)) {
+    return data.authorize.accounts_list;
+  }
+
   if (Array.isArray(data?.data?.authorize?.account_list)) {
     return data.data.authorize.account_list;
+  }
+
+  if (Array.isArray(data?.data?.authorize?.accounts_list)) {
+    return data.data.authorize.accounts_list;
   }
 
   if (Array.isArray(data?.data)) {
@@ -899,8 +909,16 @@ function extractAccountsFromResponse(
     return data.account_list;
   }
 
+  if (Array.isArray(data?.accounts_list)) {
+    return data.accounts_list;
+  }
+
   if (Array.isArray(data?.data?.account_list)) {
     return data.data.account_list;
+  }
+
+  if (Array.isArray(data?.data?.accounts_list)) {
+    return data.data.accounts_list;
   }
 
   if (
@@ -2992,6 +3010,15 @@ export async function handleDerivOAuthCallback(
     const message =
       error?.message ||
       'Deriv OAuth token exchange failed.';
+
+    console.error('[DerivOAuth:TokenExchange:Error]', {
+      errorMessage: message,
+      errorStack: error?.stack,
+      rawError: error,
+      isVercel: Boolean(process.env.VERCEL),
+      vercelRegion: process.env.VERCEL_REGION || 'local',
+      timestamp: new Date().toISOString(),
+    });
 
     logger.error(
       '[DerivOAuth] OAuth callback processing failed.',

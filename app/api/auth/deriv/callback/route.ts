@@ -1,15 +1,16 @@
 /**
  * AppexQuant Markets Global - Hardened Deriv OAuth Callback Route Handler
- * Endpoint: /api/auth/deriv/callback
- * 
- * Production Vercel Serverless / Edge Function Route:
+ * File: app/api/auth/deriv/callback/route.ts
+ *
+ * Production Vercel Serverless / Next.js App Router Route:
  * - Uses unified scope normalization from lib/auth/derivScope.ts (plus for OAuth redirects, comma for API).
  * - Extracts authorization code from incoming request.
  * - Exchanges authorization code for access/refresh tokens using comma-normalized scope string.
  * - Validates token response and explicitly parses accounts_list / account_list array returned by Deriv.
  * - When account discovery fails: returns a detailed structured JSON error response (including raw error
  *   payload and actionable recovery instructions) instead of entering a 307 redirect loop.
- * - Granular error logging for debugging discovery failures across production and local environments.
+ * - Vercel Production Environment Guard: logs detailed diagnostic context for invalid scopes,
+ *   expired auth codes, or unauthorized account mapping.
  */
 
 import { handleDerivOAuthCallback } from '@/src/services/deriv/oauthServerService.ts';
@@ -62,7 +63,7 @@ export async function GET(request: Request): Promise<Response> {
   // Clear temporary OAuth state cookie immediately to prevent replay
   headers.append('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=0`);
   headers.set('X-Auth-Scope-Backend', getBackendScopeString());
-  headers.set('X-Vercel-Auth-Guard', 'ACTIVE');
+  headers.set('X-Vercel-Auth-Guard', 'ENABLED');
   headers.set('Content-Type', 'application/json');
 
   // Vercel diagnostic log
@@ -247,6 +248,7 @@ export async function GET(request: Request): Promise<Response> {
       ? rawDest
       : '/';
 
+  // If client prefers JSON or is an AJAX/API call, respond with success JSON; otherwise perform 302 redirect to app
   const acceptsHtml = request.headers.get('accept')?.includes('text/html');
   if (acceptsHtml) {
     headers.delete('Content-Type');

@@ -24,7 +24,13 @@
  * Deriv Options API connection layer, not this OAuth service.
  */
 
-export const DERIV_OAUTH_SCOPE = 'trade account_manage';
+import {
+  getLoginScopeString,
+  getBackendScopeString,
+  parseRawScopes,
+} from '../lib/auth/derivScope.ts';
+
+export const DERIV_OAUTH_SCOPE = getLoginScopeString();
 
 export const DERIV_AUTH_BASE_URL =
   'https://auth.deriv.com/oauth2/auth';
@@ -227,8 +233,7 @@ export function buildAuthUrl(
 
   params.set(
     'scope',
-    clean(options.scope) ||
-      DERIV_OAUTH_SCOPE,
+    getLoginScopeString(options.scope || DERIV_OAUTH_SCOPE),
   );
 
   params.set(
@@ -454,7 +459,23 @@ export async function exchangeCodeForToken(
     const description =
       typeof payload.error_description === 'string'
         ? payload.error_description
-        : 'OAuth token exchange failed.';
+        : typeof payload.message === 'string'
+          ? payload.message
+          : 'OAuth token exchange failed.';
+
+    console.error('[DerivOAuth:TokenExchange:Error]', {
+      status: response.status,
+      statusText: response.statusText,
+      errorCode,
+      errorDescription: description,
+      rawPayload: payload,
+      tokenEndpoint,
+      clientIdPrefix: resolvedClientId ? `${resolvedClientId.substring(0, 4)}***` : 'missing',
+      redirectUri: callbackUri,
+      isVercel: Boolean(process.env.VERCEL),
+      vercelRegion: process.env.VERCEL_REGION || 'local',
+      timestamp: new Date().toISOString(),
+    });
 
     throw new Error(
       `Deriv OAuth token exchange failed: ${errorCode} - ${description}`,
@@ -610,15 +631,19 @@ function extractAccounts(
     payload as Record<string, unknown>;
 
   const authorize = root.authorize as Record<string, unknown> | undefined;
-  if (authorize && Array.isArray(authorize.account_list)) {
-    return authorize.account_list.filter(
-      (value): value is DerivAccount =>
-        Boolean(value && typeof value === 'object'),
-    );
+  if (authorize) {
+    if (Array.isArray(authorize.account_list)) {
+      return authorize.account_list.filter((v): v is DerivAccount => Boolean(v && typeof v === 'object'));
+    }
+    if (Array.isArray(authorize.accounts_list)) {
+      return authorize.accounts_list.filter((v): v is DerivAccount => Boolean(v && typeof v === 'object'));
+    }
+    if (Array.isArray(authorize.accounts)) {
+      return authorize.accounts.filter((v): v is DerivAccount => Boolean(v && typeof v === 'object'));
+    }
   }
 
-  const data =
-    root.data;
+  const data = root.data;
 
   if (
     data &&
@@ -628,11 +653,16 @@ function extractAccounts(
       data as Record<string, unknown>;
 
     const dataAuthorize = dataRecord.authorize as Record<string, unknown> | undefined;
-    if (dataAuthorize && Array.isArray(dataAuthorize.account_list)) {
-      return dataAuthorize.account_list.filter(
-        (value): value is DerivAccount =>
-          Boolean(value && typeof value === 'object'),
-      );
+    if (dataAuthorize) {
+      if (Array.isArray(dataAuthorize.account_list)) {
+        return dataAuthorize.account_list.filter((v): v is DerivAccount => Boolean(v && typeof v === 'object'));
+      }
+      if (Array.isArray(dataAuthorize.accounts_list)) {
+        return dataAuthorize.accounts_list.filter((v): v is DerivAccount => Boolean(v && typeof v === 'object'));
+      }
+      if (Array.isArray(dataAuthorize.accounts)) {
+        return dataAuthorize.accounts.filter((v): v is DerivAccount => Boolean(v && typeof v === 'object'));
+      }
     }
 
     if (
@@ -657,6 +687,22 @@ function extractAccounts(
       )
     ) {
       return dataRecord.account_list.filter(
+        (
+          value,
+        ): value is DerivAccount =>
+          Boolean(
+            value &&
+            typeof value === 'object',
+          ),
+      );
+    }
+
+    if (
+      Array.isArray(
+        dataRecord.accounts_list,
+      )
+    ) {
+      return dataRecord.accounts_list.filter(
         (
           value,
         ): value is DerivAccount =>
@@ -700,6 +746,20 @@ function extractAccounts(
     Array.isArray(root.account_list)
   ) {
     return root.account_list.filter(
+      (
+        value,
+      ): value is DerivAccount =>
+        Boolean(
+          value &&
+          typeof value === 'object',
+        ),
+    );
+  }
+
+  if (
+    Array.isArray(root.accounts_list)
+  ) {
+    return root.accounts_list.filter(
       (
         value,
       ): value is DerivAccount =>

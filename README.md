@@ -236,6 +236,32 @@ When limits are exceeded, the server returns an **HTTP 429 Too Many Requests** e
 
 ---
 
+## 🔑 Environment Variable Configuration
+
+Create a `.env` file in the project root with the following configuration:
+
+```env
+# Application Environment
+NODE_ENV=production
+APP_ENV=production
+PORT=3000
+
+# Deriv OAuth & API Credentials
+DERIV_APP_ID=61040
+DERIV_APP_SECRET=your_deriv_app_secret_here
+DERIV_OAUTH_SCOPE=read,trade,admin,payments # or space-separated: "read trade admin payments"
+DERIV_WS_URL=wss://ws.derivws.com/websockets/v3
+
+# Database & Storage
+POSTGRES_CONNECTION_STRING=postgresql://postgres:password@localhost:5432/appexquant_prod
+
+# Security & Tokens
+SESSION_SECRET=your_32_byte_hex_session_secret_key_here
+CRON_SECRET=your_cron_job_secret_token
+```
+
+---
+
 ## 🛠️ Project Monorepo Structure
 
 ```

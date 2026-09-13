@@ -33,6 +33,7 @@ import { SchedulingCalendar } from '../components/automation/SchedulingCalendar.
 import { SocialObservabilityDashboard } from '../components/automation/SocialObservabilityDashboard.tsx';
 import { SyncPublishOverride } from '../components/automation/SyncPublishOverride.tsx';
 import { ExecutionLogsAuditTable } from '../components/automation/ExecutionLogsAuditTable.tsx';
+import { WebhookPayloadInspector } from '../components/automation/WebhookPayloadInspector.tsx';
 
 import { CollapsibleText } from '../components/common/CollapsibleText.tsx';
 import { StatusPill } from '../components/ui/StatusPill.tsx';
@@ -49,12 +50,13 @@ import {
   Radio,
   Sparkles,
   Share2,
+  Code2,
 } from 'lucide-react';
 
 export const AutomationControlCenterView: React.FC = () => {
   // Navigation Tabs: Algos vs Social Distribution
   const [activeDomain, setActiveDomain] = useState<'SOCIAL_DISTRIBUTION' | 'ALGO_EXECUTION'>('SOCIAL_DISTRIBUTION');
-  const [socialTab, setSocialTab] = useState<'CALENDAR' | 'VAULT' | 'ANALYTICS' | 'LOGS'>('CALENDAR');
+  const [socialTab, setSocialTab] = useState<'CALENDAR' | 'VAULT' | 'ANALYTICS' | 'LOGS' | 'INSPECTOR'>('CALENDAR');
 
   // Algo Trading Engine State
   const [systemStatus, setSystemStatus] = useState<SystemAutomationStatus>(
@@ -246,6 +248,7 @@ export const AutomationControlCenterView: React.FC = () => {
               { id: 'VAULT', label: 'Credential Vault', icon: KeyRound },
               { id: 'ANALYTICS', label: 'Real-Time Observability', icon: BarChart3 },
               { id: 'LOGS', label: 'Audit Trail & Retry', icon: FileText },
+              { id: 'INSPECTOR', label: 'Webhook Payload Inspector', icon: Code2 },
             ].map((tab) => {
               const Icon = tab.icon;
               const isSelected = socialTab === tab.id;
@@ -261,6 +264,9 @@ export const AutomationControlCenterView: React.FC = () => {
                 >
                   <Icon className="w-3.5 h-3.5" />
                   <span>{tab.label}</span>
+                  {tab.id === 'INSPECTOR' && (
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                  )}
                 </button>
               );
             })}
@@ -312,6 +318,9 @@ export const AutomationControlCenterView: React.FC = () => {
               selectedStatus={logFilterStatus}
             />
           )}
+
+          {/* SUB-VIEW 5: WEBHOOK PAYLOAD INSPECTOR */}
+          {socialTab === 'INSPECTOR' && <WebhookPayloadInspector />}
         </div>
       ) : (
         /* DOMAIN 2: ALGORITHMIC TRADING EXECUTION LOOPS */

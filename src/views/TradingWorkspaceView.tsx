@@ -7,6 +7,7 @@ import { ScenarioEngine } from '../components/analysis/ScenarioEngine.tsx';
 import { AiExplanationPanel } from '../components/analysis/AiExplanationPanel.tsx';
 import { ExecutionCommandDesk } from '../components/eas/ExecutionCommandDesk.tsx';
 import { PositionsPanel } from '../components/trading/PositionsPanel.tsx';
+import { AntiTiltCircuitBreaker } from '../components/risk/AntiTiltCircuitBreaker.tsx';
 import { VoiceStatusToggle } from '../components/trading/VoiceStatusToggle.tsx';
 import { MarketSelectorModal } from '../components/market/MarketSelectorModal.tsx';
 import { PriceTriggerAlertModal } from '../components/alerts/PriceTriggerAlertModal.tsx';
@@ -113,6 +114,7 @@ export const TradingWorkspaceView: React.FC = () => {
 
         {/* Right: Execution + Intelligence */}
         <div className="lg:col-span-4 space-y-3 lg:space-y-4">
+          <AntiTiltCircuitBreaker accountId="ACC-LIVE-01" currentEquity={10450} />
           <div className="bg-bg-surface p-3 rounded-2xl border border-border-color shadow-sm">
             <ExecutionCommandDesk onOrderExecuted={(evt) => setConfirmedOrder(evt)} />
           </div>

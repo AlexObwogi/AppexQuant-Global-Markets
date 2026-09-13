@@ -39,7 +39,11 @@ export type AppViewRoute =
   | 'education'
   | 'p2p'
   | 'ai-analysis'
-  | 'strategy-lab';
+  | 'strategy-lab'
+  | 'audit'
+  | 'risk-calculator'
+  | 'creator-portal'
+  | 'developer';
 
 export interface ToastNotification {
   id: string;

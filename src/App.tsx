@@ -32,6 +32,10 @@ import { EducationView } from './views/EducationView.tsx';
 import { P2PView } from './views/P2PView.tsx';
 import { MarketAnalysisView } from './views/MarketAnalysisView.tsx';
 import { DashboardErrorView } from './views/DashboardErrorView.tsx';
+import { AuditTrailViewer } from './components/audit/AuditTrailViewer.tsx';
+import { RiskMirroringCalculator } from './components/calculator/RiskMirroringCalculator.tsx';
+import { CreatorRevenueDashboard } from './components/creator/CreatorRevenueDashboard.tsx';
+import { DeveloperPortalView } from './components/developer/DeveloperPortalView.tsx';
 import { Lock, ShieldAlert } from 'lucide-react';
 import { Button } from './components/ui/Button.tsx';
 
@@ -102,6 +106,14 @@ function ActiveViewRenderer() {
       return <LeaderboardView />;
     case 'account':
       return <AccountView />;
+    case 'audit':
+      return <AuditTrailViewer />;
+    case 'risk-calculator':
+      return <RiskMirroringCalculator />;
+    case 'creator-portal':
+      return <CreatorRevenueDashboard />;
+    case 'developer':
+      return <DeveloperPortalView />;
     case 'legal':
       return <LegalView />;
     case 'admin':

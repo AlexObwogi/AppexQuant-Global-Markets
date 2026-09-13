@@ -47,6 +47,10 @@ export const navItems: NavItem[] = [
   { id: 'analytics', label: 'Portfolio & Analytics', icon: <PieChart className="w-4 h-4" />, group: 'core' },
 
   // Group 2: Intelligence & Strategy Hub
+  { id: 'audit', label: 'Trade Audit Ledger (SHA-256)', icon: <ShieldCheck className="w-4 h-4 text-emerald-400" />, group: 'resources', badge: 'Ledger' },
+  { id: 'risk-calculator', label: 'Prop Risk-Mirroring Calc', icon: <LineChart className="w-4 h-4 text-primary" />, group: 'resources' },
+  { id: 'creator-portal', label: 'Creator Revenue Portal', icon: <DollarSign className="w-4 h-4 text-amber-400" />, group: 'resources', badge: 'Earn' },
+  { id: 'developer', label: 'Developer API & Gateway', icon: <Code2 className="w-4 h-4 text-cyan-400" />, group: 'resources', badge: 'v1' },
   { id: 'education', label: 'Education Hub (Academy)', icon: <GraduationCap className="w-4 h-4 text-color-info" />, group: 'resources', badge: 'New' },
   { id: 'ai-analysis', label: 'AI Intelligence & Strategy Lab', icon: <Brain className="w-4 h-4 text-accent-primary" />, group: 'resources', badge: 'Pro' },
   { id: 'backtest', label: 'Backtesting Engine & EA Hub', icon: <LineChart className="w-4 h-4" />, group: 'resources' },

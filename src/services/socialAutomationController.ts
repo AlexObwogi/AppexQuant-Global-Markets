@@ -10,6 +10,8 @@ import crypto from 'crypto';
 import { createSuccessResponse, createErrorResponse } from '../types/api.ts';
 import { encryptSensitiveData, decryptSensitiveData } from './security.ts';
 import { logAuditEvent } from '../observability/audit.ts';
+import { webhookInspectorService } from './webhookInspectorService.ts';
+import { ExtendedIntegrationPlatform, WebhookFilterOptions } from '../types/webhookInspector.ts';
 
 // In-Memory Persistent Store for Social Automation (Backed by PostgreSQL models schema)
 interface StoredChannel {
@@ -525,5 +527,68 @@ export const socialAutomationController = {
     log.executedAt = new Date().toISOString();
 
     res.json(createSuccessResponse({ success: true, message: `Log #${logId} retried and delivered.` }));
+  },
+
+  // 6. WEBHOOK PAYLOAD INSPECTOR ENDPOINTS
+  async getWebhookPayloads(req: Request, res: Response) {
+    const filters: WebhookFilterOptions = {
+      platform: req.query.platform as string,
+      direction: req.query.direction as any,
+      status: req.query.status as any,
+      schemaStatus: req.query.schemaStatus as any,
+      searchQuery: req.query.q as string,
+    };
+    const list = await webhookInspectorService.getPayloads(filters);
+    res.json(createSuccessResponse(list));
+  },
+
+  async simulateWebhookPayload(req: Request, res: Response) {
+    const { platform, direction = 'INCOMING', endpointUrl, headers = {}, payload = {} } = req.body || {};
+    if (!platform || !payload) {
+      return res.status(400).json(createErrorResponse('Platform and payload are required', 'VALIDATION_ERROR'));
+    }
+
+    const result = await webhookInspectorService.simulateReplay({
+      platform: platform as ExtendedIntegrationPlatform,
+      direction,
+      endpointUrl: endpointUrl || `/api/v1/automation/webhooks/incoming/${platform.toLowerCase()}`,
+      httpMethod: 'POST',
+      headers,
+      payload,
+    });
+
+    res.json(createSuccessResponse(result.executedRecord));
+  },
+
+  clearWebhookPayloads(req: Request, res: Response) {
+    webhookInspectorService.clearBuffer();
+    res.json(createSuccessResponse({ cleared: true }));
+  },
+
+  receiveIncomingWebhook(req: Request, res: Response) {
+    const platformParam = (req.params.platform || 'custom').toUpperCase();
+    let detectedPlatform: ExtendedIntegrationPlatform = 'CUSTOM_WEBHOOK';
+    if (platformParam.includes('TELEGRAM')) detectedPlatform = 'TELEGRAM_BOT';
+    else if (platformParam.includes('DISCORD')) detectedPlatform = 'DISCORD_WEBHOOK';
+    else if (platformParam.includes('META') || platformParam.includes('INSTAGRAM')) detectedPlatform = 'META_INSTAGRAM';
+    else if (platformParam.includes('TIKTOK')) detectedPlatform = 'TIKTOK';
+    else if (platformParam.includes('WHATSAPP')) detectedPlatform = 'WHATSAPP_BUSINESS';
+    else if (platformParam.includes('TRADINGVIEW')) detectedPlatform = 'TRADINGVIEW';
+
+    const recorded = webhookInspectorService.recordPayload(
+      'INCOMING',
+      detectedPlatform,
+      req.originalUrl || `/api/v1/automation/webhooks/incoming/${req.params.platform}`,
+      (req.method as any) || 'POST',
+      200,
+      req.headers as Record<string, string>,
+      req.body || {},
+      { ok: true, status: 'RECEIVED_AND_INSPECTED', timestamp: new Date().toISOString() },
+      Math.floor(10 + Math.random() * 25),
+      `${platformParam.toLowerCase()}.event`,
+      req.ip || req.socket.remoteAddress || '127.0.0.1'
+    );
+
+    res.json(createSuccessResponse({ ok: true, inspectorId: recorded.id, schemaValidation: recorded.schemaValidation }));
   },
 };

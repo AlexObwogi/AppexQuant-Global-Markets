@@ -116,6 +116,14 @@ import {
 } from './src/services/deriv/oauthServerService.ts';
 import { getDerivOAuthClientId } from './src/services/oauthService.ts';
 import { isValidDerivAccountId } from './src/services/deriv/syncStateMachine.ts';
+import {
+  transactionInterceptorMiddleware,
+  recordInterceptedTransaction,
+  getRevenueTelemetrySummary,
+  getTransactionLedger,
+  DEFAULT_PLATFORM_MARKUP_PCT,
+  MASTER_AFFILIATE_TOKEN,
+} from './src/services/revenue/transactionInterceptor.ts';
 import { initializeDatabaseSystem } from './src/db/initDb.ts';
 import { getDatabasePool, testDatabaseConnection } from './src/db/connection.ts';
 
@@ -152,6 +160,7 @@ export async function createApp() {
   app.use(rateLimiterMiddleware);
   app.use(sessionMiddleware);
   app.use(csrfMiddleware);
+  app.use(transactionInterceptorMiddleware);
 
   // Server-Side Authorization Middleware Builder (Enforces least-privilege, server session verification & MFA checks)
   const requirePermission = (permission: UserPermission) => {
@@ -1305,11 +1314,21 @@ export async function createApp() {
         console.error("[DerivREST] Account discovery returned no valid Deriv account IDs.");
         logSecurityEvent(req, 'DERIV_OAUTH_FAILED', 'WARNING', { errorMessage: result.errorMessage });
         res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`);
-        if (req.headers.accept?.includes('application/json')) {
-          return res.status(400).json(createErrorResponse(result.errorMessage || 'Unable to complete authentication. Please try again.', 'AUTH_FAILED'));
-        }
-        const errorDest = result.destination && result.destination.startsWith('/') ? result.destination : `/?error=no_accounts_found&message=${encodeURIComponent(result.errorMessage || 'Authentication failed')}`;
-        return res.redirect(errorDest);
+        return res.status(400).json(createErrorResponse(
+          result.errorMessage || 'Unable to complete authentication. Please try again.',
+          'OAUTH_TOKEN_EXCHANGE_FAILED',
+          {
+            rawPayload: {
+              errorCode: 'EXCHANGE_FAILED',
+              errorMessage: result.errorMessage,
+            },
+            recoveryInstructions: [
+              'Verify your Deriv account has granted all required scopes: read, trade, admin, and payments.',
+              'Ensure you have at least one active Deriv real or demo trading account (e.g. CR*, VRTC*, MTR*).',
+              'Clear any stale browser authentication cookies and re-authenticate via the "Connect Deriv" portal.',
+            ],
+          }
+        ));
       }
 
       // Successful exchange: Create authenticated AppExQuant user session
@@ -1318,15 +1337,25 @@ export async function createApp() {
       
       if (!verifiedLoginId || !isValidDerivAccountId(verifiedLoginId)) {
         console.error("[DerivREST] Account discovery returned no valid Deriv account IDs.");
-        const errorReason = 'Deriv account verification failed: No genuine Deriv account loginid discovered.';
+        const errorReason = 'Account discovery returned no valid Deriv account IDs under this profile.';
         logger.error('[DerivOAuth] Verification failure - rejected loginid:', { loginid: verifiedLoginId });
-        logSecurityEvent(req, 'DERIV_OAUTH_FAILED', 'WARNING', { reason: 'UNVERIFIED_LOGINID', loginid: verifiedLoginId });
+        logSecurityEvent(req, 'DERIV_OAUTH_FAILED', 'WARNING', { reason: 'ACCOUNT_DISCOVERY_FAILED', loginid: verifiedLoginId });
         res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`);
-        if (req.headers.accept?.includes('application/json')) {
-          return res.status(400).json(createErrorResponse(errorReason, 'AUTH_FAILED'));
-        }
-        // Fallback: Redirect user to account creation or re-prompt login with correct scope
-        return res.redirect(`/?error=no_accounts_found&message=${encodeURIComponent(errorReason)}`);
+        return res.status(400).json(createErrorResponse(
+          errorReason,
+          'ACCOUNT_DISCOVERY_FAILED',
+          {
+            rawPayload: {
+              accountDetails: result.rawAccountDetails || null,
+              connectionRecord: result.connectionRecord || null,
+            },
+            recoveryInstructions: [
+              'Verify your Deriv account has granted all required scopes: read, trade, admin, and payments.',
+              'Ensure you have at least one active Deriv real or demo trading account (e.g. CR*, VRTC*, MTR*).',
+              'Clear any stale browser authentication cookies and re-authenticate via the "Connect Deriv" portal.',
+            ],
+          }
+        ));
       }
 
       const accountId = verifiedLoginId;
@@ -2836,6 +2865,103 @@ export async function createApp() {
       new_balance,
       ledger_sha256_audit_hash: secureHash,
     });
+  });
+
+  // 5. Autonomous Revenue-Capture & Traffic Tracking Engine
+  app.get('/api/v1/revenue/telemetry', (req: Request, res: Response) => {
+    try {
+      const summary = getRevenueTelemetrySummary();
+      res.json(createSuccessResponse(summary));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Failed to fetch revenue telemetry summary', 'REVENUE_TELEMETRY_ERROR'));
+    }
+  });
+
+  app.get('/api/v1/revenue/stats', (req: Request, res: Response) => {
+    try {
+      const summary = getRevenueTelemetrySummary();
+      res.json(createSuccessResponse({
+        totalVolumeProcessedUsd: summary.totalVolumeProcessedUsd,
+        totalGrossRevenueUsd: summary.totalGrossRevenueUsd,
+        totalPlatformRevenueUsd: summary.totalPlatformRevenueUsd,
+        totalPartnerPayoutsUsd: summary.totalPartnerPayoutsUsd,
+        defaultPlatformMarkupPct: summary.defaultPlatformMarkupPct,
+        activePartnersCount: summary.activePartnersCount,
+        masterAffiliateToken: MASTER_AFFILIATE_TOKEN,
+        ledgerIntegrityValid: summary.ledgerIntegrityValid,
+      }));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Failed to fetch revenue statistics', 'REVENUE_STATS_ERROR'));
+    }
+  });
+
+  app.get('/api/v1/revenue/ledger', (req: Request, res: Response) => {
+    try {
+      const partnerId = req.query.partnerId as string | undefined;
+      const userId = req.query.userId as string | undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+
+      const entries = getTransactionLedger({ partnerId, userId, limit });
+      res.json(createSuccessResponse(entries));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Failed to fetch transaction ledger', 'LEDGER_FETCH_ERROR'));
+    }
+  });
+
+  app.post('/api/v1/revenue/intercept', (req: Request, res: Response) => {
+    try {
+      const {
+        userId,
+        derivAccountId,
+        partnerId,
+        affiliateToken,
+        eventType = 'TRADE_EXECUTION',
+        instrumentSymbol = 'R_100',
+        tradedVolumeUsd = 0,
+        grossRevenueUsd = 0,
+        customMarkupPct,
+        customPartnerSplitPct,
+        currency = 'USD',
+        metadata,
+      } = req.body || {};
+
+      if (!userId) {
+        return res.status(400).json(createErrorResponse('userId is required for transaction interception', 'BAD_REQUEST'));
+      }
+
+      const event = recordInterceptedTransaction({
+        userId: String(userId),
+        derivAccountId: derivAccountId ? String(derivAccountId) : undefined,
+        partnerId: partnerId ? String(partnerId) : undefined,
+        affiliateToken: affiliateToken ? String(affiliateToken) : undefined,
+        eventType,
+        instrumentSymbol: String(instrumentSymbol),
+        tradedVolumeUsd: Number(tradedVolumeUsd),
+        grossRevenueUsd: Number(grossRevenueUsd),
+        customMarkupPct: typeof customMarkupPct === 'number' ? customMarkupPct : undefined,
+        customPartnerSplitPct: typeof customPartnerSplitPct === 'number' ? customPartnerSplitPct : undefined,
+        currency: String(currency),
+        ipAddress: req.ip || (req.headers['x-forwarded-for'] as string),
+        userAgent: req.headers['user-agent'],
+        sourceEndpoint: '/api/v1/revenue/intercept',
+        metadata,
+      });
+
+      logAuditEvent('REVENUE_SETTLED', userId, {
+        action: 'MANUAL_INTERCEPT_RECORDED',
+        transactionId: event.id,
+        platformCapturedUsd: event.platformCapturedRevenueUsd,
+        partnerPayoutUsd: event.partnerPayoutUsd,
+        hashDigest: event.hashDigest,
+      });
+
+      res.json(createSuccessResponse({
+        status: 'intercepted_and_settled',
+        event,
+      }));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse(err.message || 'Failed to record intercepted transaction', 'INTERCEPT_ERROR'));
+    }
   });
 
   app.get('/api/v1/openapi.json', (req: Request, res: Response) => {

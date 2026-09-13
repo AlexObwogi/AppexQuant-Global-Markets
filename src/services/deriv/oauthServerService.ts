@@ -2846,7 +2846,6 @@ export async function handleDerivOAuthCallback(
         transaction.codeVerifier,
         redirectUri,
         oauthConfig.clientId,
-        oauthConfig.clientSecret,
       );
 
     const accessToken =

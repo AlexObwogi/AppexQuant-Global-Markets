@@ -141,7 +141,7 @@ export const DerivIntegrationsView: React.FC = () => {
             <div className="space-y-2.5">
               <div className="flex justify-between text-xs font-mono">
                 <span className="text-text-secondary">Client ID:</span>
-                <span className="text-text-primary font-bold">{oauthConfig?.clientId || '1001'}</span>
+                <span className="text-text-primary font-bold">{oauthConfig?.clientId || 'Configured in Environment'}</span>
               </div>
               <div className="flex justify-between text-xs font-mono">
                 <span className="text-text-secondary">Redirect URI:</span>

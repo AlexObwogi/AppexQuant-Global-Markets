@@ -148,7 +148,7 @@ let nextPostId = 103;
 
 const logTable: StoredExecutionLog[] = [
   {
-    id: 1089,
+    id: 1090,
     postId: 101,
     channelId: 1,
     channelName: 'Telegram VIP Signals',

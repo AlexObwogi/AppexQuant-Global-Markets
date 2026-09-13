@@ -249,6 +249,7 @@ export class DerivGateway {
   private clientSessions = new Map<WebSocket, { userId?: string; loginid?: string }>();
 
   private webSocketServer: WebSocketServer | null = null;
+  private attachedServers = new WeakSet<HttpServer>();
 
   private connectedAt: number | null = null;
 
@@ -2086,6 +2087,11 @@ export class DerivGateway {
     path = '/api/deriv/stream',
   ): WebSocketServerType {
     const wss = this.getOrCreateWebSocketServer();
+
+    if (this.attachedServers.has(server)) {
+      return wss;
+    }
+    this.attachedServers.add(server);
 
     server.on(
       'upgrade',

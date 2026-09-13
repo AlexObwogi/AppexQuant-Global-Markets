@@ -331,6 +331,10 @@ export function buildLoginGatewayUrl(
  * Exchanges an OAuth authorization code for
  * an OAuth access token using PKCE.
  *
+ * Public PKCE Client: Does NOT send client_secret or Authorization: Basic header.
+ * Deriv OAuth 2.0 public clients reject client_secret with invalid_client:
+ * "The OAuth 2.0 Client supports client authentication method 'none', but method 'client_secret_post' was requested."
+ *
  * Server-side only.
  */
 export async function exchangeCodeForToken(
@@ -338,7 +342,6 @@ export async function exchangeCodeForToken(
   codeVerifier: string,
   redirectUri: string,
   clientId?: string,
-  clientSecret?: string,
 ): Promise<DerivTokenResponse> {
   const authorizationCode =
     clean(code);
@@ -347,7 +350,8 @@ export async function exchangeCodeForToken(
     clean(codeVerifier);
 
   const callbackUri =
-    clean(redirectUri);
+    clean(redirectUri) ||
+    clean(process.env.DERIV_REDIRECT_URI);
 
   if (!authorizationCode) {
     throw new Error(
@@ -369,6 +373,7 @@ export async function exchangeCodeForToken(
 
   const resolvedClientId =
     clean(clientId) ||
+    clean(process.env.DERIV_CLIENT_ID) ||
     getDerivOAuthClientId();
 
   if (!resolvedClientId) {
@@ -408,24 +413,6 @@ export async function exchangeCodeForToken(
     'redirect_uri',
     callbackUri,
   );
-
-  /**
-   * A client secret is optional.
-   *
-   * It is only sent when explicitly supplied
-   * by the caller.
-   *
-   * No environment fallback is used.
-   */
-  const explicitClientSecret =
-    clean(clientSecret);
-
-  if (explicitClientSecret) {
-    body.set(
-      'client_secret',
-      explicitClientSecret,
-    );
-  }
 
   const response =
     await fetch(

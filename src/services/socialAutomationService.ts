@@ -346,7 +346,7 @@ export class SocialAutomationService {
   private getMockLogs(filterStatus?: string): { logs: PostExecutionLogDTO[]; total: number } {
     const allLogs: PostExecutionLogDTO[] = [
       {
-        id: 1089,
+        id: 1090,
         postId: 104,
         channelId: 1,
         channelName: 'Telegram VIP Signals',

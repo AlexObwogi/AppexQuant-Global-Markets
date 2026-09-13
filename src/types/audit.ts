@@ -26,7 +26,9 @@ export type AuditEventType =
   | 'CIRCUIT_BREAKER_TRIGGERED'
   | 'CIRCUIT_BREAKER_OVERRIDDEN'
   | 'RISK_CONFIG_UPDATED'
-  | 'REVENUE_SETTLED';
+  | 'REVENUE_SETTLED'
+  | 'PAYMENT_PROCESSED'
+  | 'PAYMENT_FAILED';
 
 export interface AuditEvent {
   id: string;

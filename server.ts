@@ -62,6 +62,7 @@ import { dbQueries } from './src/lib/db/prisma.ts';
 import { leaderboardService } from './src/services/leaderboard/leaderboardService.ts';
 import { LeaderboardWindow } from './src/types/leaderboard.ts';
 import { fimMonitor } from './src/services/security/fileIntegrityMonitor.ts';
+import { socialAutomationController } from './src/services/socialAutomationController.ts';
 
 import {
   initiateDerivOAuth,
@@ -2415,6 +2416,25 @@ export async function createApp() {
       res.end();
     });
   });
+
+  // ========================================================
+  // Social Automation Control Center API Endpoints
+  // ========================================================
+  app.get('/api/v1/automation/channels', (req: Request, res: Response) => socialAutomationController.getChannels(req, res));
+  app.post('/api/v1/automation/channels', (req: Request, res: Response) => socialAutomationController.saveChannel(req, res));
+  app.delete('/api/v1/automation/channels/:id', (req: Request, res: Response) => socialAutomationController.deleteChannel(req, res));
+  app.post('/api/v1/automation/channels/:id/verify', (req: Request, res: Response) => socialAutomationController.verifyChannel(req, res));
+
+  app.get('/api/v1/automation/calendar', (req: Request, res: Response) => socialAutomationController.getCalendar(req, res));
+  app.post('/api/v1/automation/posts', (req: Request, res: Response) => socialAutomationController.createPost(req, res));
+  app.patch('/api/v1/automation/posts/:id', (req: Request, res: Response) => socialAutomationController.updatePost(req, res));
+  app.post('/api/v1/automation/posts/:id/instant-override', (req: Request, res: Response) => socialAutomationController.forceDispatchPost(req, res));
+
+  app.get('/api/v1/automation/analytics/summary', (req: Request, res: Response) => socialAutomationController.getAnalytics(req, res));
+  app.post('/api/v1/automation/override/sync-and-publish', (req: Request, res: Response) => socialAutomationController.syncAndPublishNow(req, res));
+
+  app.get('/api/v1/automation/logs', (req: Request, res: Response) => socialAutomationController.getLogs(req, res));
+  app.post('/api/v1/automation/retry/:log_id', (req: Request, res: Response) => socialAutomationController.retryLog(req, res));
 
   // Log Startup Audit Event
   logAuditEvent('LOGIN', 'SYSTEM', { event: 'SERVER_BOOT', env: config.env });

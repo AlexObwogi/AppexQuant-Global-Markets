@@ -10,50 +10,85 @@
 
 export type ScopeFormat = 'plus' | 'comma' | 'space' | 'array';
 
-export const DEFAULT_FALLBACK_SCOPE_STRING = 'read+trade+admin+payments';
-export const CANONICAL_DERIV_SCOPES = ['read', 'trade', 'admin', 'payments'] as const;
+/**
+ * Valid Deriv OAuth 2.0 Scope Identifiers (per developers.deriv.com/docs/intro/oauth/)
+ * - trade: access to trading operations
+ * - account_manage: write access for account creation/management
+ * - payment: deposit/withdrawal operations (singular)
+ * - application_read: read-only access to registered applications
+ */
+export const VALID_DERIV_OAUTH2_SCOPES = [
+  'trade',
+  'account_manage',
+  'payment',
+  'application_read',
+] as const;
+
+export type ValidDerivScope = (typeof VALID_DERIV_OAUTH2_SCOPES)[number];
+
+export const CANONICAL_DERIV_SCOPES: readonly ValidDerivScope[] = [
+  'trade',
+  'account_manage',
+  'payment',
+  'application_read',
+];
+
+export const DEFAULT_FALLBACK_SCOPE_STRING = 'trade account_manage payment application_read';
+
+/**
+ * Legacy scope mapping dictionary to sanitize old environment variables or cached scope strings.
+ */
+const LEGACY_SCOPE_MAP: Record<string, ValidDerivScope> = {
+  read: 'application_read',
+  payments: 'payment',
+  admin: 'account_manage',
+};
 
 /**
  * Parses any raw scope input (plus, comma, space, semicolon separated or array)
- * into a deduplicated, trimmed array of lowercase scope identifiers.
+ * into a deduplicated, trimmed array of valid Deriv OAuth2 scope identifiers.
  */
 export function parseRawScopes(rawInput?: string | string[] | null): string[] {
   if (!rawInput) {
     return [...CANONICAL_DERIV_SCOPES];
   }
 
+  let rawList: string[] = [];
+
   if (Array.isArray(rawInput)) {
-    const list = rawInput
-      .map((item) => String(item).trim().toLowerCase())
-      .filter((item) => item.length > 0);
-    return Array.from(new Set(list));
+    rawList = rawInput.map((item) => String(item).trim().toLowerCase());
+  } else if (typeof rawInput === 'string') {
+    const cleaned = rawInput
+      .replace(/%2B/gi, '+')
+      .replace(/%20/gi, ' ')
+      .replace(/%2C/gi, ',');
+
+    rawList = cleaned
+      .split(/[\s,;+]+/)
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => s.length > 0);
   }
 
-  if (typeof rawInput !== 'string') {
+  const validSet = new Set<string>();
+
+  for (const item of rawList) {
+    if (LEGACY_SCOPE_MAP[item]) {
+      validSet.add(LEGACY_SCOPE_MAP[item]);
+    } else if (VALID_DERIV_OAUTH2_SCOPES.includes(item as ValidDerivScope)) {
+      validSet.add(item);
+    }
+  }
+
+  if (validSet.size === 0) {
     return [...CANONICAL_DERIV_SCOPES];
   }
 
-  // Handle URL decoded or encoded pluses, commas, spaces, semicolons
-  const cleaned = rawInput
-    .replace(/%2B/gi, '+')
-    .replace(/%20/gi, ' ')
-    .replace(/%2C/gi, ',');
-
-  const parts = cleaned
-    .split(/[\s,;+]+/)
-    .map((s) => s.trim().toLowerCase())
-    .filter((s) => s.length > 0);
-
-  if (parts.length === 0) {
-    return [...CANONICAL_DERIV_SCOPES];
-  }
-
-  return Array.from(new Set(parts));
+  return Array.from(validSet);
 }
 
 /**
  * Reads process.env.deriv_oauth_scope or process.env.DERIV_OAUTH_SCOPE
- * with fallback to "read+trade+admin+payments".
+ * with fallback to "trade account_manage payment application_read".
  */
 export function getRawConfiguredScope(): string {
   if (typeof process === 'undefined' || !process.env) {
@@ -158,7 +193,7 @@ export function normalizeDerivScope(
  */
 export function validateDerivScopes(
   grantedScopes?: string | string[] | null,
-  requiredScopes: string[] = ['read', 'trade']
+  requiredScopes: string[] = ['trade']
 ): {
   valid: boolean;
   missing: string[];

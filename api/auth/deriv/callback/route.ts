@@ -23,7 +23,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const ACTIONABLE_RECOVERY_INSTRUCTIONS = [
-  'Verify your Deriv account has granted all required scopes: read, trade, admin, and payments.',
+  'Verify your Deriv account has granted required OAuth2 scopes: trade, account_manage, payment, and application_read.',
   'Ensure you have at least one active Deriv real or demo trading account (e.g. CR*, VRTC*, MTR*).',
   'Clear any stale browser authentication cookies and re-authenticate via the "Connect Deriv" portal.',
   'If you recently registered, complete your Deriv profile verification to ensure account IDs are provisioned.',
@@ -89,7 +89,7 @@ export async function GET(request: Request): Promise<Response> {
     if (acceptsHtml) {
       const redirectUrl = new URL('/', request.url);
       redirectUrl.searchParams.set('error', errorType);
-      redirectUrl.searchParams.set('message', message);
+      redirectUrl.searchParams.set('message', "We couldn't connect your Deriv account, please try again");
       const errHeaders = new Headers(headers);
       errHeaders.delete('Content-Type');
       errHeaders.set('Location', redirectUrl.toString());

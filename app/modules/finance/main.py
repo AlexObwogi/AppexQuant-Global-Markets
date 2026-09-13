@@ -153,7 +153,7 @@ class AgentTransferRequest(BaseModel):
 @app.post("/api/v1/payments/deriv-agent/request-transfer", tags=["Deriv Payment Agents"])
 async def request_deriv_agent_transfer(payload: AgentTransferRequest):
     """Initiates official payment agent fiat-to-crypto local gateway clearance using scoped tokens."""
-    if "read" not in payload.deriv_oauth_scope and "admin" not in payload.deriv_oauth_scope:
+    if not any(s in payload.deriv_oauth_scope for s in ["payment", "trade", "account_manage", "application_read"]):
         raise HTTPException(status_code=403, detail="Invalid deriv_oauth_scope provided for local payment routing.")
 
     verification_token_hash = hashlib.sha256(f"{payload.user_id}-{datetime.utcnow()}".encode()).hexdigest()[:8]

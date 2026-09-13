@@ -1215,9 +1215,9 @@ export async function createApp() {
       let specificMessage = `Deriv OAuth Initiation Error: ${errorMsg}`;
       let specificCode = 'DERIV_OAUTH_INIT_ERROR';
 
-      if (errorMsg.includes('DERIV_OAUTH_CLIENT_ID') || errorMsg.includes('CLIENT_ID') || errorMsg.includes('client_id')) {
-        specificMessage = 'Deriv OAuth Configuration Error: Missing DERIV_OAUTH_CLIENT_ID environment variable in deployment settings.';
-        specificCode = 'MISSING_DERIV_OAUTH_CLIENT_ID';
+      if (errorMsg.includes('DERIV_CLIENT_ID') || errorMsg.includes('CLIENT_ID') || errorMsg.includes('client_id')) {
+        specificMessage = 'Deriv OAuth Configuration Error: Missing DERIV_CLIENT_ID environment variable in deployment settings.';
+        specificCode = 'MISSING_DERIV_CLIENT_ID';
       } else if (errorMsg.includes('SESSION_SECRET')) {
         specificMessage = 'Deriv OAuth Configuration Error: Missing SESSION_SECRET environment variable for cryptographic state signing.';
         specificCode = 'MISSING_SESSION_SECRET';
@@ -1717,7 +1717,7 @@ export async function createApp() {
         return res.status(422).json(createErrorResponse('No valid Deriv account ID found for OTP request', 'INVALID_ACCOUNT_ID'));
       }
 
-      const appId = (process.env.DERIV_OAUTH_CLIENT_ID || getDerivOAuthClientId() || '').trim();
+      const appId = (process.env.DERIV_CLIENT_ID || getDerivOAuthClientId() || '').trim();
       const otpResult = await requestDerivAccountOtp(targetAccountId, tokenToUse, appId || undefined);
 
       if (!otpResult.success || !otpResult.url) {

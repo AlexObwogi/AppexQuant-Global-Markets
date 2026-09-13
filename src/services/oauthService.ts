@@ -14,11 +14,10 @@
  *   Deriv Options REST API
  *
  * IMPORTANT:
- * - This service uses ONLY DERIV_OAUTH_CLIENT_ID.
+ * - This service uses ONLY DERIV_CLIENT_ID.
  * - No legacy app_id is used.
  * - No legacy V1 API is used.
  * - No legacy WebSocket authentication is used.
- * - No DERIV_APP_ID / 1089 fallback exists.
  * - No app_secret is used as an OAuth credential.
  *
  * Authenticated WebSocket OTP generation belongs to the
@@ -97,30 +96,17 @@ function getEnv(name: string): string {
 
 /**
  * Returns the registered Deriv OAuth 2.0 client ID.
- *
- * There is deliberately NO fallback to:
- * - DERIV_APP_ID
- * - VITE_DERIV_APP_ID
- * - NEXT_PUBLIC_DERIV_APP_ID
- * - numeric app IDs
+ * Uses only canonical DERIV_CLIENT_ID.
  */
 export function getDerivOAuthClientId(): string {
-  return (
-    getEnv('DERIV_OAUTH_CLIENT_ID') ||
-    getEnv('VITE_DERIV_OAUTH_CLIENT_ID') ||
-    getEnv('NEXT_PUBLIC_DERIV_OAUTH_CLIENT_ID')
-  );
+  return getEnv('DERIV_CLIENT_ID');
 }
 
 /**
- * Returns the optional legacy Deriv V1 App ID if present in environment.
+ * Returns the application ID. Uses canonical DERIV_CLIENT_ID.
  */
 export function getDerivAppId(): string {
-  return (
-    getEnv('DERIV_APP_ID') ||
-    getEnv('VITE_DERIV_APP_ID') ||
-    getEnv('NEXT_PUBLIC_DERIV_APP_ID')
-  );
+  return getEnv('DERIV_CLIENT_ID');
 }
 
 /**
@@ -131,7 +117,8 @@ export function getDerivAppId(): string {
  */
 export function getDerivRedirectUri(): string {
   const configured =
-    getEnv('DERIV_OAUTH_REDIRECT_URI');
+    getEnv('DERIV_REDIRECT_URI') ||
+    getEnv('VITE_REDIRECT_URI');
 
   if (configured) {
     return configured;
@@ -167,12 +154,6 @@ export function getDerivRedirectUri(): string {
  * Builds the Deriv OAuth 2.0 authorization URL.
  *
  * Only OAuth 2.0 parameters are generated here.
- *
- * There is intentionally NO:
- * - app_id
- * - app_secret
- * - legacy API parameter
- * - legacy WebSocket parameter
  */
 export function buildAuthUrl(
   options: BuildAuthUrlOptions = {},
@@ -183,7 +164,7 @@ export function buildAuthUrl(
 
   if (!clientId) {
     throw new Error(
-      'Missing DERIV_OAUTH_CLIENT_ID.',
+      'Missing DERIV_CLIENT_ID.',
     );
   }
 
@@ -193,7 +174,7 @@ export function buildAuthUrl(
 
   if (!redirectUri) {
     throw new Error(
-      'Missing DERIV_OAUTH_REDIRECT_URI.',
+      'Missing DERIV_REDIRECT_URI.',
     );
   }
 
@@ -392,7 +373,7 @@ export async function exchangeCodeForToken(
 
   if (!resolvedClientId) {
     throw new Error(
-      'Missing DERIV_OAUTH_CLIENT_ID.',
+      'Missing DERIV_CLIENT_ID.',
     );
   }
 

@@ -367,28 +367,19 @@ export function getDerivOAuthConfig(
   /*
    * CRITICAL:
    *
-   * OAuth client_id comes ONLY from OAuth configuration.
-   *
-   * DERIV_APP_ID is deliberately NOT used as client_id.
+   * OAuth client_id comes ONLY from DERIV_CLIENT_ID.
    */
   const clientId =
     cleanString(
-      process.env.DERIV_OAUTH_CLIENT_ID ||
-      process.env.VITE_DERIV_OAUTH_CLIENT_ID ||
-      process.env.NEXT_PUBLIC_DERIV_OAUTH_CLIENT_ID ||
+      process.env.DERIV_CLIENT_ID ||
       getDerivOAuthClientId(),
     );
 
-  const appId =
-    cleanString(
-      process.env.DERIV_OAUTH_CLIENT_ID ||
-      getDerivAppId(),
-    ) || clientId;
+  const appId = clientId;
 
   const clientSecret =
     cleanString(
-      process.env.DERIV_CLIENT_SECRET ||
-      process.env.CLIENT_SECRET,
+      process.env.DERIV_OAUTH_SECRET,
     );
 
   const proto =
@@ -421,9 +412,7 @@ export function getDerivOAuthConfig(
 
   const configuredRedirect =
     cleanString(
-      process.env.DERIV_OAUTH_REDIRECT_URI ||
-      process.env.OAUTH_REDIRECT_URI ||
-      process.env.REDIRECT_URI ||
+      process.env.DERIV_REDIRECT_URI ||
       process.env.VITE_REDIRECT_URI,
     );
 
@@ -440,7 +429,7 @@ export function getDerivOAuthConfig(
   }
 
   const scopes =
-    cleanString(process.env.DERIV_SCOPES) ||
+    cleanString(process.env.DERIV_OAUTH_SCOPE) ||
     DERIV_OAUTH_SCOPE ||
     'trade account_manage';
 
@@ -450,6 +439,8 @@ export function getDerivOAuthConfig(
     clientSecret,
     redirectUri,
     scopes,
+    affiliateToken: cleanString(process.env.DERIV_AFFILIATE_TOKEN),
+    utmMedium: cleanString(process.env.DERIV_UTM_MEDIUM),
 
     authBaseUrl:
       cleanString(process.env.DERIV_AUTH_URL) ||
@@ -671,7 +662,7 @@ export function initiateDerivOAuth(params: {
 
     if (!oauthConfig.clientId) {
       throw new Error(
-        'DERIV_OAUTH_CLIENT_ID is not configured.',
+        'DERIV_CLIENT_ID is not configured.',
       );
     }
 
@@ -710,16 +701,26 @@ export function initiateDerivOAuth(params: {
     const cookieValue =
       encodeOAuthStateCookie(transaction);
 
+    const extraParams: Record<string, string> = {};
+    if (oauthConfig.affiliateToken) {
+      extraParams['affiliate_token'] = oauthConfig.affiliateToken;
+      extraParams['t'] = oauthConfig.affiliateToken;
+    }
+    if (oauthConfig.utmMedium) {
+      extraParams['utm_medium'] = oauthConfig.utmMedium;
+    }
+
     const authUrl =
       buildAuthUrl({
         clientId: oauthConfig.clientId,
         appId: oauthConfig.appId || undefined,
         redirectUri: oauthConfig.redirectUri,
-        scope: DERIV_OAUTH_SCOPE,
+        scope: oauthConfig.scopes || DERIV_OAUTH_SCOPE,
         state,
         codeChallenge,
         codeChallengeMethod: 'S256',
         action,
+        extraParams: Object.keys(extraParams).length > 0 ? extraParams : undefined,
       });
 
     console.log('[OAUTH_INIT_SUCCESS]', { action });
@@ -2132,7 +2133,7 @@ export function connectUserWithApiToken(
 
       connectionStatus:
         accountId
-          ? 'CONNECTING'
+          ? 'CONNECTED'
           : 'DISCONNECTED',
 
       scopes:
@@ -2692,7 +2693,7 @@ export async function handleDerivOAuthCallback(
         '/?auth_error=configuration&message=OAuth%20client%20ID%20is%20not%20configured',
 
       errorMessage:
-        'DERIV_OAUTH_CLIENT_ID is not configured.',
+        'DERIV_CLIENT_ID is not configured.',
     };
   }
 

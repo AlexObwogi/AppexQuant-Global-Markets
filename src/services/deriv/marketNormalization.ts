@@ -200,8 +200,10 @@ export function normalizeDerivActiveSymbols(rawSymbols: DerivActiveSymbol[]): Ma
   const seenSymbols = new Set<string>();
 
   for (const sym of rawSymbols) {
-    if (!sym.symbol || !sym.display_name) continue;
-    const symbolClean = sym.symbol.trim();
+    const rawSym = sym.symbol || (sym as any).underlying_symbol;
+    const rawName = sym.display_name || (sym as any).underlying_symbol_name || rawSym;
+    if (!rawSym || !rawName) continue;
+    const symbolClean = String(rawSym).trim();
 
     // Reject blacklisted and duplicate symbols
     if (isSymbolBlacklisted(symbolClean) || seenSymbols.has(symbolClean)) {
@@ -210,13 +212,18 @@ export function normalizeDerivActiveSymbols(rawSymbols: DerivActiveSymbol[]): Ma
     seenSymbols.add(symbolClean);
 
     const category = mapDerivCategory(sym.market, sym.submarket);
-    const pip = typeof sym.pip === 'number' && sym.pip > 0 ? sym.pip : 0.0001;
+    const pip = typeof sym.pip === 'number' && sym.pip > 0
+      ? sym.pip
+      : typeof (sym as any).pip_size === 'number' && (sym as any).pip_size > 0
+        ? (sym as any).pip_size
+        : 0.0001;
     const spotPrice = typeof sym.spot === 'number' && sym.spot > 0 ? sym.spot : 0;
 
     let baseCurrency = 'USD';
     let quoteCurrency = 'USD';
-    if (sym.display_name.includes('/')) {
-      const parts = sym.display_name.split('/');
+    const displayName = String(rawName);
+    if (displayName.includes('/')) {
+      const parts = displayName.split('/');
       baseCurrency = parts[0].trim();
       quoteCurrency = parts[1].trim();
     } else {
@@ -228,10 +235,16 @@ export function normalizeDerivActiveSymbols(rawSymbols: DerivActiveSymbol[]): Ma
     const ask = spotPrice > 0 ? spotPrice + pip * 2 : 0;
     const spread = spotPrice > 0 ? Number((pip * 2).toFixed(5)) : 0;
 
+    const exchangeIsOpen = typeof (sym as any).exchange_is_open !== 'undefined'
+      ? ((sym as any).exchange_is_open === 1 || (sym as any).exchange_is_open === true)
+      : true;
+    const isSuspended = (sym as any).is_trading_suspended === 1;
+    const isMarketOpen = exchangeIsOpen && !isSuspended;
+
     normalized.push({
       id: symbolClean,
       symbol: symbolClean,
-      name: sym.display_name,
+      name: displayName,
       category,
       baseCurrency,
       quoteCurrency,
@@ -243,7 +256,7 @@ export function normalizeDerivActiveSymbols(rawSymbols: DerivActiveSymbol[]): Ma
       ask,
       spread,
       change24hPercentage: 0,
-      isMarketOpen: (sym as any).exchange_is_open === 1 || (sym as any).exchange_is_open === true || sym.is_trading_suspended !== 1,
+      isMarketOpen,
     });
   }
 

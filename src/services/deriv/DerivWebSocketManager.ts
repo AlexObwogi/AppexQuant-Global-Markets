@@ -435,7 +435,8 @@ export class DerivWebSocketManager {
   public async fetchActiveSymbols(style: 'full' | 'brief' = 'full'): Promise<DerivActiveSymbol[]> {
     try {
       // 1. Try backend gateway REST endpoint first
-      const res = await fetch('/api/market/active-symbols');
+      const baseHttp = typeof window === 'undefined' ? 'http://localhost:3000' : '';
+      const res = await fetch(`${baseHttp}/api/market/active-symbols`);
       if (res.ok) {
         const json = await res.json();
         const rawSymbols = json.data || json.active_symbols || json;
@@ -480,7 +481,8 @@ export class DerivWebSocketManager {
         granularity: String(granularitySeconds),
         count: String(count),
       });
-      const res = await fetch(`/api/market/candles?${params.toString()}`);
+      const baseHttp = typeof window === 'undefined' ? 'http://localhost:3000' : '';
+      const res = await fetch(`${baseHttp}/api/market/candles?${params.toString()}`);
       if (res.ok) {
         const json = await res.json();
         const candles = json.data || json.candles || [];
@@ -518,7 +520,8 @@ export class DerivWebSocketManager {
     if (isSymbolBlacklisted(cleanSymbol)) return [];
 
     try {
-      const res = await fetch(`/api/market/contracts-for?symbol=${encodeURIComponent(cleanSymbol)}`);
+      const baseHttp = typeof window === 'undefined' ? 'http://localhost:3000' : '';
+      const res = await fetch(`${baseHttp}/api/market/contracts-for?symbol=${encodeURIComponent(cleanSymbol)}`);
       if (res.ok) {
         const json = await res.json();
         const categories = json.data || json.contracts_for?.available || [];

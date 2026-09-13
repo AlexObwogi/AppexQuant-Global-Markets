@@ -19,7 +19,7 @@ sequenceDiagram
     AppClient->>Server: GET /api/auth/deriv/login
     Server->>Server: Generate PKCE & State Cookie
     Server-->>AppClient: Redirect to Deriv OAuth Auth URL
-    AppClient->>Deriv: User authorizes App ID 1089
+    AppClient->>Deriv: User authorizes App (DERIV_CLIENT_ID)
     Deriv-->>Server: GET /api/auth/deriv/callback?code=...&state=...
     Server->>Server: Validate state cookie & retrieve code_verifier
     Server->>Deriv: POST token exchange with code & code_verifier

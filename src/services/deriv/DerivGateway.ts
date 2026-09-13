@@ -106,6 +106,8 @@ interface TickSubscription {
   callbacks: Set<TickCallback>;
   subscriptionId?: string;
   isSubscribing?: boolean;
+  isMarketClosed?: boolean;
+  reopenTime?: number;
 }
 
 interface RestErrorPayload {
@@ -550,11 +552,11 @@ export class DerivGateway {
    */
   private getApplicationId(): string {
     const clientId =
-      process.env.DERIV_OAUTH_CLIENT_ID?.trim();
+      process.env.DERIV_CLIENT_ID?.trim();
 
     if (!clientId) {
       throw new Error(
-        'DERIV_OAUTH_CLIENT_ID is not configured.',
+        'DERIV_CLIENT_ID is not configured.',
       );
     }
 
@@ -949,6 +951,15 @@ export class DerivGateway {
 
     subscription.callbacks.add(callback);
 
+    if (this.tickHistory.has(cleanSymbol)) {
+      const cached = this.tickHistory.get(cleanSymbol);
+      if (cached) {
+        try {
+          callback(cached);
+        } catch {}
+      }
+    }
+
     this.ensureTickSubscription(cleanSymbol);
 
     return () => {
@@ -975,7 +986,8 @@ export class DerivGateway {
     if (
       !subscription ||
       subscription.subscriptionId ||
-      subscription.isSubscribing
+      subscription.isSubscribing ||
+      subscription.isMarketClosed
     ) {
       return;
     }
@@ -1002,7 +1014,7 @@ export class DerivGateway {
 
         const subscription = this.tickSubscriptions.get(symbol);
 
-        if (!subscription || subscription.subscriptionId) {
+        if (!subscription || subscription.subscriptionId || subscription.isMarketClosed) {
           continue;
         }
 
@@ -1028,7 +1040,79 @@ export class DerivGateway {
         } catch (error: any) {
           const errMsg = cleanErrorMessage(error);
 
-          if (errMsg.toLowerCase().includes('rate limit')) {
+          const isMarketClosed =
+            errMsg.toLowerCase().includes('market is presently closed') ||
+            errMsg.toLowerCase().includes('market closed') ||
+            (error as any)?.code === 'MarketIsClosed' ||
+            (error as any)?.subcode === 'MarketIsClosed';
+
+          if (isMarketClosed) {
+            subscription.subscriptionId = `market-closed-${symbol}`;
+            subscription.isMarketClosed = true;
+
+            logger.info(
+              `[DerivGateway] Market is currently closed for ${symbol}: ${errMsg}`,
+            );
+
+            // Fetch the last known price using ticks_history so clients have the valid closing quote
+            try {
+              const historyRes = await this.sendPublicRequest({
+                ticks_history: symbol,
+                style: 'ticks',
+                count: 1,
+                end: 'latest',
+              });
+
+              const prices = historyRes?.history?.prices;
+              const times = historyRes?.history?.times;
+
+              if (Array.isArray(prices) && prices.length > 0) {
+                const quote = Number(prices[prices.length - 1]);
+                const epoch = Number(times?.[times.length - 1]) || Math.floor(Date.now() / 1000);
+                const closingTick: NormalizedTick = {
+                  symbol,
+                  quote,
+                  bid: quote,
+                  ask: quote,
+                  epoch,
+                  change: 0,
+                  changePct: 0,
+                  prevQuote: quote,
+                  lastUpdated: new Date(epoch * 1000),
+                };
+
+                this.tickHistory.set(symbol, closingTick);
+
+                for (const cb of subscription.callbacks) {
+                  try {
+                    cb(closingTick);
+                  } catch {}
+                }
+              }
+            } catch {
+              // Best effort closing tick retrieval
+            }
+
+            // Parse scheduled market reopening time if provided
+            const reopenMatch = errMsg.match(/open at ([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2})/i);
+            if (reopenMatch) {
+              try {
+                const openTime = new Date(reopenMatch[1].replace(' ', 'T') + 'Z').getTime();
+                const delayMs = openTime - Date.now();
+                if (delayMs > 0 && delayMs < 7 * 86400 * 1000) {
+                  subscription.reopenTime = openTime;
+                  setTimeout(() => {
+                    const currentSub = this.tickSubscriptions.get(symbol);
+                    if (currentSub && currentSub.callbacks.size > 0) {
+                      currentSub.subscriptionId = undefined;
+                      currentSub.isMarketClosed = false;
+                      this.ensureTickSubscription(symbol);
+                    }
+                  }, delayMs + 2000);
+                }
+              } catch {}
+            }
+          } else if (errMsg.toLowerCase().includes('rate limit')) {
             logger.warn(
               `[DerivGateway] Tick subscription rate-limited for ${symbol}. Retrying in 3s...`,
             );
@@ -1069,6 +1153,7 @@ export class DerivGateway {
 
     if (
       !subscriptionId ||
+      subscriptionId.startsWith('market-closed-') ||
       !this.publicWs ||
       this.publicWs.readyState !== WS_OPEN
     ) {
@@ -1085,11 +1170,11 @@ export class DerivGateway {
   }
 
   private restoreTickSubscriptions(): void {
-    for (const symbol of this.tickSubscriptions.keys()) {
-      const subscription =
-        this.tickSubscriptions.get(symbol);
-
+    for (const [symbol, subscription] of this.tickSubscriptions.entries()) {
       if (subscription) {
+        if (subscription.isMarketClosed) {
+          continue;
+        }
         subscription.subscriptionId = undefined;
       }
 
@@ -1977,6 +2062,12 @@ export class DerivGateway {
         this.handleClientMessage(client, raw);
       });
 
+      client.on('ping', () => {
+        try {
+          client.pong();
+        } catch {}
+      });
+
       client.once('close', cleanupClient);
       client.once('error', (err) => {
         console.error('[STREAM_ERROR]', { error: cleanErrorMessage(err) });
@@ -2090,6 +2181,25 @@ export class DerivGateway {
         : typeof message.type === 'string'
           ? message.type
           : '';
+
+    if (
+      action === 'ping' ||
+      Boolean((message as any).ping)
+    ) {
+      const response: Record<string, unknown> = {
+        type: 'pong',
+        ping: 'pong',
+        pong: 1,
+        time: Date.now(),
+      };
+      if (typeof (message as any).req_id !== 'undefined') {
+        response.req_id = (message as any).req_id;
+      }
+      try {
+        client.send(JSON.stringify(response));
+      } catch {}
+      return;
+    }
 
     if (
       action === 'subscribe' ||

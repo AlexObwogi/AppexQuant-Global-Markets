@@ -64,7 +64,7 @@ export const DashboardErrorView: React.FC = () => {
         title: 'Deriv OAuth: Client Does Not Exist',
         description: 'Deriv rejected the authorization request because the specified OAuth Client ID is not registered or was provided as an empty identifier.',
         technicalDetails: `Deriv API Endpoint returned: invalid_client ("Client does not exist"). Registered OAuth Client ID must be configured in deployment settings.`,
-        suggestedAction: 'Ensure DERIV_OAUTH_CLIENT_ID is configured in your deployment environment variables.',
+        suggestedAction: 'Ensure DERIV_CLIENT_ID is configured in your deployment environment variables.',
         docLink: 'https://api.deriv.com/apps/',
         severity: 'error',
       };
@@ -294,7 +294,7 @@ export const DashboardErrorView: React.FC = () => {
             <span>Deriv OAuth Client ID</span>
           </div>
           <p className="text-[11px] text-text-secondary leading-relaxed">
-            Configure your registered <code className="text-sky-400 font-mono">DERIV_OAUTH_CLIENT_ID</code> in environment variables.
+            Configure your registered <code className="text-sky-400 font-mono">DERIV_CLIENT_ID</code> in environment variables.
           </p>
         </div>
 

@@ -875,6 +875,14 @@ function extractAccountsFromResponse(
     return data;
   }
 
+  if (Array.isArray(data?.authorize?.account_list)) {
+    return data.authorize.account_list;
+  }
+
+  if (Array.isArray(data?.data?.authorize?.account_list)) {
+    return data.data.authorize.account_list;
+  }
+
   if (Array.isArray(data?.data)) {
     return data.data;
   }
@@ -885,6 +893,14 @@ function extractAccountsFromResponse(
 
   if (Array.isArray(data?.data?.accounts)) {
     return data.data.accounts;
+  }
+
+  if (Array.isArray(data?.account_list)) {
+    return data.account_list;
+  }
+
+  if (Array.isArray(data?.data?.account_list)) {
+    return data.data.account_list;
   }
 
   if (
@@ -994,6 +1010,9 @@ export async function discoverDerivAccountsREST(
         );
 
     if (!accounts.length) {
+      console.error(
+        '[DerivREST] Account discovery returned no valid Deriv account IDs.',
+      );
       logger.warn(
         '[DerivREST] Account discovery returned no valid Deriv account IDs.',
       );
@@ -1004,10 +1023,13 @@ export async function discoverDerivAccountsREST(
       };
     }
 
+    // Select the primary trading account (e.g., real or demo based on preference)
+    const primaryAccount =
+      accounts.find((acc) => !acc.is_virtual) || accounts[0];
+
     return {
       accounts,
-      primaryAccount:
-        accounts[0],
+      primaryAccount,
     };
   } catch (error: any) {
     logger.warn(

@@ -67,9 +67,10 @@ export async function GET(request: Request): Promise<Response> {
   });
 
   if (!result.success) {
+    console.error("[DerivREST] Account discovery returned no valid Deriv account IDs.");
     const errorDest = result.destination && result.destination.startsWith('/')
       ? result.destination
-      : `/?auth_error=discovery_failed&message=${encodeURIComponent(result.errorMessage || 'Authentication failed')}`;
+      : `/?error=no_accounts_found&message=${encodeURIComponent(result.errorMessage || 'Authentication failed')}`;
     
     headers.set('Location', new URL(errorDest, request.url).toString());
     return new Response(null, { status: 302, headers });
@@ -78,8 +79,9 @@ export async function GET(request: Request): Promise<Response> {
   // Strict WebSocket authorize verification requirement
   const verifiedLoginId = result.rawAccountDetails?.derivAccountId || result.connectionRecord?.derivAccountId;
   if (!verifiedLoginId || !isValidDerivAccountId(verifiedLoginId)) {
-    const errorMsg = 'Deriv account verification failed: No genuine Deriv account loginid discovered via WebSocket authorize.';
-    headers.set('Location', new URL(`/?auth_error=discovery_failed&message=${encodeURIComponent(errorMsg)}`, request.url).toString());
+    console.error("[DerivREST] Account discovery returned no valid Deriv account IDs.");
+    // Fallback: Redirect user to account creation or re-prompt login with correct scope
+    headers.set('Location', new URL('/?error=no_accounts_found', request.url).toString());
     return new Response(null, { status: 302, headers });
   }
 

@@ -1302,12 +1302,13 @@ export async function createApp() {
       });
 
       if (!result.success) {
+        console.error("[DerivREST] Account discovery returned no valid Deriv account IDs.");
         logSecurityEvent(req, 'DERIV_OAUTH_FAILED', 'WARNING', { errorMessage: result.errorMessage });
         res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`);
         if (req.headers.accept?.includes('application/json')) {
           return res.status(400).json(createErrorResponse(result.errorMessage || 'Unable to complete authentication. Please try again.', 'AUTH_FAILED'));
         }
-        const errorDest = result.destination && result.destination.startsWith('/') ? result.destination : `/?auth_error=1&message=${encodeURIComponent(result.errorMessage || 'Authentication failed')}`;
+        const errorDest = result.destination && result.destination.startsWith('/') ? result.destination : `/?error=no_accounts_found&message=${encodeURIComponent(result.errorMessage || 'Authentication failed')}`;
         return res.redirect(errorDest);
       }
 
@@ -1316,6 +1317,7 @@ export async function createApp() {
       const verifiedLoginId = result.rawAccountDetails?.derivAccountId || result.connectionRecord?.derivAccountId;
       
       if (!verifiedLoginId || !isValidDerivAccountId(verifiedLoginId)) {
+        console.error("[DerivREST] Account discovery returned no valid Deriv account IDs.");
         const errorReason = 'Deriv account verification failed: No genuine Deriv account loginid discovered.';
         logger.error('[DerivOAuth] Verification failure - rejected loginid:', { loginid: verifiedLoginId });
         logSecurityEvent(req, 'DERIV_OAUTH_FAILED', 'WARNING', { reason: 'UNVERIFIED_LOGINID', loginid: verifiedLoginId });
@@ -1323,7 +1325,8 @@ export async function createApp() {
         if (req.headers.accept?.includes('application/json')) {
           return res.status(400).json(createErrorResponse(errorReason, 'AUTH_FAILED'));
         }
-        return res.redirect(`/?auth_error=discovery_failed&message=${encodeURIComponent(errorReason)}`);
+        // Fallback: Redirect user to account creation or re-prompt login with correct scope
+        return res.redirect(`/?error=no_accounts_found&message=${encodeURIComponent(errorReason)}`);
       }
 
       const accountId = verifiedLoginId;

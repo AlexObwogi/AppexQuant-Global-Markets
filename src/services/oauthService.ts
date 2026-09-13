@@ -609,6 +609,14 @@ function extractAccounts(
   const root =
     payload as Record<string, unknown>;
 
+  const authorize = root.authorize as Record<string, unknown> | undefined;
+  if (authorize && Array.isArray(authorize.account_list)) {
+    return authorize.account_list.filter(
+      (value): value is DerivAccount =>
+        Boolean(value && typeof value === 'object'),
+    );
+  }
+
   const data =
     root.data;
 
@@ -619,12 +627,36 @@ function extractAccounts(
     const dataRecord =
       data as Record<string, unknown>;
 
+    const dataAuthorize = dataRecord.authorize as Record<string, unknown> | undefined;
+    if (dataAuthorize && Array.isArray(dataAuthorize.account_list)) {
+      return dataAuthorize.account_list.filter(
+        (value): value is DerivAccount =>
+          Boolean(value && typeof value === 'object'),
+      );
+    }
+
     if (
       Array.isArray(
         dataRecord.accounts,
       )
     ) {
       return dataRecord.accounts.filter(
+        (
+          value,
+        ): value is DerivAccount =>
+          Boolean(
+            value &&
+            typeof value === 'object',
+          ),
+      );
+    }
+
+    if (
+      Array.isArray(
+        dataRecord.account_list,
+      )
+    ) {
+      return dataRecord.account_list.filter(
         (
           value,
         ): value is DerivAccount =>
@@ -665,7 +697,22 @@ function extractAccounts(
   }
 
   if (
-    typeof root.account_id === 'string'
+    Array.isArray(root.account_list)
+  ) {
+    return root.account_list.filter(
+      (
+        value,
+      ): value is DerivAccount =>
+        Boolean(
+          value &&
+          typeof value === 'object',
+        ),
+    );
+  }
+
+  if (
+    typeof root.account_id === 'string' ||
+    typeof root.loginid === 'string'
   ) {
     return [
       root as DerivAccount,
@@ -730,8 +777,9 @@ export async function fetchUserProfile(
         accessToken,
       );
 
+    // Select the primary trading account (e.g., real or demo based on preference)
     const account =
-      accounts[0];
+      accounts.find((acc: any) => !acc.is_virtual) || accounts[0];
 
     if (!account) {
       return null;

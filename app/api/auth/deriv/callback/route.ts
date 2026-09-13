@@ -79,29 +79,43 @@ export async function GET(request: Request): Promise<Response> {
     configuredLoginScopes: getLoginScopeString(),
   });
 
-  // Handle immediate authorization errors from Deriv OAuth server
-  if (error) {
-    const cleanErrorMsg = errorDescription || error;
-    console.error('[Vercel:DerivOAuth:ErrorResponse] Deriv returned authorization error:', {
-      error,
-      errorDescription: cleanErrorMsg,
+  const acceptsHtml = request.headers.get('accept')?.includes('text/html');
+
+  const respondWithError = (errorType: string, message: string, extra: Record<string, any> = {}) => {
+    console.error(`[Vercel:DerivOAuth:${errorType}] ${message}`, {
+      ...extra,
       timestamp: new Date().toISOString(),
     });
+
+    if (acceptsHtml) {
+      const redirectUrl = new URL('/', request.url);
+      redirectUrl.searchParams.set('error', errorType);
+      redirectUrl.searchParams.set('message', message);
+      const errHeaders = new Headers(headers);
+      errHeaders.delete('Content-Type');
+      errHeaders.set('Location', redirectUrl.toString());
+      return new Response(null, { status: 302, headers: errHeaders });
+    }
 
     return new Response(
       JSON.stringify({
         success: false,
-        error: 'OAUTH_AUTHORIZATION_DENIED',
-        message: cleanErrorMsg,
-        rawError: {
-          error,
-          error_description: errorDescription,
-        },
-        scopesRequested: getLoginScopeString(),
+        error: errorType,
+        message,
+        ...extra,
         recoveryInstructions: ACTIONABLE_RECOVERY_INSTRUCTIONS,
       }),
       { status: 400, headers }
     );
+  };
+
+  // Handle immediate authorization errors from Deriv OAuth server
+  if (error) {
+    const cleanErrorMsg = errorDescription || error;
+    return respondWithError('OAUTH_AUTHORIZATION_DENIED', cleanErrorMsg, {
+      rawError: { error, error_description: errorDescription },
+      scopesRequested: getLoginScopeString(),
+    });
   }
 
   // Execute token exchange and authenticated account discovery
@@ -116,29 +130,16 @@ export async function GET(request: Request): Promise<Response> {
     requestProtocol: proto,
   });
 
-  // Handle token exchange or state failure with detailed structured JSON error response
+  // Handle token exchange or state failure with detailed structured JSON error response or browser redirect
   if (!result.success) {
-    console.error('[Vercel:DerivOAuth:ExchangeFailed] Deriv OAuth exchange failed:', {
-      errorMessage: result.errorMessage,
-      destination: result.destination,
-      timestamp: new Date().toISOString(),
+    return respondWithError('OAUTH_TOKEN_EXCHANGE_FAILED', result.errorMessage || 'Deriv OAuth token exchange failed.', {
+      rawPayload: {
+        errorCode: 'EXCHANGE_FAILED',
+        errorMessage: result.errorMessage,
+        destination: result.destination,
+      },
+      scopesExpected: getBackendScopeString(),
     });
-
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: 'OAUTH_TOKEN_EXCHANGE_FAILED',
-        message: result.errorMessage || 'Deriv OAuth token exchange failed.',
-        rawPayload: {
-          errorCode: 'EXCHANGE_FAILED',
-          errorMessage: result.errorMessage,
-          destination: result.destination,
-        },
-        scopesExpected: getBackendScopeString(),
-        recoveryInstructions: ACTIONABLE_RECOVERY_INSTRUCTIONS,
-      }),
-      { status: 400, headers }
-    );
   }
 
   // Strict Account Discovery Validation (Explicitly parse accounts_list / account_list)
@@ -146,52 +147,27 @@ export async function GET(request: Request): Promise<Response> {
   const discoveredAccounts = result.rawAccountDetails?.accountList || [];
 
   if (!verifiedLoginId || !isValidDerivAccountId(verifiedLoginId) || (discoveredAccounts.length === 0 && !verifiedLoginId)) {
-    console.error('[DerivREST] Account discovery returned no valid Deriv account IDs.', {
-      verifiedLoginId,
-      discoveredAccountsCount: discoveredAccounts.length,
-      rawAccountDetails: result.rawAccountDetails,
-      connectionStatus: result.connectionRecord?.connectionStatus,
-      timestamp: new Date().toISOString(),
+    return respondWithError('ACCOUNT_DISCOVERY_FAILED', 'Account discovery returned no valid Deriv account IDs under this profile.', {
+      details: {
+        discoveredAccountsCount: discoveredAccounts.length,
+        verifiedLoginId: verifiedLoginId || null,
+        requiredScopes: getBackendScopeString(),
+      },
+      rawPayload: {
+        accountDetails: result.rawAccountDetails || null,
+        connectionRecord: result.connectionRecord || null,
+      },
     });
-
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: 'ACCOUNT_DISCOVERY_FAILED',
-        message: 'Account discovery returned no valid Deriv account IDs under this profile.',
-        details: {
-          discoveredAccountsCount: discoveredAccounts.length,
-          verifiedLoginId: verifiedLoginId || null,
-          requiredScopes: getBackendScopeString(),
-        },
-        rawPayload: {
-          accountDetails: result.rawAccountDetails || null,
-          connectionRecord: result.connectionRecord || null,
-        },
-        recoveryInstructions: ACTIONABLE_RECOVERY_INSTRUCTIONS,
-      }),
-      { status: 400, headers }
-    );
   }
 
   // Ensure state machine is connected
   if (!result.connectionRecord || result.connectionRecord.connectionStatus !== 'CONNECTED' || !result.connectionRecord.connected) {
-    const errorMsg = 'Deriv account verification failed: State machine did not reach CONNECTED state.';
-    console.error('[Vercel:DerivOAuth:NotConnected]', { errorMsg, record: result.connectionRecord });
-
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: 'CONNECTION_STATE_UNVERIFIED',
-        message: errorMsg,
-        rawPayload: {
-          connectionStatus: result.connectionRecord?.connectionStatus || 'UNKNOWN',
-          record: result.connectionRecord,
-        },
-        recoveryInstructions: ACTIONABLE_RECOVERY_INSTRUCTIONS,
-      }),
-      { status: 400, headers }
-    );
+    return respondWithError('CONNECTION_STATE_UNVERIFIED', 'Deriv account verification failed: State machine did not reach CONNECTED state.', {
+      rawPayload: {
+        connectionStatus: result.connectionRecord?.connectionStatus || 'UNKNOWN',
+        record: result.connectionRecord,
+      },
+    });
   }
 
   // Provision session payload and authenticated cookies
@@ -249,7 +225,6 @@ export async function GET(request: Request): Promise<Response> {
       : '/';
 
   // If client prefers JSON or is an AJAX/API call, respond with success JSON; otherwise perform 302 redirect to app
-  const acceptsHtml = request.headers.get('accept')?.includes('text/html');
   if (acceptsHtml) {
     headers.delete('Content-Type');
     headers.set('Location', new URL(safeDestination, request.url).toString());

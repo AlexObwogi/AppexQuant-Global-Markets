@@ -51,9 +51,9 @@ export class DerivWebSocketManager {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private connectPromise: Promise<void> | null = null;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 25;
+  private maxReconnectAttempts = 10;
   private baseReconnectDelayMs = 1000;
-  private maxReconnectDelayMs = 30000;
+  private maxReconnectDelayMs = 10000;
   private isExplicitDisconnect = false;
 
   constructor() {
@@ -298,8 +298,9 @@ export class DerivWebSocketManager {
     if (this.isExplicitDisconnect || this.reconnectTimer) return;
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.warn('[DerivWS-Client] Max reconnect attempts reached. Resetting counter for continuous reconnection loop...');
-      this.reconnectAttempts = 0;
+      console.warn(`[DerivWS-Client] Max reconnect attempts (${this.maxReconnectAttempts}) reached. Stopping reconnect loop.`);
+      this.setConnectionState('OFFLINE');
+      return;
     }
 
     this.reconnectAttempts++;

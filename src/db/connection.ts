@@ -47,7 +47,8 @@ export function getDatabasePool(): pkg.Pool {
     });
 
     pool.on('error', (err) => {
-      logger.debug('PostgreSQL client pool notice:', { error: err.message });
+      // Suppress unhandled error crashes from idle clients in pool
+      logger.debug('PostgreSQL pool background client notice:', { error: err.message });
     });
 
     pool.on('connect', (client) => {

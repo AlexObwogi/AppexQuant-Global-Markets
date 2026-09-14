@@ -177,6 +177,9 @@ export function extractAffiliateContext(req: Request | any): {
 /**
  * Atomically records an intercepted transaction into the platform revenue ledger.
  */
+// Idempotency tracking set to eliminate duplicate transactions
+const idempotencySet = new Set<string>();
+
 export function recordInterceptedTransaction(params: {
   userId: string;
   derivAccountId?: string;
@@ -195,8 +198,23 @@ export function recordInterceptedTransaction(params: {
   traceId?: string;
   metadata?: Record<string, unknown>;
 }): InterceptedTransactionEvent {
+  // Compute idempotency key
+  const idempotencyKey = params.traceId || `${params.userId}:${params.derivAccountId || 'none'}:${params.eventType}:${params.instrumentSymbol}:${params.tradedVolumeUsd}:${params.grossRevenueUsd}`;
+  
+  if (idempotencySet.has(idempotencyKey)) {
+    const existing = transactionLedger.find(e => e.traceId === idempotencyKey || e.id === idempotencyKey);
+    if (existing) {
+      console.log('[RevenueEngine:DuplicateSuppressed]', { idempotencyKey });
+      return existing;
+    }
+  }
+
   const id = `tx-rev-${crypto.randomBytes(8).toString('hex')}`;
   const traceId = params.traceId || `trace-${crypto.randomBytes(6).toString('hex')}`;
+  idempotencySet.add(idempotencyKey);
+  idempotencySet.add(traceId);
+  idempotencySet.add(id);
+
   const timestamp = new Date().toISOString();
   const partnerId = params.partnerId || 'appexquant_direct';
   const affiliateToken = params.affiliateToken || MASTER_AFFILIATE_TOKEN;
@@ -276,8 +294,26 @@ export function recordInterceptedTransaction(params: {
 
 /**
  * Express Middleware: Intercepts downstream financial, trade, and settlement API traffic.
+ * Strictly excludes GET, HEAD, OPTIONS and read-only routes.
  */
 export function transactionInterceptorMiddleware(req: Request, res: Response, next: NextFunction): void {
+  // HARD RULE: GET, HEAD, OPTIONS methods MUST NEVER intercept transactions
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+    return next();
+  }
+
+  // Explicitly exclude read-only routes
+  const path = req.path || '';
+  if (
+    path.includes('/auth/session') ||
+    path.includes('/auth/status') ||
+    path.includes('/leaderboard') ||
+    path.includes('/market/active-symbols') ||
+    path.includes('/health')
+  ) {
+    return next();
+  }
+
   const originalJson = res.json.bind(res);
   const startTime = Date.now();
 
@@ -288,9 +324,9 @@ export function transactionInterceptorMiddleware(req: Request, res: Response, ne
       const isSubscriptionRoute = req.path.includes('/subscription') || req.path.includes('/tier') || req.path.includes('/creator/subscribe');
       const isSettlementRoute = req.path.includes('/settlement') || req.path.includes('/payout') || req.path.includes('/revenue');
 
-      if (isTradeRoute || isSubscriptionRoute || isSettlementRoute || body?.trade || body?.contract || body?.amount) {
+      if (isTradeRoute || isSubscriptionRoute || isSettlementRoute || body?.trade || body?.contract) {
         const { partnerId, affiliateToken } = extractAffiliateContext(req);
-        const userId = (req as any).sessionUser?.userId || req.body?.userId || req.query.userId || body?.userId || 'anonymous_trader';
+        const userId = (req as any).sessionUser?.userId || req.body?.userId || req.query?.userId || body?.userId || 'anonymous_trader';
         const derivAccountId = (req as any).sessionUser?.derivAccountId || req.body?.derivAccountId || body?.derivAccountId;
 
         let tradedVolumeUsd = 0;
@@ -310,7 +346,7 @@ export function transactionInterceptorMiddleware(req: Request, res: Response, ne
           instrumentSymbol = 'SETTLEMENT_PAYOUT';
         } else {
           eventType = 'TRADE_EXECUTION';
-          tradedVolumeUsd = Number(req.body?.amount || req.body?.stake || body?.buy_price || body?.stake || body?.amount || 100.0);
+          tradedVolumeUsd = Number(req.body?.amount || req.body?.stake || body?.buy_price || body?.stake || body?.amount || 0);
           grossRevenueUsd = Number(body?.payout ? (body.payout - tradedVolumeUsd) : (tradedVolumeUsd * 0.05));
           instrumentSymbol = String(req.body?.symbol || req.body?.instrument || body?.symbol || body?.underlying || 'R_100');
         }
@@ -408,45 +444,6 @@ export function getTransactionLedger(filters?: {
     results = results.filter((e) => e.userId === filters.userId);
   }
   return results.slice(0, filters?.limit || 100);
-}
-
-// Seed initial baseline telemetry for demonstration and cold-start visualization
-if (transactionLedger.length === 0) {
-  recordInterceptedTransaction({
-    userId: 'usr-creator-alpha',
-    derivAccountId: 'CR9182301',
-    partnerId: 'partner-quant-nexus',
-    affiliateToken: MASTER_AFFILIATE_TOKEN,
-    eventType: 'TRADE_EXECUTION',
-    instrumentSymbol: '1HZ100V',
-    tradedVolumeUsd: 14500.0,
-    grossRevenueUsd: 725.0,
-    sourceEndpoint: '/api/v1/trades/execute',
-  });
-
-  recordInterceptedTransaction({
-    userId: 'usr-pro-investor',
-    derivAccountId: 'CR8721190',
-    partnerId: 'partner-deriv-kenya',
-    affiliateToken: MASTER_AFFILIATE_TOKEN,
-    eventType: 'COPY_TRADE',
-    instrumentSymbol: 'R_75',
-    tradedVolumeUsd: 8200.0,
-    grossRevenueUsd: 410.0,
-    sourceEndpoint: '/api/v1/copy/allocate',
-  });
-
-  recordInterceptedTransaction({
-    userId: 'usr-hedge-desk',
-    derivAccountId: 'CR7102934',
-    partnerId: 'appexquant_direct',
-    affiliateToken: MASTER_AFFILIATE_TOKEN,
-    eventType: 'SUBSCRIPTION',
-    instrumentSymbol: 'PRO_ENTERPRISE_ALGO',
-    tradedVolumeUsd: 499.0,
-    grossRevenueUsd: 499.0,
-    sourceEndpoint: '/api/v1/creators/subscribe',
-  });
 }
 
 export default {

@@ -87,7 +87,7 @@ export const DashboardErrorView: React.FC = () => {
         title: 'Authorization Cancelled',
         description: 'You declined or cancelled the permission request on the Deriv OAuth confirmation screen.',
         technicalDetails: 'Deriv OAuth flow returned error=access_denied with no token granted.',
-        suggestedAction: 'Grant the required "read", "trade", "admin", and "payments" permissions when prompted by Deriv to access quantitative trading tools.',
+        suggestedAction: 'Grant the required "trade", "admin", and "payments" permissions when prompted by Deriv to access quantitative trading tools.',
         severity: 'info',
       };
     }

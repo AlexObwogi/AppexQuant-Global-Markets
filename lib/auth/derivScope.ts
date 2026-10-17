@@ -6,7 +6,7 @@
  * Deriv OAuth 2.0 valid scopes: 'read', 'trade', 'admin', 'payments'
  */
 
-export const DERIV_OAUTH_SCOPES = ['read', 'trade', 'admin', 'payments'] as const;
+export const DERIV_OAUTH_SCOPES = ['trade', 'admin', 'payments'] as const;
 export const DERIV_OAUTH_SCOPE_STRING = DERIV_OAUTH_SCOPES.join(' '); // space-separated, NEVER '+' joined
 
 export type ValidDerivScope = (typeof DERIV_OAUTH_SCOPES)[number];

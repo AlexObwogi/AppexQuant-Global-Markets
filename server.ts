@@ -1350,7 +1350,7 @@ export async function createApp() {
                 errorMessage: result.errorMessage,
               },
               recoveryInstructions: [
-                'Verify your Deriv account has granted all required scopes: read, trade, admin, and payments.',
+                'Verify your Deriv account has granted all required scopes: trade, admin, and payments.',
                 'Ensure you have at least one active Deriv real or demo trading account (e.g. CR*, VRTC*, MTR*).',
                 'Clear any stale browser authentication cookies and re-authenticate via the "Connect Deriv" portal.',
               ],
@@ -1409,7 +1409,7 @@ export async function createApp() {
                 connectionRecord: result.connectionRecord || null,
               },
               recoveryInstructions: [
-                'Verify your Deriv account has granted all required scopes: read, trade, admin, and payments.',
+                'Verify your Deriv account has granted all required scopes: trade, admin, and payments.',
                 'Ensure you have at least one active Deriv real or demo trading account (e.g. CR*, VRTC*, MTR*).',
                 'Clear any stale browser authentication cookies and re-authenticate via the "Connect Deriv" portal.',
               ],

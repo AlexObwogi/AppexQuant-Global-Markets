@@ -117,6 +117,7 @@ import {
 import { getDerivOAuthClientId } from './src/services/oauthService.ts';
 import { isValidDerivAccountId } from './src/services/deriv/syncStateMachine.ts';
 import { DERIV_OAUTH_SCOPES } from './lib/auth/derivScope.ts';
+import { derivRateTracker } from './src/services/deriv/derivRateTracker.ts';
 import {
   transactionInterceptorMiddleware,
   recordInterceptedTransaction,
@@ -1239,6 +1240,7 @@ export async function createApp() {
 
       res.setHeader('Set-Cookie', `deriv_oauth_state=${cookieValue}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=600`);
 
+      derivRateTracker.recordRequest('auth');
       logSecurityEvent(req, 'DERIV_OAUTH_INITIATED', 'INFO', { action, redirectUri });
 
       if (req.method === 'POST' || req.headers.accept?.includes('application/json') || req.query.json === 'true') {
@@ -1668,6 +1670,7 @@ export async function createApp() {
         return res.status(401).json(createErrorResponse('Authentication required for balance query', 'UNAUTHENTICATED'));
       }
 
+      derivRateTracker.recordRequest('rest');
       const balanceResult = await fetchUserDerivBalanceAsync(userId);
       if (balanceResult.success) {
         return res.json(createSuccessResponse({
@@ -1731,6 +1734,16 @@ export async function createApp() {
     }
   });
 
+  // Deriv API rate limit telemetry endpoint (tracks requests/min vs 120 req/min quota)
+  app.get(['/api/deriv/rate-limit', '/api/auth/deriv/rate-limit'], (req: Request, res: Response) => {
+    try {
+      const stats = derivRateTracker.getStats();
+      res.json(createSuccessResponse(stats));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Failed to fetch Deriv rate limit metrics', 'RATE_METRICS_ERROR'));
+    }
+  });
+
   // Switch active Deriv account from authorized account list
   app.post('/api/auth/deriv/switch-account', async (req: Request, res: Response) => {
     try {
@@ -1739,6 +1752,7 @@ export async function createApp() {
       if (!userId || !loginid) {
         return res.status(400).json(createErrorResponse('User ID and loginid required', 'BAD_REQUEST'));
       }
+      derivRateTracker.recordRequest('rest');
       const metadata = await switchUserDerivAccountAsync(userId, loginid);
       if (!metadata.connected || !metadata.derivAccountId || !isValidDerivAccountId(metadata.derivAccountId)) {
         logAuditEvent('DERIV_SYNC_FAILED', userId, { event: 'DERIV_SWITCH_FAILED', targetLoginid: loginid });
@@ -1780,6 +1794,7 @@ export async function createApp() {
       if (!userId) {
         return res.status(401).json(createErrorResponse('Authentication required for Deriv synchronization', 'UNAUTHENTICATED'));
       }
+      derivRateTracker.recordRequest('rest');
 
       let tokenToUse = req.body?.apiToken || req.body?.token || parsedCookies['deriv_access_token'];
       if (tokenToUse && tokenToUse.startsWith('usr-')) {

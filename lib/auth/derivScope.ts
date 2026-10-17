@@ -57,7 +57,7 @@ export function parseRawScopes(rawInput?: string | string[] | readonly string[] 
 }
 
 /**
- * Reads process.env.deriv_oauth_scope or process.env.DERIV_OAUTH_SCOPE
+ * Reads process.env.DERIV_OAUTH_SCOPE or process.env.DERIV_OAUTH_SCOPES
  * with fallback to DERIV_OAUTH_SCOPE_STRING ("read trade admin payments").
  */
 export function getRawConfiguredScope(): string {
@@ -66,8 +66,8 @@ export function getRawConfiguredScope(): string {
   }
 
   const envValue =
-    process.env.deriv_oauth_scope ||
     process.env.DERIV_OAUTH_SCOPE ||
+    process.env.DERIV_OAUTH_SCOPES ||
     process.env.VITE_DERIV_OAUTH_SCOPE ||
     process.env.NEXT_PUBLIC_DERIV_OAUTH_SCOPE;
 

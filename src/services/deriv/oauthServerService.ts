@@ -448,8 +448,8 @@ export function getDerivOAuthConfig(
 
   const scopes =
     getLoginScopeString(
-      cleanString(process.env.deriv_oauth_scope) ||
       cleanString(process.env.DERIV_OAUTH_SCOPE) ||
+      cleanString(process.env.DERIV_OAUTH_SCOPES) ||
       DERIV_OAUTH_SCOPE
     );
 

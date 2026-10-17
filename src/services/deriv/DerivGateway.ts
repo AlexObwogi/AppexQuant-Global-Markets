@@ -47,7 +47,6 @@ import {
 
 import { logger } from '../../observability/logger.js';
 import { verifySessionToken } from '../security.js';
-import { derivRateTracker } from './derivRateTracker.ts';
 
 function parseCookies(cookieHeader?: string | null): Record<string, string> {
   if (!cookieHeader) return {};
@@ -771,7 +770,6 @@ export class DerivGateway {
     }
 
     const reqId = this.requestId++;
-    derivRateTracker.recordRequest(payload.ticks ? 'subscription' : 'ws');
 
     const message = {
       ...payload,

@@ -19,6 +19,7 @@ import {
 } from '../../utils/auth.ts';
 import { derivAuthService } from '../../services/deriv/authService.ts';
 import { buildAuthUrl, getDerivRedirectUri, getDerivAppId, DERIV_OAUTH_SCOPE } from '../../services/oauthService.ts';
+import { DERIV_OAUTH_SCOPES } from '../../../lib/auth/derivScope.ts';
 import { 
   Globe, 
   Network, 
@@ -523,7 +524,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           accountNumber: accountId,
           status: 'CONNECTED',
           environment: isDemo ? 'DEMO' : 'REAL',
-          apiPermissions: ['trade', 'account_manage', 'payments'],
+          apiPermissions: [...DERIV_OAUTH_SCOPES],
           isReadOnly: false,
           executionPermission: true,
         },

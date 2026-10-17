@@ -9,6 +9,7 @@ import { useApiFetch } from '../../utils/apiFetch.ts';
 import { derivAuthService } from '../../services/deriv/authService.ts';
 import { ShieldCheck, ExternalLink, RefreshCw, Unplug, CheckCircle, AlertCircle, Loader2, KeyRound, UserPlus } from 'lucide-react';
 import { StatusPill } from '../ui/StatusPill.tsx';
+import { DERIV_OAUTH_SCOPES } from '../../../lib/auth/derivScope.ts';
 
 interface ConnectionMeta {
   connected: boolean;
@@ -61,7 +62,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
                 accountNumber: json.data.derivAccountId || '',
                 status: 'CONNECTED',
                 environment: json.data.accountType === 'real' ? 'REAL' : 'DEMO',
-                apiPermissions: json.data.scopes || ['trade', 'account_manage'],
+                apiPermissions: json.data.scopes || [...DERIV_OAUTH_SCOPES],
                 isReadOnly: false,
                 executionPermission: true,
               }
@@ -105,7 +106,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
                     accountNumber: json.data.derivAccountId || '',
                     status: 'CONNECTED',
                     environment: json.data.accountType === 'real' ? 'REAL' : 'DEMO',
-                    apiPermissions: json.data.scopes || ['trade', 'account_manage'],
+                    apiPermissions: json.data.scopes || [...DERIV_OAUTH_SCOPES],
                     isReadOnly: false,
                     executionPermission: true,
                   }
@@ -148,7 +149,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
               accountNumber: authData.derivAccountId || authData.accountId || '',
               status: 'CONNECTED',
               environment: authData.accountType === 'real' ? 'REAL' : 'DEMO',
-              apiPermissions: authData.scopes || ['trade', 'account_manage'],
+              apiPermissions: authData.scopes || [...DERIV_OAUTH_SCOPES],
               isReadOnly: false,
               executionPermission: true,
             },
@@ -230,7 +231,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
               accountNumber: json.data.derivAccountId || '',
               status: 'CONNECTED',
               environment: json.data.accountType === 'real' ? 'REAL' : 'DEMO',
-              apiPermissions: json.data.scopes || ['trade', 'account_manage'],
+              apiPermissions: json.data.scopes || [...DERIV_OAUTH_SCOPES],
               isReadOnly: false,
               executionPermission: true,
             }
@@ -277,7 +278,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
               accountNumber: json.data.derivAccountId || '',
               status: 'CONNECTED',
               environment: json.data.accountType === 'real' ? 'REAL' : 'DEMO',
-              apiPermissions: json.data.scopes || ['trade', 'account_manage'],
+              apiPermissions: json.data.scopes || [...DERIV_OAUTH_SCOPES],
               isReadOnly: false,
               executionPermission: true,
             }
@@ -327,7 +328,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
               accountNumber: json.data.derivAccountId || '',
               status: 'CONNECTED',
               environment: json.data.accountType === 'real' ? 'REAL' : 'DEMO',
-              apiPermissions: json.data.scopes || ['trade', 'account_manage'],
+              apiPermissions: json.data.scopes || [...DERIV_OAUTH_SCOPES],
               isReadOnly: false,
               executionPermission: true,
             }

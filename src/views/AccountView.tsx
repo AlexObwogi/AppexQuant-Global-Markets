@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { useGlobalState } from '../state/GlobalStateContext.tsx';
 import { derivAuthService, DerivAccountProfile } from '../services/deriv/authService.ts';
 import { useApiFetch } from '../utils/apiFetch.ts';
+import { DERIV_OAUTH_SCOPES } from '../../lib/auth/derivScope.ts';
 import { Card } from '../components/ui/Card.tsx';
 import { Button } from '../components/ui/Button.tsx';
 import { Input, Select } from '../components/ui/Input.tsx';
@@ -127,7 +128,7 @@ export const AccountView: React.FC = () => {
                 accountNumber: json.data.derivAccountId || '',
                 status: 'CONNECTED',
                 environment: json.data.accountType === 'real' ? 'REAL' : 'DEMO',
-                apiPermissions: json.data.scopes || ['trade', 'account_manage'],
+                apiPermissions: json.data.scopes || [...DERIV_OAUTH_SCOPES],
                 isReadOnly: false,
                 executionPermission: true,
               }
@@ -171,7 +172,7 @@ export const AccountView: React.FC = () => {
                     accountNumber: json.data.derivAccountId || '',
                     status: 'CONNECTED',
                     environment: json.data.accountType === 'real' ? 'REAL' : 'DEMO',
-                    apiPermissions: json.data.scopes || ['trade', 'account_manage'],
+                    apiPermissions: json.data.scopes || [...DERIV_OAUTH_SCOPES],
                     isReadOnly: false,
                     executionPermission: true,
                   }
@@ -214,7 +215,7 @@ export const AccountView: React.FC = () => {
               accountNumber: authData.derivAccountId || authData.accountId || '',
               status: 'CONNECTED',
               environment: authData.accountType === 'real' ? 'REAL' : 'DEMO',
-              apiPermissions: authData.scopes || ['trade', 'account_manage'],
+              apiPermissions: authData.scopes || [...DERIV_OAUTH_SCOPES],
               isReadOnly: false,
               executionPermission: true,
             },

@@ -46,6 +46,7 @@ import {
 } from '../oauthService.ts';
 
 import {
+  DERIV_OAUTH_SCOPES,
   getLoginScopeString,
   getBackendScopeString,
   parseRawScopes,
@@ -313,7 +314,7 @@ function parseNumber(value: unknown, fallback = 0): number {
 
 function normalizeScopes(
   value: unknown,
-  fallback: string[] = ['trade', 'account_manage'],
+  fallback: readonly string[] | string[] = DERIV_OAUTH_SCOPES,
 ): string[] {
   if (value) {
     const parsed = parseRawScopes(typeof value === 'string' ? value : Array.isArray(value) ? value : undefined);
@@ -838,7 +839,7 @@ function normalizeAccount(
     scopes:
       normalizeScopes(
         item.scopes,
-        ['trade', 'account_manage'],
+        DERIV_OAUTH_SCOPES,
       ),
 
     account_list:
@@ -1800,7 +1801,7 @@ export async function hydrateDerivAccount(
 
         scopes:
           params.scopes ||
-          ['trade', 'account_manage'],
+          [...DERIV_OAUTH_SCOPES],
 
         accessToken:
           cleanToken,
@@ -2326,7 +2327,7 @@ export function connectUserWithApiToken(
           : 'DISCONNECTED',
 
       scopes:
-        ['trade', 'account_manage'],
+        [...DERIV_OAUTH_SCOPES],
 
       accessToken:
         cleanToken,
@@ -3087,7 +3088,7 @@ export async function handleDerivOAuthCallback(
 
   let accessToken = '';
   let tokenExpiry: string | null = null;
-  let scopes = ['trade', 'account_manage'];
+  let scopes: string[] = [...DERIV_OAUTH_SCOPES];
   let refreshToken: string | undefined = undefined;
 
   try {
@@ -3137,7 +3138,7 @@ export async function handleDerivOAuthCallback(
           tokenData?.scopes ||
           tokenData?.scope,
 
-          ['trade', 'account_manage'],
+          DERIV_OAUTH_SCOPES,
         );
 
       refreshToken =
@@ -3147,7 +3148,7 @@ export async function handleDerivOAuthCallback(
     } else if (tokenFromParam) {
       accessToken = tokenFromParam;
       tokenExpiry = null;
-      scopes = ['trade', 'account_manage', 'read', 'payments'];
+      scopes = [...DERIV_OAUTH_SCOPES];
     }
 
     /*

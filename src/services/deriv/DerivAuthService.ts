@@ -8,6 +8,8 @@
  * - Browser-side token authority has been completely eliminated.
  */
 
+import { DERIV_OAUTH_SCOPES } from '../../lib/auth/derivScope.ts';
+
 export type DerivAuthStatus =
   | 'NOT_CONNECTED'
   | 'AUTHORIZING'
@@ -150,7 +152,7 @@ export class DerivAuthService {
               balance,
               is_virtual: isVirtual,
               landing_company_name: data.landing_company_name,
-              scopes: user.scopes || data.scopes || ['trade', 'account_manage'],
+              scopes: user.scopes || data.scopes || [...DERIV_OAUTH_SCOPES],
               userId: user.userId || data.userId,
               account_list: data.accountList || data.account_list,
               accountType: isVirtual ? 'demo' : 'real',

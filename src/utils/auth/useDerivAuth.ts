@@ -10,6 +10,7 @@
 import { useState, useCallback } from 'react';
 import { generateCodeVerifier, deriveCodeChallenge } from './pkce.ts';
 import { derivAuthService, DerivAccountProfile } from '../../services/deriv/DerivAuthService.ts';
+import { DERIV_OAUTH_SCOPES } from '../../../lib/auth/derivScope.ts';
 
 export interface DerivAuthResult {
   token?: string;
@@ -164,7 +165,7 @@ export function useDerivAuth() {
         currency,
         balance,
         is_virtual: accountType === 'demo' ? 1 : 0,
-        scopes: ['trade', 'account_manage'],
+        scopes: [...DERIV_OAUTH_SCOPES],
         accountType: accountType === 'demo' ? 'demo' : 'real',
         connectionStatus: 'CONNECTED',
         lastSyncedAt: new Date().toISOString(),

@@ -116,6 +116,7 @@ import {
 } from './src/services/deriv/oauthServerService.ts';
 import { getDerivOAuthClientId } from './src/services/oauthService.ts';
 import { isValidDerivAccountId } from './src/services/deriv/syncStateMachine.ts';
+import { DERIV_OAUTH_SCOPES } from './lib/auth/derivScope.ts';
 import {
   transactionInterceptorMiddleware,
   recordInterceptedTransaction,
@@ -1436,7 +1437,7 @@ export async function createApp() {
       const loginid = verifiedLoginId;
       const accountType = result.rawAccountDetails?.accountType || (verifiedLoginId.startsWith('VR') ? 'demo' : 'real');
       const currency = result.rawAccountDetails?.currency || 'USD';
-      const scopes = result.connectionRecord?.scopes || ['trade', 'account_manage'];
+      const scopes = result.connectionRecord?.scopes || [...DERIV_OAUTH_SCOPES];
       const realEmail = result.rawAccountDetails?.email || '';
       const fullName = result.rawAccountDetails?.fullName;
       const balance = result.rawAccountDetails?.balance ?? 0;

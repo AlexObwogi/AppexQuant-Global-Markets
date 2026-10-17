@@ -5,6 +5,7 @@
 
 import { BrokerAdapter, BrokerConnection, BrokerType, BrokerAccount, BrokerBalance, BrokerPosition, BrokerOrder, BrokerEnvironment, BrokerConnectionState } from '../types/broker.ts';
 import { derivWs } from './deriv/DerivWebSocketManager.ts';
+import { DERIV_OAUTH_SCOPES } from '../../lib/auth/derivScope.ts';
 
 export class BaseBrokerAdapter implements BrokerAdapter {
   readonly brokerType: BrokerType;
@@ -21,7 +22,7 @@ export class BaseBrokerAdapter implements BrokerAdapter {
       accountNumber: 'DEMO-994821',
       status: 'DISCONNECTED',
       environment: 'DEMO',
-      apiPermissions: ['trade', 'account_manage'],
+      apiPermissions: [...DERIV_OAUTH_SCOPES],
       isReadOnly: false,
       executionPermission: true,
       lastHeartbeat: new Date().toISOString(),

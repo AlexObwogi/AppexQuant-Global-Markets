@@ -1221,23 +1221,27 @@ export async function createApp() {
       const isRegisterRoute = req.path.includes('register') || req.path.includes('signup');
       const action = isRegisterRoute ? 'signup' : (((req.query.action || req.body?.action) as 'connect' | 'signup') || 'connect');
       const destination = ((req.query.destination || req.body?.destination) as string) || '/';
+      const prompt = ((req.query.prompt || req.body?.prompt) as string) || (req.query.reset === 'true' ? 'login' : undefined);
+      const explicitRedirectUri = ((req.query.redirect_uri || req.body?.redirect_uri) as string) || undefined;
       const requestHost = req.headers.host || 'localhost:3000';
       const requestProtocol = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
 
-      const { authUrl, state, cookieValue } = initiateDerivOAuth({
+      const { authUrl, state, cookieValue, redirectUri } = initiateDerivOAuth({
         userId: req.sessionUser?.userId,
         action,
         destination,
         requestHost,
         requestProtocol,
+        prompt,
+        redirectUri: explicitRedirectUri,
       });
 
       res.setHeader('Set-Cookie', `deriv_oauth_state=${cookieValue}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=600`);
 
-      logSecurityEvent(req, 'DERIV_OAUTH_INITIATED', 'INFO', { action });
+      logSecurityEvent(req, 'DERIV_OAUTH_INITIATED', 'INFO', { action, redirectUri });
 
       if (req.method === 'POST' || req.headers.accept?.includes('application/json') || req.query.json === 'true') {
-        return res.json(createSuccessResponse({ authUrl, state }));
+        return res.json(createSuccessResponse({ authUrl, state, redirectUri }));
       }
 
       // Redirect user directly to Deriv OAuth 2.0 authorization server
@@ -1282,25 +1286,45 @@ export async function createApp() {
   app.all(['/api/auth/deriv/register', '/api/auth/deriv/signup', '/api/auth/deriv/open_account'], authRateLimiterMiddleware, derivAuthInitHandler);
 
   // Deriv OAuth Callback endpoint (Server-side token exchange & session establishment)
-  app.get(['/api/auth/deriv/callback', '/auth/deriv/callback'], authRateLimiterMiddleware, async (req: Request, res: Response) => {
+  const derivCallbackPaths = [
+    '/api/auth/deriv/callback',
+    '/api/auth/deriv/callback/',
+    '/auth/deriv/callback',
+    '/auth/deriv/callback/',
+    '/api/deriv/callback',
+    '/api/deriv/callback/',
+    '/auth/callback',
+    '/auth/callback/',
+    '/callback',
+    '/callback/',
+  ];
+
+  app.all(derivCallbackPaths, authRateLimiterMiddleware, async (req: Request, res: Response) => {
     const isHttps = (req.headers['x-forwarded-proto'] as string) === 'https' || req.secure || process.env.APP_ENV === 'production';
     const secureFlag = isHttps ? '; Secure' : '';
 
     try {
-      const code = req.query.code as string | undefined;
-      const state = req.query.state as string | undefined;
-      const verifier = req.query.verifier as string | undefined;
-      const error = req.query.error as string | undefined;
-      const errorDescription = req.query.error_description as string | undefined;
+      const code = (req.query.code || req.body?.code) as string | undefined;
+      const state = (req.query.state || req.body?.state) as string | undefined;
+      const verifier = (req.query.verifier || req.body?.verifier) as string | undefined;
+      const error = (req.query.error || req.body?.error) as string | undefined;
+      const errorDescription = (req.query.error_description || req.body?.error_description) as string | undefined;
+      const token1 = (req.query.token1 || req.body?.token1 || req.query.token || req.body?.token) as string | undefined;
+      const acct1 = (req.query.acct1 || req.body?.acct1 || req.query.acct || req.body?.acct || req.query.account_id) as string | undefined;
+
       const cookies = parseCookies(req.headers.cookie);
       const cookieState = cookies['deriv_oauth_state'];
       const requestHost = req.headers.host || 'localhost:3000';
       const requestProtocol = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
 
-      console.log('[DERIV_OAUTH_CALLBACK_RECEIVED]', { hasCode: Boolean(code), host: requestHost });
+      console.log('[DERIV_OAUTH_CALLBACK_RECEIVED]', { hasCode: Boolean(code), hasToken: Boolean(token1), host: requestHost, path: req.path });
 
       const result = await handleDerivOAuthCallback({
         code,
+        token1,
+        token: token1,
+        acct1,
+        acct: acct1,
         state,
         verifier,
         cookieState,
@@ -1311,24 +1335,56 @@ export async function createApp() {
       });
 
       if (!result.success) {
-        console.error("[DerivREST] Account discovery returned no valid Deriv account IDs.");
+        console.error('[DerivREST] OAuth callback verification failed:', result.errorMessage);
         logSecurityEvent(req, 'DERIV_OAUTH_FAILED', 'WARNING', { errorMessage: result.errorMessage });
         res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`);
-        return res.status(400).json(createErrorResponse(
-          result.errorMessage || 'Unable to complete authentication. Please try again.',
-          'OAUTH_TOKEN_EXCHANGE_FAILED',
-          {
-            rawPayload: {
-              errorCode: 'EXCHANGE_FAILED',
-              errorMessage: result.errorMessage,
-            },
-            recoveryInstructions: [
-              'Verify your Deriv account has granted all required scopes: read, trade, admin, and payments.',
-              'Ensure you have at least one active Deriv real or demo trading account (e.g. CR*, VRTC*, MTR*).',
-              'Clear any stale browser authentication cookies and re-authenticate via the "Connect Deriv" portal.',
-            ],
-          }
-        ));
+
+        if (req.headers.accept?.includes('application/json') || req.query.json === 'true') {
+          return res.status(400).json(createErrorResponse(
+            result.errorMessage || 'Unable to complete authentication. Please try again.',
+            'OAUTH_TOKEN_EXCHANGE_FAILED',
+            {
+              rawPayload: {
+                errorCode: 'EXCHANGE_FAILED',
+                errorMessage: result.errorMessage,
+              },
+              recoveryInstructions: [
+                'Verify your Deriv account has granted all required scopes: read, trade, admin, and payments.',
+                'Ensure you have at least one active Deriv real or demo trading account (e.g. CR*, VRTC*, MTR*).',
+                'Clear any stale browser authentication cookies and re-authenticate via the "Connect Deriv" portal.',
+              ],
+            }
+          ));
+        }
+
+        const cleanErrMsg = result.errorMessage || 'Deriv authorization failed.';
+        return res.send(`<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Authentication Error</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  </head>
+  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0b111e; color: #f1f5f9;">
+    <div style="text-align: center; max-width: 440px; padding: 32px 24px; background: #131d31; border: 1px solid #1e293b; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+      <div style="width: 48px; height: 48px; margin: 0 auto 16px; border-radius: 50%; background: #451a1a; color: #ef4444; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold;">✕</div>
+      <h2 style="margin: 0 0 8px; font-size: 18px; font-weight: 600; color: #f87171;">Connection Unsuccessful</h2>
+      <p style="margin: 0 0 20px; color: #94a3b8; font-size: 13px; line-height: 1.5;">${cleanErrMsg}</p>
+      <div style="display: flex; gap: 10px; justify-content: center;">
+        <button onclick="if(window.opener){window.close();}else{window.location.href='/'}" style="padding: 9px 18px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500;">Return to App</button>
+      </div>
+    </div>
+    <script>
+      (function() {
+        if (window.opener && window.opener !== window) {
+          try {
+            window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', source: 'DERIV_OAUTH', error: ${JSON.stringify(cleanErrMsg)} }, '*');
+          } catch(e) {}
+        }
+      })();
+    </script>
+  </body>
+</html>`);
       }
 
       // Successful exchange: Create authenticated AppExQuant user session
@@ -1341,21 +1397,39 @@ export async function createApp() {
         logger.error('[DerivOAuth] Verification failure - rejected loginid:', { loginid: verifiedLoginId });
         logSecurityEvent(req, 'DERIV_OAUTH_FAILED', 'WARNING', { reason: 'ACCOUNT_DISCOVERY_FAILED', loginid: verifiedLoginId });
         res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`);
-        return res.status(400).json(createErrorResponse(
-          errorReason,
-          'ACCOUNT_DISCOVERY_FAILED',
-          {
-            rawPayload: {
-              accountDetails: result.rawAccountDetails || null,
-              connectionRecord: result.connectionRecord || null,
-            },
-            recoveryInstructions: [
-              'Verify your Deriv account has granted all required scopes: read, trade, admin, and payments.',
-              'Ensure you have at least one active Deriv real or demo trading account (e.g. CR*, VRTC*, MTR*).',
-              'Clear any stale browser authentication cookies and re-authenticate via the "Connect Deriv" portal.',
-            ],
-          }
-        ));
+
+        if (req.headers.accept?.includes('application/json') || req.query.json === 'true') {
+          return res.status(400).json(createErrorResponse(
+            errorReason,
+            'ACCOUNT_DISCOVERY_FAILED',
+            {
+              rawPayload: {
+                accountDetails: result.rawAccountDetails || null,
+                connectionRecord: result.connectionRecord || null,
+              },
+              recoveryInstructions: [
+                'Verify your Deriv account has granted all required scopes: read, trade, admin, and payments.',
+                'Ensure you have at least one active Deriv real or demo trading account (e.g. CR*, VRTC*, MTR*).',
+                'Clear any stale browser authentication cookies and re-authenticate via the "Connect Deriv" portal.',
+              ],
+            }
+          ));
+        }
+
+        return res.send(`<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Account Discovery Notice</title>
+  </head>
+  <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0b111e; color: #f1f5f9;">
+    <div style="text-align: center; max-width: 440px; padding: 32px 24px; background: #131d31; border: 1px solid #1e293b; border-radius: 12px;">
+      <h2 style="margin: 0 0 8px; font-size: 18px; color: #f87171;">Account Discovery Notice</h2>
+      <p style="margin: 0 0 20px; color: #94a3b8; font-size: 13px;">${errorReason}</p>
+      <button onclick="if(window.opener){window.close();}else{window.location.href='/'}" style="padding: 9px 18px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer;">Close & Return</button>
+    </div>
+  </body>
+</html>`);
       }
 
       const accountId = verifiedLoginId;
@@ -1408,7 +1482,7 @@ export async function createApp() {
       console.log('[DERIV_OAUTH_SESSION_PERSISTED]', { loginid, accountId, accountType, currency, scopes });
       logSecurityEvent(req, 'DERIV_OAUTH_SUCCESS', 'INFO', { loginid, accountId, accountType, currency });
 
-      if (req.headers.accept?.includes('application/json')) {
+      if (req.headers.accept?.includes('application/json') || req.query.json === 'true') {
         return res.json(createSuccessResponse({
           sessionToken,
           user: {
@@ -1435,16 +1509,78 @@ export async function createApp() {
       const safeDestination = (rawDest && rawDest.startsWith('/') && rawDest !== '/' && rawDest !== '/login' && rawDest !== '/auth')
         ? rawDest
         : '/';
-      console.log('[DERIV_OAUTH_REDIRECT_ISSUED]', { safeDestination });
-      res.redirect(safeDestination);
+      console.log('[DERIV_OAUTH_CALLBACK_COMPLETED]', { safeDestination, accountId });
+
+      // Return authoritative postMessage HTML page to inform parent iframe/opener window and auto-close popup
+      return res.send(`<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Connecting to AppeX Quant...</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  </head>
+  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0b111e; color: #f1f5f9;">
+    <div style="text-align: center; max-width: 440px; padding: 32px 24px; background: #131d31; border: 1px solid #1e293b; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+      <div style="width: 44px; height: 44px; margin: 0 auto 16px; border: 3px solid #3b82f6; border-top-color: transparent; border-radius: 50%; animation: apx-spin 0.8s linear infinite;"></div>
+      <h2 style="margin: 0 0 8px; font-size: 18px; font-weight: 600;">Account Connected Successfully</h2>
+      <p style="margin: 0 0 16px; color: #94a3b8; font-size: 13px;">Linking ${accountId} (${accountType.toUpperCase()}) to your session...</p>
+      <a href="${safeDestination}" style="display: inline-block; padding: 9px 20px; background: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 13px; font-weight: 500;">Return to Dashboard</a>
+    </div>
+    <style>@keyframes apx-spin { to { transform: rotate(360deg); } }</style>
+    <script>
+      (function() {
+        var authData = {
+          type: 'OAUTH_AUTH_SUCCESS',
+          source: 'DERIV_OAUTH',
+          data: {
+            loginid: ${JSON.stringify(accountId)},
+            accountId: ${JSON.stringify(accountId)},
+            derivAccountId: ${JSON.stringify(accountId)},
+            accountType: ${JSON.stringify(accountType)},
+            currency: ${JSON.stringify(currency)},
+            balance: ${JSON.stringify(balance)},
+            fullName: ${JSON.stringify(fullName || '')},
+            email: ${JSON.stringify(realEmail)},
+            accountList: ${JSON.stringify(result.rawAccountDetails?.accountList || [])}
+          }
+        };
+        if (window.opener && window.opener !== window) {
+          try {
+            window.opener.postMessage(authData, '*');
+          } catch (e) {}
+          setTimeout(function() {
+            window.close();
+          }, 600);
+        } else {
+          setTimeout(function() {
+            window.location.href = ${JSON.stringify(safeDestination)};
+          }, 350);
+        }
+      })();
+    </script>
+  </body>
+</html>`);
     } catch (err: any) {
       const errMsg = err?.message || 'Unknown OAuth callback error';
       logger.error('Deriv OAuth callback server error:', { error: errMsg, stack: err?.stack });
       res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`);
-      if (req.headers.accept?.includes('application/json')) {
+      if (req.headers.accept?.includes('application/json') || req.query.json === 'true') {
         return res.status(500).json(createErrorResponse(`Deriv OAuth Callback Error: ${errMsg}`, 'SERVER_ERROR'));
       }
-      res.redirect(`/?auth_error=1&message=${encodeURIComponent(`Deriv OAuth Callback Error: ${errMsg}`)}`);
+      return res.send(`<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Authentication Error</title>
+  </head>
+  <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0b111e; color: #f1f5f9;">
+    <div style="text-align: center; max-width: 440px; padding: 32px 24px; background: #131d31; border: 1px solid #1e293b; border-radius: 12px;">
+      <h2 style="margin: 0 0 8px; font-size: 18px; color: #f87171;">Authentication Server Error</h2>
+      <p style="margin: 0 0 20px; color: #94a3b8; font-size: 13px;">${errMsg}</p>
+      <button onclick="if(window.opener){window.close();}else{window.location.href='/'}" style="padding: 9px 18px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer;">Close & Return</button>
+    </div>
+  </body>
+</html>`);
     }
   });
 

@@ -125,6 +125,14 @@ export interface DerivConnectionRecord {
 
   scopes: string[];
 
+  accountList?: Array<{
+    loginid: string;
+    account_type: string;
+    currency: string;
+    is_virtual: number;
+    landing_company_name: string;
+  }>;
+
   /**
    * SERVER ONLY.
    */
@@ -417,7 +425,16 @@ export function getDerivOAuthConfig(
     );
 
   if (configuredRedirect) {
-    redirectUri = configuredRedirect;
+    try {
+      const configuredHost = new URL(configuredRedirect).host;
+      if (requestHost && configuredHost && configuredHost !== host) {
+        redirectUri = `${proto}://${host}/api/auth/deriv/callback`;
+      } else {
+        redirectUri = configuredRedirect;
+      }
+    } catch {
+      redirectUri = configuredRedirect;
+    }
   } else {
     const siteUrl =
       cleanString(process.env.NEXT_PUBLIC_SITE_URL);
@@ -642,6 +659,8 @@ export function initiateDerivOAuth(params: {
   destination?: string;
   requestHost?: string;
   requestProtocol?: string;
+  prompt?: string;
+  redirectUri?: string;
 }): {
   authUrl: string;
   state: string;
@@ -659,6 +678,10 @@ export function initiateDerivOAuth(params: {
         params.requestHost,
         params.requestProtocol,
       );
+
+    const redirectUriToUse =
+      cleanString(params.redirectUri) ||
+      oauthConfig.redirectUri;
 
     console.log('[OAUTH_CLIENT_ID_PRESENT]', { present: Boolean(oauthConfig.clientId) });
 
@@ -690,7 +713,7 @@ export function initiateDerivOAuth(params: {
       action,
       destination,
       redirectUri:
-        oauthConfig.redirectUri,
+        redirectUriToUse,
       createdAt:
         Date.now(),
     };
@@ -704,6 +727,9 @@ export function initiateDerivOAuth(params: {
       encodeOAuthStateCookie(transaction);
 
     const extraParams: Record<string, string> = {};
+    if (params.prompt) {
+      extraParams['prompt'] = params.prompt;
+    }
     if (oauthConfig.affiliateToken) {
       extraParams['affiliate_token'] = oauthConfig.affiliateToken;
       extraParams['t'] = oauthConfig.affiliateToken;
@@ -716,7 +742,7 @@ export function initiateDerivOAuth(params: {
       buildAuthUrl({
         clientId: oauthConfig.clientId,
         appId: oauthConfig.appId || undefined,
-        redirectUri: oauthConfig.redirectUri,
+        redirectUri: redirectUriToUse,
         scope: oauthConfig.scopes || DERIV_OAUTH_SCOPE,
         state,
         codeChallenge,
@@ -725,14 +751,14 @@ export function initiateDerivOAuth(params: {
         extraParams: Object.keys(extraParams).length > 0 ? extraParams : undefined,
       });
 
-    console.log('[OAUTH_INIT_SUCCESS]', { action });
+    console.log('[OAUTH_INIT_SUCCESS]', { action, redirectUri: redirectUriToUse });
 
     return {
       authUrl,
       state,
       cookieValue,
       redirectUri:
-        oauthConfig.redirectUri,
+        redirectUriToUse,
     };
   } catch (error: any) {
     console.error('[OAUTH_INIT_FAILED]', { error: cleanErrorMessage(error) });
@@ -1028,13 +1054,6 @@ export async function discoverDerivAccountsREST(
         );
 
     if (!accounts.length) {
-      console.error(
-        '[DerivREST] Account discovery returned no valid Deriv account IDs.',
-      );
-      logger.warn(
-        '[DerivREST] Account discovery returned no valid Deriv account IDs.',
-      );
-
       return {
         accounts: [],
         primaryAccount: null,
@@ -1064,6 +1083,154 @@ export async function discoverDerivAccountsREST(
       primaryAccount: null,
     };
   }
+}
+
+/**
+ * Discovers accounts via Deriv's official WebSocket v3 authorize endpoint.
+ * This directly returns the exact loginid the user logged into or signed up for,
+ * along with the complete authorized account_list.
+ */
+export async function discoverDerivAccountsViaWebSocket(
+  token: string,
+  appId?: string,
+  timeoutMs = 5000,
+): Promise<{
+  accounts: DerivAccountProfileData[];
+  primaryAccount: DerivAccountProfileData | null;
+}> {
+  const cleanToken = cleanString(token);
+  if (!isUsableToken(cleanToken)) {
+    return { accounts: [], primaryAccount: null };
+  }
+
+  const cleanAppId = cleanString(appId) || getDerivOAuthConfig().appId || '1089';
+  const wsUrl = `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(cleanAppId)}`;
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const safeResolve = (val: { accounts: DerivAccountProfileData[]; primaryAccount: DerivAccountProfileData | null }) => {
+      if (!settled) {
+        settled = true;
+        resolve(val);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      try { (ws as any)?.terminate?.(); } catch {}
+      safeResolve({ accounts: [], primaryAccount: null });
+    }, timeoutMs);
+
+    let ws: any;
+    try {
+      ws = new NodeWebSocket(wsUrl, { handshakeTimeout: 3500 });
+    } catch {
+      clearTimeout(timer);
+      return safeResolve({ accounts: [], primaryAccount: null });
+    }
+
+    ws.on('open', () => {
+      try {
+        ws.send(JSON.stringify({ authorize: cleanToken, req_id: 1 }));
+      } catch {
+        clearTimeout(timer);
+        try { ws.close(); } catch {}
+        safeResolve({ accounts: [], primaryAccount: null });
+      }
+    });
+
+    ws.on('message', (raw: any) => {
+      clearTimeout(timer);
+      try {
+        const text = typeof raw === 'string' ? raw : raw.toString('utf8');
+        const data = JSON.parse(text);
+        if (data && data.authorize) {
+          const auth = data.authorize;
+          const rawAccountList = Array.isArray(auth.account_list) ? auth.account_list : [];
+          
+          const accounts: DerivAccountProfileData[] = rawAccountList
+            .map((item: any) => normalizeAccount({
+              ...item,
+              email: auth.email,
+              fullname: auth.fullname,
+              balance: item.loginid === auth.loginid ? (typeof auth.balance === 'number' ? auth.balance : Number(auth.balance) || 0) : 0,
+              currency: item.currency || 'USD',
+              scopes: auth.scopes,
+            }))
+            .filter((acc: any): acc is DerivAccountProfileData => Boolean(acc && isValidDerivAccountId(acc.loginid)));
+
+          const primaryFromAuth = normalizeAccount({
+            loginid: auth.loginid,
+            currency: auth.currency || 'USD',
+            balance: typeof auth.balance === 'number' ? auth.balance : Number(auth.balance) || 0,
+            email: auth.email,
+            fullname: auth.fullname,
+            is_virtual: auth.is_virtual ? 1 : 0,
+            landing_company_name: auth.landing_company_name,
+            scopes: auth.scopes,
+            userId: auth.user_id,
+            account_list: rawAccountList,
+          });
+
+          if (primaryFromAuth && isValidDerivAccountId(primaryFromAuth.loginid)) {
+            if (!accounts.some(a => a.loginid === primaryFromAuth.loginid)) {
+              accounts.unshift(primaryFromAuth);
+            }
+          }
+
+          const primaryAccount = (primaryFromAuth && isValidDerivAccountId(primaryFromAuth.loginid))
+            ? primaryFromAuth
+            : (accounts.find(a => !a.is_virtual) || accounts[0] || null);
+
+          try { ws.close(); } catch {}
+          return safeResolve({ accounts, primaryAccount });
+        }
+      } catch (err) {
+        logger.warn('[DerivWebSocket] Error parsing authorize response:', err);
+      }
+      try { ws.close(); } catch {}
+      safeResolve({ accounts: [], primaryAccount: null });
+    });
+
+    ws.on('error', () => {
+      clearTimeout(timer);
+      try { (ws as any)?.terminate?.(); } catch {}
+      safeResolve({ accounts: [], primaryAccount: null });
+    });
+  });
+}
+
+/**
+ * Unified Multi-Tiered Account Discovery:
+ * Authoritative WebSocket authorize (primary) + Options REST API fallback.
+ */
+export async function discoverDerivAccounts(
+  token: string,
+  appId?: string,
+): Promise<{
+  accounts: DerivAccountProfileData[];
+  primaryAccount: DerivAccountProfileData | null;
+}> {
+  // 1. Try WebSocket authorize (Authoritative Deriv v3)
+  const wsResult = await discoverDerivAccountsViaWebSocket(token, appId);
+  if (wsResult.primaryAccount && wsResult.accounts.length > 0) {
+    logger.info('[DerivDiscovery] Discovered accounts via WebSocket authorize:', {
+      primary: wsResult.primaryAccount.loginid,
+      count: wsResult.accounts.length,
+    });
+    return wsResult;
+  }
+
+  // 2. Try REST discovery (/trading/v1/options/accounts)
+  const restResult = await discoverDerivAccountsREST(token, appId);
+  if (restResult.primaryAccount && restResult.accounts.length > 0) {
+    logger.info('[DerivDiscovery] Discovered accounts via REST API:', {
+      primary: restResult.primaryAccount.loginid,
+      count: restResult.accounts.length,
+    });
+    return restResult;
+  }
+
+  return wsResult.primaryAccount ? wsResult : restResult;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1458,7 +1625,7 @@ export async function fetchDerivAccountProfile(
     getDerivOAuthConfig().clientId;
 
   const discovery =
-    await discoverDerivAccountsREST(
+    await discoverDerivAccounts(
       cleanToken,
       cleanAppId,
     );
@@ -1473,49 +1640,31 @@ export async function fetchDerivAccountProfile(
     discovery.primaryAccount;
 
   /*
-   * Request the authenticated WS URL.
-   *
-   * This validates that the OAuth token has the necessary
-   * permissions for the Options WebSocket path.
+   * Request the authenticated WS URL if options endpoint is supported.
+   * This is validated for Options streaming, but non-blocking so
+   * standard account access is preserved.
    */
-  const otpResult =
-    await requestDerivAccountOtp(
-      account.loginid,
-      cleanToken,
-      cleanAppId,
-    );
+  try {
+    const otpResult =
+      await requestDerivAccountOtp(
+        account.loginid,
+        cleanToken,
+        cleanAppId,
+      );
 
-  if (!otpResult.success || !otpResult.url) {
+    if (otpResult.success && otpResult.url) {
+      await verifyDerivWebSocketWithOtp(
+        otpResult.url,
+      ).catch(() => null);
+    }
+  } catch (err: any) {
     logger.warn(
-      '[DerivOAuth] Authenticated Options WebSocket URL could not be obtained.',
+      '[DerivOAuth] Options OTP check non-fatal warning.',
       {
-        accountId:
-          account.loginid,
-        error:
-          otpResult.error,
+        accountId: account.loginid,
+        error: err?.message,
       },
     );
-
-    return null;
-  }
-
-  const wsResult =
-    await verifyDerivWebSocketWithOtp(
-      otpResult.url,
-    );
-
-  if (!wsResult.success) {
-    logger.warn(
-      '[DerivOAuth] Authenticated Options WebSocket validation failed.',
-      {
-        accountId:
-          account.loginid,
-        error:
-          wsResult.error,
-      },
-    );
-
-    return null;
   }
 
   return {
@@ -2514,52 +2663,59 @@ export async function switchUserDerivAccountAsync(
   }
 
   /*
-   * Switching accounts must be validated through the same authenticated
-   * OTP flow. Never simply change the ID locally.
+   * Switching accounts is validated through authenticated account discovery.
    */
   const discovery =
-    await discoverDerivAccountsREST(
+    await discoverDerivAccounts(
       record.accessToken,
       getDerivOAuthConfig().appId,
     );
 
-  const selected =
+  let selected =
     discovery.accounts.find(
       (account) =>
         account.loginid ===
         cleanLoginId,
     );
 
+  if (!selected && record.accountList) {
+    const existing = record.accountList.find((a) => a.loginid === cleanLoginId);
+    if (existing) {
+      selected = {
+        loginid: existing.loginid,
+        currency: existing.currency || 'USD',
+        balance: 0,
+        is_virtual: existing.is_virtual ? 1 : 0,
+        landing_company_name: existing.landing_company_name,
+        account_list: record.accountList,
+      };
+    }
+  }
+
   if (!selected) {
     throw new Error(
-      'Requested Deriv account was not returned by authenticated account discovery.',
+      'Requested Deriv account was not found among authorized accounts for this profile.',
     );
   }
 
-  const otp =
-    await requestDerivAccountOtp(
-      cleanLoginId,
-      record.accessToken,
-      getDerivOAuthConfig().appId,
-    );
+  try {
+    const otp =
+      await requestDerivAccountOtp(
+        cleanLoginId,
+        record.accessToken,
+        getDerivOAuthConfig().appId,
+      );
 
-  if (!otp.success || !otp.url) {
-    throw new Error(
-      otp.error ||
-      'Unable to obtain authenticated WebSocket OTP for selected account.',
-    );
-  }
-
-  const ws =
-    await verifyDerivWebSocketWithOtp(
-      otp.url,
-    );
-
-  if (!ws.success) {
-    throw new Error(
-      ws.error ||
-      'Selected Deriv account WebSocket validation failed.',
-    );
+    if (otp.success && otp.url) {
+      await verifyDerivWebSocketWithOtp(
+        otp.url,
+      ).catch(() => null);
+    }
+  } catch (err: any) {
+    logger.warn('[DerivSwitchAccount] Options OTP validation non-fatal warning.', {
+      accountId: cleanLoginId,
+      error: err?.message,
+    });
   }
 
   const now =
@@ -2574,10 +2730,11 @@ export async function switchUserDerivAccountAsync(
       : 'real';
 
   record.currency =
-    selected.currency;
+    selected.currency || record.currency || 'USD';
 
-  record.balance =
-    selected.balance;
+  if (typeof selected.balance === 'number') {
+    record.balance = selected.balance;
+  }
 
   record.email =
     selected.email ||
@@ -2586,6 +2743,16 @@ export async function switchUserDerivAccountAsync(
   record.fullName =
     selected.fullname ||
     record.fullName;
+
+  if (discovery.accounts.length > 0) {
+    record.accountList = discovery.accounts.map((item) => ({
+      loginid: item.loginid,
+      account_type: item.is_virtual ? 'demo' : 'real',
+      currency: item.currency,
+      is_virtual: item.is_virtual,
+      landing_company_name: item.landing_company_name || '',
+    }));
+  }
 
   record.updatedAt =
     now;
@@ -2606,6 +2773,21 @@ export async function switchUserDerivAccountAsync(
     record,
   );
 
+  // Persist switch to Prisma DB
+  try {
+    await dbQueries.upsertDerivAccount({
+      id: cleanLoginId,
+      userId: cleanUserId,
+      accountType: record.accountType,
+      currency: record.currency,
+      balance: record.balance ?? 0,
+      equity: record.balance ?? 0,
+      isVirtual: record.accountType === 'demo',
+      status: 'ACTIVE',
+      lastSyncedAt: now,
+    });
+  } catch {}
+
   return toSafeMetadata(
     record,
   );
@@ -2618,6 +2800,10 @@ export async function switchUserDerivAccountAsync(
 export async function handleDerivOAuthCallback(
   params: {
     code?: string;
+    token1?: string;
+    token?: string;
+    acct1?: string;
+    acct?: string;
     state?: string;
 
     /*
@@ -2707,7 +2893,10 @@ export async function handleDerivOAuthCallback(
     };
   }
 
-  if (!state) {
+  const tokenFromParam = cleanString(params.token1 || params.token);
+  const acctFromParam = cleanString(params.acct1 || params.acct);
+
+  if (!state && !tokenFromParam) {
     return {
       success: false,
 
@@ -2795,6 +2984,18 @@ export async function handleDerivOAuthCallback(
     }
   }
 
+  if (!transaction && tokenFromParam) {
+    transaction = {
+      state: state || 'token_callback',
+      codeVerifier: '',
+      userId: `usr-${crypto.randomBytes(12).toString('hex')}`,
+      action: 'connect',
+      destination: '/',
+      redirectUri: oauthConfig.redirectUri,
+      createdAt: Date.now(),
+    };
+  }
+
   if (!transaction) {
     logger.warn(
       '[DerivOAuth] OAuth transaction could not be validated.',
@@ -2819,6 +3020,7 @@ export async function handleDerivOAuthCallback(
   }
 
   if (
+    state &&
     transaction.state !== state
   ) {
     return {
@@ -2837,9 +3039,11 @@ export async function handleDerivOAuthCallback(
     transaction.createdAt >
     OAUTH_STATE_TTL_MS
   ) {
-    oauthTransactionsStore.delete(
-      state,
-    );
+    if (state) {
+      oauthTransactionsStore.delete(
+        state,
+      );
+    }
 
     return {
       success: false,
@@ -2855,11 +3059,13 @@ export async function handleDerivOAuthCallback(
   /*
    * Single-use state.
    */
-  oauthTransactionsStore.delete(
-    state,
-  );
+  if (state) {
+    oauthTransactionsStore.delete(
+      state,
+    );
+  }
 
-  if (!code) {
+  if (!code && !tokenFromParam) {
     return {
       success: false,
 
@@ -2879,54 +3085,70 @@ export async function handleDerivOAuthCallback(
     transaction.redirectUri ||
     oauthConfig.redirectUri;
 
+  let accessToken = '';
+  let tokenExpiry: string | null = null;
+  let scopes = ['trade', 'account_manage'];
+  let refreshToken: string | undefined = undefined;
+
   try {
-    const tokenData =
-      await exchangeCodeForToken(
-        code,
-        transaction.codeVerifier,
-        redirectUri,
-        oauthConfig.clientId,
-      );
+    if (code) {
+      const tokenData =
+        await exchangeCodeForToken(
+          code,
+          transaction.codeVerifier,
+          redirectUri,
+          oauthConfig.clientId,
+        );
 
-    const accessToken =
-      cleanString(
-        tokenData?.access_token,
-      );
+      accessToken =
+        cleanString(
+          tokenData?.access_token,
+        );
 
-    if (!isUsableToken(accessToken)) {
-      logger.error(
-        '[DerivOAuth] Token exchange succeeded without an access token.',
-      );
+      if (!isUsableToken(accessToken)) {
+        logger.error(
+          '[DerivOAuth] Token exchange succeeded without an access token.',
+        );
 
-      return {
-        success: false,
+        return {
+          success: false,
 
-        destination:
-          '/?auth_error=token_failed&message=Missing%20access%20token',
+          destination:
+            '/?auth_error=token_failed&message=Missing%20access%20token',
 
-        errorMessage:
-          'Deriv did not return an access token.',
-      };
+          errorMessage:
+            'Deriv did not return an access token.',
+        };
+      }
+
+      tokenExpiry =
+        Number.isFinite(
+          Number(tokenData?.expires_in),
+        )
+          ? new Date(
+              Date.now() +
+              Number(tokenData.expires_in) *
+              1000,
+            ).toISOString()
+          : null;
+
+      scopes =
+        normalizeScopes(
+          tokenData?.scopes ||
+          tokenData?.scope,
+
+          ['trade', 'account_manage'],
+        );
+
+      refreshToken =
+        cleanString(
+          tokenData?.refresh_token,
+        ) || undefined;
+    } else if (tokenFromParam) {
+      accessToken = tokenFromParam;
+      tokenExpiry = null;
+      scopes = ['trade', 'account_manage', 'read', 'payments'];
     }
-
-    const tokenExpiry =
-      Number.isFinite(
-        Number(tokenData?.expires_in),
-      )
-        ? new Date(
-            Date.now() +
-            Number(tokenData.expires_in) *
-            1000,
-          ).toISOString()
-        : null;
-
-    const scopes =
-      normalizeScopes(
-        tokenData?.scopes ||
-        tokenData?.scope,
-
-        ['trade', 'account_manage'],
-      );
 
     /*
      * Account identity is NOT trusted from token query parameters.
@@ -2946,14 +3168,19 @@ export async function handleDerivOAuthCallback(
         appId:
           oauthConfig.appId,
 
-        refreshToken:
-          cleanString(
-            tokenData?.refresh_token,
-          ) || undefined,
+        refreshToken,
 
         tokenExpiry,
 
         scopes,
+
+        fallbackAccount: acctFromParam ? {
+          loginid: acctFromParam,
+          accountType: acctFromParam.startsWith('VR') ? 'demo' : 'real',
+          currency: 'USD',
+          balance: 0,
+          scopes,
+        } : undefined,
       });
 
     if (

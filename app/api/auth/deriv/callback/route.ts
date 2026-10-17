@@ -45,6 +45,8 @@ function parseCookieHeader(cookieHeader: string | null): Record<string, string> 
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const code = url.searchParams.get('code') || undefined;
+  const token1 = url.searchParams.get('token1') || url.searchParams.get('token') || undefined;
+  const acct1 = url.searchParams.get('acct1') || url.searchParams.get('acct') || url.searchParams.get('account_id') || undefined;
   const state = url.searchParams.get('state') || undefined;
   const verifier = url.searchParams.get('verifier') || undefined;
   const error = url.searchParams.get('error') || undefined;
@@ -69,6 +71,7 @@ export async function GET(request: Request): Promise<Response> {
   // Vercel diagnostic log
   console.log('[Vercel:DerivOAuth:Callback] Processing callback request:', {
     hasCode: Boolean(code),
+    hasToken: Boolean(token1),
     hasState: Boolean(state),
     hasCookieState: Boolean(cookieState),
     isVercel: Boolean(process.env.VERCEL),
@@ -88,13 +91,29 @@ export async function GET(request: Request): Promise<Response> {
     });
 
     if (acceptsHtml) {
-      const redirectUrl = new URL('/', request.url);
-      redirectUrl.searchParams.set('error', errorType);
-      redirectUrl.searchParams.set('message', "We couldn't connect your Deriv account, please try again");
       const errHeaders = new Headers(headers);
-      errHeaders.delete('Content-Type');
-      errHeaders.set('Location', redirectUrl.toString());
-      return new Response(null, { status: 302, headers: errHeaders });
+      errHeaders.set('Content-Type', 'text/html; charset=utf-8');
+      return new Response(`<!DOCTYPE html>
+<html>
+  <head><meta charset="utf-8"><title>Connection Error</title><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0b111e; color: #f1f5f9;">
+    <div style="text-align: center; max-width: 440px; padding: 32px 24px; background: #131d31; border: 1px solid #1e293b; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+      <div style="width: 48px; height: 48px; margin: 0 auto 16px; border-radius: 50%; background: #451a1a; color: #ef4444; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold;">✕</div>
+      <h2 style="margin: 0 0 8px; font-size: 18px; font-weight: 600; color: #f87171;">Connection Unsuccessful</h2>
+      <p style="margin: 0 0 20px; color: #94a3b8; font-size: 13px; line-height: 1.5;">${message || "We couldn't connect your Deriv account, please try again"}</p>
+      <button onclick="if(window.opener){window.close();}else{window.location.href='/'}" style="padding: 9px 18px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500;">Return to App</button>
+    </div>
+    <script>
+      (function() {
+        if (window.opener && window.opener !== window) {
+          try {
+            window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', source: 'DERIV_OAUTH', error: ${JSON.stringify(message)} }, '*');
+          } catch(e) {}
+        }
+      })();
+    </script>
+  </body>
+</html>`, { status: 400, headers: errHeaders });
     }
 
     return new Response(
@@ -121,6 +140,10 @@ export async function GET(request: Request): Promise<Response> {
   // Execute token exchange and authenticated account discovery
   const result = await handleDerivOAuthCallback({
     code,
+    token1,
+    token: token1,
+    acct1,
+    acct: acct1,
     state,
     verifier,
     cookieState,
@@ -224,11 +247,59 @@ export async function GET(request: Request): Promise<Response> {
       ? rawDest
       : '/';
 
-  // If client prefers JSON or is an AJAX/API call, respond with success JSON; otherwise perform 302 redirect to app
+  // If client prefers JSON or is an AJAX/API call, respond with success JSON; otherwise perform postMessage HTML response to auto-close popup & inform opener
   if (acceptsHtml) {
-    headers.delete('Content-Type');
-    headers.set('Location', new URL(safeDestination, request.url).toString());
-    return new Response(null, { status: 302, headers });
+    const successHeaders = new Headers(headers);
+    successHeaders.set('Content-Type', 'text/html; charset=utf-8');
+    const authSuccessPayload = {
+      type: 'OAUTH_AUTH_SUCCESS',
+      source: 'DERIV_OAUTH',
+      data: {
+        loginid,
+        accountId,
+        derivAccountId: accountId,
+        accountType,
+        currency,
+        balance: sessionPayload.balance,
+        fullName: sessionPayload.fullName || '',
+        email: sessionPayload.email,
+        accountList: result.rawAccountDetails?.accountList || [],
+      },
+    };
+    return new Response(`<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Connecting to AppeX Quant...</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  </head>
+  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0b111e; color: #f1f5f9;">
+    <div style="text-align: center; max-width: 440px; padding: 32px 24px; background: #131d31; border: 1px solid #1e293b; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+      <div style="width: 44px; height: 44px; margin: 0 auto 16px; border: 3px solid #3b82f6; border-top-color: transparent; border-radius: 50%; animation: apx-spin 0.8s linear infinite;"></div>
+      <h2 style="margin: 0 0 8px; font-size: 18px; font-weight: 600;">Account Connected Successfully</h2>
+      <p style="margin: 0 0 16px; color: #94a3b8; font-size: 13px;">Linking ${accountId} (${accountType.toUpperCase()}) to your session...</p>
+      <a href="${safeDestination}" style="display: inline-block; padding: 9px 20px; background: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 13px; font-weight: 500;">Return to Dashboard</a>
+    </div>
+    <style>@keyframes apx-spin { to { transform: rotate(360deg); } }</style>
+    <script>
+      (function() {
+        var authData = ${JSON.stringify(authSuccessPayload)};
+        if (window.opener && window.opener !== window) {
+          try {
+            window.opener.postMessage(authData, '*');
+          } catch (e) {}
+          setTimeout(function() {
+            window.close();
+          }, 600);
+        } else {
+          setTimeout(function() {
+            window.location.href = ${JSON.stringify(safeDestination)};
+          }, 350);
+        }
+      })();
+    </script>
+  </body>
+</html>`, { status: 200, headers: successHeaders });
   }
 
   return new Response(

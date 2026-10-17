@@ -566,6 +566,33 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     []
   );
 
+  // Listen for popup OAuth messages
+  useEffect(() => {
+    const handleOAuthMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+        const authData = event.data.data;
+        if (authData) {
+          establishUserSession({
+            id: authData.derivAccountId || authData.accountId || authData.loginid,
+            accountId: authData.derivAccountId || authData.accountId || authData.loginid,
+            email: authData.email,
+            fullName: authData.fullName,
+            balance: authData.balance ?? 0,
+            currency: authData.currency || 'USD',
+            accountType: authData.accountType || 'real',
+            role: authData.role,
+          });
+          setIsAuthorizing(false);
+        }
+      } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
+        setErrorMessage(event.data.error || 'Connection failed.');
+        setIsAuthorizing(false);
+      }
+    };
+    window.addEventListener('message', handleOAuthMessage);
+    return () => window.removeEventListener('message', handleOAuthMessage);
+  }, [establishUserSession]);
+
   // 1. DEDICATED OAUTH REDIRECT CALLBACK & ERROR HANDLING
   useEffect(() => {
     if (typeof window === 'undefined' || callbackHandledRef.current) return;
@@ -575,6 +602,8 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     const searchParams = new URLSearchParams(locationSearch);
     const hashParams = new URLSearchParams(locationHash.startsWith('#') ? locationHash.substring(1) : locationHash);
 
+    const code = searchParams.get('code') || hashParams.get('code');
+    const state = searchParams.get('state') || hashParams.get('state');
     const token1 = searchParams.get('token1') || searchParams.get('token') || hashParams.get('token1') || hashParams.get('token');
     const acct1 = searchParams.get('acct1') || searchParams.get('acct') || hashParams.get('acct1') || hashParams.get('acct');
 
@@ -598,6 +627,43 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       }
       setErrorMessage(computedErrorMessage);
       window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    if (code) {
+      callbackHandledRef.current = true;
+      setIsAuthorizing(true);
+      setAuthStatusMessage('Exchanging Deriv authorization credentials...');
+      window.history.replaceState({}, document.title, window.location.pathname);
+
+      (async () => {
+        try {
+          const res = await apiFetch(`/api/auth/deriv/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state || '')}`, {
+            headers: { Accept: 'application/json' },
+          }).catch(() => null);
+
+          const resData = res?.ok ? await res.json().catch(() => null) : null;
+          if (resData?.success && resData?.data?.user) {
+            const u = resData.data.user;
+            establishUserSession({
+              id: u.derivAccountId || u.userId,
+              accountId: u.derivAccountId || u.userId,
+              email: u.email,
+              fullName: u.fullName,
+              balance: u.balance ?? 0,
+              currency: u.currency || 'USD',
+              accountType: u.accountType || (u.derivAccountId?.startsWith('VR') ? 'demo' : 'real'),
+              role: u.role,
+            });
+            setIsAuthorizing(false);
+            return;
+          }
+          throw new Error(resData?.error?.message || 'Failed to exchange authorization code.');
+        } catch (e: any) {
+          setErrorMessage(e?.message || 'OAuth authorization failed.');
+          setIsAuthorizing(false);
+        }
+      })();
       return;
     }
 

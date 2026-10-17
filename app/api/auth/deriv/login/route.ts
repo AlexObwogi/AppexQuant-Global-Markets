@@ -21,6 +21,7 @@ export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const action = (url.searchParams.get('action') as 'connect' | 'signup') || (url.pathname.includes('register') || url.pathname.includes('signup') ? 'signup' : 'connect');
   const destination = url.searchParams.get('destination') || '/';
+  const prompt = url.searchParams.get('prompt') || (url.searchParams.get('reset') === 'true' ? 'login' : undefined);
   const customAffiliate = url.searchParams.get('affiliate_token') || url.searchParams.get('t') || MASTER_AFFILIATE_TOKEN;
 
   const requestHost = request.headers.get('host') || 'localhost:3000';
@@ -28,12 +29,16 @@ export async function GET(request: Request): Promise<Response> {
   const isHttps = proto === 'https' || process.env.APP_ENV === 'production' || Boolean(process.env.VERCEL);
   const cookieSameSite = isHttps ? 'SameSite=None; Secure' : 'SameSite=Lax';
 
+  const explicitRedirectUri = url.searchParams.get('redirect_uri') || undefined;
+
   try {
     const { authUrl, state, cookieValue, redirectUri } = initiateDerivOAuth({
       action,
       destination,
       requestHost,
       requestProtocol: proto,
+      prompt,
+      redirectUri: explicitRedirectUri,
     });
 
     const parsedAuthUrl = new URL(authUrl);
@@ -68,9 +73,9 @@ export async function GET(request: Request): Promise<Response> {
 
     // Check if client expects JSON
     const acceptsHtml = request.headers.get('accept')?.includes('text/html');
-    const isJsonRequested = url.searchParams.get('json') === 'true' || request.headers.get('accept')?.includes('application/json');
+    const isJsonRequested = url.searchParams.get('json') === 'true' || (request.headers.get('accept')?.includes('application/json') && !acceptsHtml);
 
-    if (isJsonRequested && !acceptsHtml) {
+    if (isJsonRequested) {
       headers.set('Content-Type', 'application/json');
       return new Response(
         JSON.stringify({

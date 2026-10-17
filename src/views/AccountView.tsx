@@ -185,17 +185,103 @@ export const AccountView: React.FC = () => {
     }
   }, [meta]);
 
-  // Initiate Deriv OAuth PKCE flow
-  const handleInitiateOAuth = (action: 'connect' | 'signup' = 'connect') => {
+  useEffect(() => {
+    const handleOAuthMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+        const authData = event.data.data;
+        if (authData) {
+          setMeta((prev) => ({
+            ...prev,
+            connected: true,
+            connectionStatus: 'CONNECTED',
+            derivAccountId: authData.derivAccountId || authData.accountId || authData.loginid,
+            accountType: authData.accountType,
+            currency: authData.currency,
+            balance: authData.balance,
+            fullName: authData.fullName,
+            email: authData.email,
+            accountList: authData.accountList || prev?.accountList,
+            lastSyncedAt: new Date().toISOString(),
+          }));
+          dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'ONLINE' });
+          dispatch({
+            type: 'SELECT_BROKER',
+            payload: {
+              id: `conn-deriv-${authData.derivAccountId || authData.accountId}`,
+              brokerType: 'DERIV',
+              brokerName: 'Deriv Limited',
+              server: 'Deriv-Server',
+              accountNumber: authData.derivAccountId || authData.accountId || '',
+              status: 'CONNECTED',
+              environment: authData.accountType === 'real' ? 'REAL' : 'DEMO',
+              apiPermissions: authData.scopes || ['trade', 'account_manage'],
+              isReadOnly: false,
+              executionPermission: true,
+            },
+          });
+          dispatch({
+            type: 'ADD_NOTIFICATION',
+            payload: {
+              title: 'Account Connected',
+              message: `Successfully connected to Deriv account ${authData.derivAccountId || authData.accountId}`,
+              type: 'success',
+            },
+          });
+          setMessage(`Connected to ${authData.derivAccountId || authData.accountId} successfully.`);
+          setIsLoading(false);
+          fetchDerivStatus();
+        }
+      } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
+        setErrorMessage(event.data.error || 'Authentication could not be completed.');
+        setIsLoading(false);
+      }
+    };
+
+    window.addEventListener('message', handleOAuthMessage);
+    return () => window.removeEventListener('message', handleOAuthMessage);
+  }, [dispatch]);
+
+  // Initiate Deriv OAuth PKCE flow via popup or redirect
+  const handleInitiateOAuth = async (action: 'connect' | 'signup' = 'connect', promptLogin = false) => {
     setErrorMessage(null);
     setMessage(
       action === 'signup'
-        ? 'Redirecting to official account registration...'
-        : 'Redirecting to official OAuth authorization...'
+        ? 'Opening account registration...'
+        : promptLogin
+        ? 'Resetting session for re-authentication...'
+        : 'Authorizing with Deriv...'
     );
-    setTimeout(() => {
-      window.location.href = `/api/auth/deriv/${action === 'signup' ? 'signup' : 'login'}?action=${action}&destination=/`;
-    }, 200);
+    const promptQuery = promptLogin ? '&prompt=login&reset=true' : '';
+
+    try {
+      const endpoint = `/api/auth/deriv/${action === 'signup' ? 'signup' : 'login'}`;
+      const res = await apiFetch(`${endpoint}?action=${action}&destination=/${promptQuery}&json=true`);
+      if (res.ok) {
+        const json = await res.json();
+        const authUrl = json?.data?.authUrl || json?.authUrl;
+        if (authUrl) {
+          const width = 650;
+          const height = 750;
+          const left = Math.max(0, (window.screen.width - width) / 2);
+          const top = Math.max(0, (window.screen.height - height) / 2);
+          const popup = window.open(
+            authUrl,
+            'deriv_oauth_popup',
+            `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes`
+          );
+
+          if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+            window.location.href = authUrl;
+          } else {
+            setMessage('Awaiting authorization in popup window...');
+          }
+          return;
+        }
+      }
+      window.location.href = `/api/auth/deriv/${action === 'signup' ? 'signup' : 'login'}?action=${action}&destination=/${promptQuery}`;
+    } catch {
+      window.location.href = `/api/auth/deriv/${action === 'signup' ? 'signup' : 'login'}?action=${action}&destination=/${promptQuery}`;
+    }
   };
 
   // Handle environment toggling
@@ -501,11 +587,21 @@ export const AccountView: React.FC = () => {
                       Sync Account State
                     </Button>
                     <Button 
+                      onClick={() => handleInitiateOAuth('connect', true)} 
+                      size="sm" 
+                      variant="secondary" 
+                      className="flex items-center gap-1.5"
+                      title="Force fresh login screen with other credentials"
+                    >
+                      <Link2 className="w-3.5 h-3.5" />
+                      Log into Other Acc
+                    </Button>
+                    <Button 
                       onClick={handleDisconnect} 
                       isLoading={isDisconnecting} 
                       size="sm" 
                       variant="secondary" 
-                      className="flex items-center gap-1.5"
+                      className="flex items-center gap-1.5 text-rose-400 hover:text-rose-300"
                     >
                       <Unplug className="w-3.5 h-3.5" />
                       Disconnect Account

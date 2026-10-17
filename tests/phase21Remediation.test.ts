@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { transactionInterceptorMiddleware, recordInterceptedTransaction, getRevenueTelemetrySummary } from '../src/services/revenue/transactionInterceptor.ts';
 import { DerivWebSocketManager } from '../src/services/deriv/DerivWebSocketManager.ts';
-import { handleDerivOAuthCallback } from '../src/services/deriv/oauthServerService.ts';
+import { handleDerivOAuthCallback, getDerivOAuthConfig, initiateDerivOAuth } from '../src/services/deriv/oauthServerService.ts';
 
 describe('Phase 21 - Remediation & Isolation Tests', () => {
   describe('Revenue Engine Isolation Tests', () => {
@@ -57,6 +57,7 @@ describe('Phase 21 - Remediation & Isolation Tests', () => {
         tradedVolumeUsd: 1000,
         grossRevenueUsd: 50,
         traceId,
+        sourceEndpoint: '/api/v1/trade/execute',
       };
 
       const event1 = recordInterceptedTransaction(params);
@@ -101,6 +102,25 @@ describe('Phase 21 - Remediation & Isolation Tests', () => {
       const result = await handleDerivOAuthCallback(req);
       expect(result.success).toBe(false);
       expect(result.errorMessage).toContain('OAuth state');
+    });
+
+    it('Dynamic host resolution preserves requestHost when running on preview or local domains', () => {
+      const previewConfig = getDerivOAuthConfig('ais-dev-qpjiklxeyqhkvi5epx2cfg-124419270339.europe-west2.run.app', 'https');
+      expect(previewConfig.redirectUri).toBe('https://ais-dev-qpjiklxeyqhkvi5epx2cfg-124419270339.europe-west2.run.app/api/auth/deriv/callback');
+
+      const localConfig = getDerivOAuthConfig('localhost:3000', 'http');
+      expect(localConfig.redirectUri).toBe('http://localhost:3000/api/auth/deriv/callback');
+    });
+
+    it('initiateDerivOAuth respects explicit custom redirectUri when provided', () => {
+      const customUri = 'https://custom-domain.com/auth/deriv/callback';
+      const initResult = initiateDerivOAuth({
+        action: 'connect',
+        redirectUri: customUri,
+      });
+
+      expect(initResult.redirectUri).toBe(customUri);
+      expect(initResult.authUrl).toContain(encodeURIComponent(customUri));
     });
   });
 

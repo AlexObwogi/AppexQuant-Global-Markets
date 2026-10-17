@@ -18,6 +18,13 @@ interface ConnectionMeta {
   connectionStatus: 'CONNECTED' | 'CONNECTING' | 'SYNCING' | 'SYNC_FAILED' | 'DISCONNECTED' | 'RECONNECT_REQUIRED' | 'ERROR';
   scopes?: string[];
   lastSyncedAt?: string;
+  accountList?: Array<{
+    loginid: string;
+    account_type: string;
+    currency: string;
+    is_virtual: number;
+    landing_company_name: string;
+  }>;
 }
 
 export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
@@ -27,6 +34,7 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isSwitching, setIsSwitching] = useState(false);
   const [connectStep, setConnectStep] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<'options' | 'token'>('options');
@@ -111,20 +119,132 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
     }
   }, [meta]);
 
-  const handleInitiateOAuth = (action: 'connect' | 'signup') => {
-    setErrorMessage(null);
-    setConnectStep(action === 'signup' ? 'Initiating registration...' : 'Connecting...');
+  useEffect(() => {
+    const handleOAuthMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+        const authData = event.data.data;
+        if (authData) {
+          setMeta((prev) => ({
+            ...prev,
+            connected: true,
+            connectionStatus: 'CONNECTED',
+            derivAccountId: authData.derivAccountId || authData.accountId || authData.loginid,
+            accountType: authData.accountType,
+            currency: authData.currency,
+            balance: authData.balance,
+            fullName: authData.fullName,
+            email: authData.email,
+            accountList: authData.accountList || prev?.accountList,
+            lastSyncedAt: new Date().toISOString(),
+          }));
+          dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'ONLINE' });
+          dispatch({
+            type: 'SELECT_BROKER',
+            payload: {
+              id: `conn-deriv-${authData.derivAccountId || authData.accountId}`,
+              brokerType: 'DERIV',
+              brokerName: 'Deriv Limited',
+              server: 'Deriv-Server',
+              accountNumber: authData.derivAccountId || authData.accountId || '',
+              status: 'CONNECTED',
+              environment: authData.accountType === 'real' ? 'REAL' : 'DEMO',
+              apiPermissions: authData.scopes || ['trade', 'account_manage'],
+              isReadOnly: false,
+              executionPermission: true,
+            },
+          });
+          setIsLoading(false);
+          setConnectStep(null);
+          fetchStatus();
+        }
+      } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
+        setErrorMessage(event.data.error || 'Authentication could not be completed.');
+        setIsLoading(false);
+        setConnectStep(null);
+      }
+    };
 
-    setTimeout(() => {
-      setConnectStep(action === 'signup' ? 'Preparing OAuth registration...' : 'Authorizing account...');
-      setTimeout(() => {
-        setConnectStep('Securing connection...');
-        setTimeout(() => {
-          const endpoint = action === 'signup' ? '/api/auth/deriv/signup' : '/api/auth/deriv/login';
-          window.location.href = `${endpoint}?action=${action}&destination=/`;
-        }, 250);
-      }, 250);
-    }, 250);
+    window.addEventListener('message', handleOAuthMessage);
+    return () => window.removeEventListener('message', handleOAuthMessage);
+  }, [dispatch]);
+
+  const handleInitiateOAuth = async (action: 'connect' | 'signup', promptLogin = false) => {
+    setErrorMessage(null);
+    setConnectStep(action === 'signup' ? 'Initiating registration...' : promptLogin ? 'Resetting session for re-auth...' : 'Connecting...');
+
+    try {
+      const endpoint = action === 'signup' ? '/api/auth/deriv/signup' : '/api/auth/deriv/login';
+      const promptQuery = promptLogin ? '&prompt=login&reset=true' : '';
+
+      // Request auth URL from backend to open directly in popup
+      const res = await apiFetch(`${endpoint}?action=${action}&destination=/${promptQuery}&json=true`);
+      if (res.ok) {
+        const json = await res.json();
+        const authUrl = json?.data?.authUrl || json?.authUrl;
+        if (authUrl) {
+          const width = 650;
+          const height = 750;
+          const left = Math.max(0, (window.screen.width - width) / 2);
+          const top = Math.max(0, (window.screen.height - height) / 2);
+          const popup = window.open(
+            authUrl,
+            'deriv_oauth_popup',
+            `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes`
+          );
+
+          if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+            window.location.href = authUrl;
+          } else {
+            setConnectStep('Awaiting authorization in popup window...');
+          }
+          return;
+        }
+      }
+      window.location.href = `${endpoint}?action=${action}&destination=/${promptQuery}`;
+    } catch {
+      window.location.href = `/api/auth/deriv/login?action=${action}&destination=/`;
+    }
+  };
+
+  const handleSwitchAccount = async (targetLoginId: string) => {
+    setIsSwitching(true);
+    setErrorMessage(null);
+    try {
+      const res = await apiFetch('/api/auth/deriv/switch-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ loginid: targetLoginId }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          setMeta(json.data);
+          dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'ONLINE' });
+          dispatch({
+            type: 'SELECT_BROKER',
+            payload: {
+              id: `conn-deriv-${json.data.derivAccountId}`,
+              brokerType: 'DERIV',
+              brokerName: 'Deriv Limited',
+              server: 'Deriv-Server',
+              accountNumber: json.data.derivAccountId || '',
+              status: 'CONNECTED',
+              environment: json.data.accountType === 'real' ? 'REAL' : 'DEMO',
+              apiPermissions: json.data.scopes || ['trade', 'account_manage'],
+              isReadOnly: false,
+              executionPermission: true,
+            }
+          });
+        }
+      } else {
+        const json = await res.json().catch(() => ({}));
+        setErrorMessage(json.message || 'Failed to switch account.');
+      }
+    } catch {
+      setErrorMessage('Network error while switching account.');
+    } finally {
+      setIsSwitching(false);
+    }
   };
 
   const handleTokenLogin = async (e: React.FormEvent) => {
@@ -380,6 +500,39 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
               )}
             </div>
 
+            {meta.accountList && meta.accountList.length > 0 && (
+              <div className="p-3 bg-bg-main border border-border-color rounded-xl space-y-2">
+                <span className="text-text-secondary text-[10px] uppercase font-bold tracking-wider block">
+                  Authorized Accounts ({meta.accountList.length})
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                  {meta.accountList.map((acc) => {
+                    const isCurrent = acc.loginid === meta.derivAccountId;
+                    return (
+                      <button
+                        key={acc.loginid}
+                        onClick={() => handleSwitchAccount(acc.loginid)}
+                        disabled={isSwitching || isCurrent}
+                        className={`p-2.5 rounded-lg border text-left flex items-center justify-between transition-all cursor-pointer ${
+                          isCurrent
+                            ? 'bg-accent-primary/10 border-accent-primary text-text-primary font-bold shadow-xs'
+                            : 'bg-bg-surface border-border-color hover:border-accent-primary/50 text-text-secondary hover:text-text-primary'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-mono text-xs font-bold text-text-primary">{acc.loginid}</div>
+                          <div className="text-[10px] text-text-secondary uppercase">{acc.account_type} • {acc.currency}</div>
+                        </div>
+                        {isCurrent && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={handleSync}
@@ -391,10 +544,11 @@ export const DerivConnectionModal: React.FC<{ onClose: () => void }> = ({ onClos
               </button>
 
               <button
-                onClick={() => handleInitiateOAuth('connect')}
+                onClick={() => handleInitiateOAuth('connect', true)}
                 className="bg-accent-primary/10 hover:bg-accent-primary/20 text-accent-primary py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-accent-primary/30"
+                title="Log into a different Deriv account"
               >
-                <span>Switch Account</span>
+                <span>Log into Other Acc</span>
               </button>
             </div>
 

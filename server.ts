@@ -915,185 +915,13 @@ export async function createApp() {
     { id: 'usr-super-006', displayName: 'Root SuperAdmin', email: 'super@appexquant.global', role: 'SUPER_ADMIN' as UserRole, status: 'ACTIVE' },
   ];
 
-  // 1. Secure Authentication Login Endpoint
-  app.post('/api/auth/login', authRateLimiterMiddleware, async (req: Request, res: Response) => {
-    try {
-      const { email, password, role } = req.body;
-      let targetUser: any = null;
-      
-      const dbPool = getDatabasePool();
-      const connTest = await testDatabaseConnection();
-      
-      if (!connTest.success) {
-        return res.status(503).json(createErrorResponse(`Database connection failure: Authentication requires direct PostgreSQL database persistence (${connTest.error})`, 'DATABASE_UNAVAILABLE'));
-      }
+  // 1. Secure Authentication Login Endpoint (Disabled: Use Login with Deriv)
+  app.post('/api/auth/login', authRateLimiterMiddleware, (_req, res) =>
+    res.status(410).json(createErrorResponse('Use "Login with Deriv".', 'LOGIN_DISABLED')));
 
-      try {
-        const userRes = await dbPool.query('SELECT * FROM users WHERE email = $1', [email]);
-        if (userRes.rows.length > 0) {
-          const row = userRes.rows[0];
-          targetUser = {
-            id: row.id,
-            displayName: row.display_name || 'Appex Quant Trader',
-            email: row.email,
-            role: row.role as UserRole,
-            status: row.status,
-          };
-        } else if (email === 'obwogialex728@gmail.com') {
-          // Auto-create Alex Nyangaresi Obwogi on first login if not exists in DB
-          targetUser = {
-            id: 'usr-super-obwogi',
-            displayName: 'Alex Nyangaresi Obwogi',
-            email: 'obwogialex728@gmail.com',
-            role: 'SUPER_ADMIN' as UserRole,
-            status: 'ACTIVE',
-          };
-          await dbPool.query(
-            'INSERT INTO users (id, email, display_name, role, status) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (email) DO NOTHING',
-            [targetUser.id, targetUser.email, targetUser.displayName, targetUser.role, targetUser.status]
-          );
-          await dbPool.query(
-            'INSERT INTO user_preferences (user_id, theme) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING',
-            [targetUser.id, 'dark']
-          );
-        }
-      } catch (dbErr: any) {
-        logger.error('Database query failed during login:', { error: dbErr.message });
-        return res.status(500).json(createErrorResponse(`Database error during authentication: ${dbErr.message || String(dbErr)}`, 'DATABASE_ERROR'));
-      }
-
-      if (!targetUser) {
-        return res.status(401).json(createErrorResponse('Invalid credentials or user not registered', 'INVALID_CREDENTIALS'));
-      }
-
-      const csrfToken = crypto.randomBytes(32).toString('hex');
-      const sessionPayload: SessionPayload = {
-        userId: targetUser.id,
-        email: targetUser.email,
-        role: targetUser.role,
-        isElevated: false,
-        elevatedUntil: null,
-        csrfToken,
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour session
-      };
-
-      const token = createSessionToken(sessionPayload);
-      res.setHeader('Set-Cookie', `session_token=${token}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=3600`);
-
-      logAuditEvent('LOGIN', targetUser.id, { event: 'USER_LOGIN_SUCCESS', role: targetUser.role });
-      logSecurityEvent(req, 'USER_LOGIN_SUCCESS', 'INFO', { userId: targetUser.id, role: targetUser.role });
-
-      res.json(createSuccessResponse({
-        user: redactSensitiveValues(targetUser),
-        csrfToken,
-        isElevated: false,
-        expiresAt: sessionPayload.expiresAt,
-      }));
-    } catch (err: any) {
-      res.status(500).json(createErrorResponse('Authentication failed', 'AUTH_ERROR'));
-    }
-  });
-
-  // 1b. Referral-Gated Account Creation (Sign Up) Endpoint
-  app.post('/api/auth/register', authRateLimiterMiddleware, async (req: Request, res: Response) => {
-    try {
-      const { email, displayName, password, referralCode } = req.body;
-      
-      // Enforce referral code requirement
-      const allowedCodes = ['alex', 'alex-nyangaresi-obwogi', 'alex_obwogi'];
-      const normalizedCode = String(referralCode || '').trim().toLowerCase();
-      
-      if (!referralCode || !allowedCodes.includes(normalizedCode)) {
-        return res.status(400).json(createErrorResponse(
-          'Referral Locked: New accounts must be registered via the Super Admin\'s designated link structure (?ref=alex). Access denied.',
-          'REFERRAL_LOCKED'
-        ));
-      }
-
-      if (!email) {
-        return res.status(400).json(createErrorResponse('Email is required', 'INVALID_INPUT'));
-      }
-
-      let existingUser: any = null;
-      const dbPool = getDatabasePool();
-      const connTest = await testDatabaseConnection();
-
-      if (!connTest.success) {
-        return res.status(503).json(createErrorResponse(`Database connection failure: Registration requires direct PostgreSQL database persistence (${connTest.error})`, 'DATABASE_UNAVAILABLE'));
-      }
-
-      try {
-        const userRes = await dbPool.query('SELECT * FROM users WHERE email = $1', [email]);
-        if (userRes.rows.length > 0) {
-          existingUser = userRes.rows[0];
-        }
-      } catch (dbErr: any) {
-        logger.error('Database query failed during registration:', { error: dbErr.message });
-        return res.status(500).json(createErrorResponse(`Database error during registration: ${dbErr.message || String(dbErr)}`, 'DATABASE_ERROR'));
-      }
-
-      if (existingUser) {
-        return res.status(400).json(createErrorResponse('A user with this email already exists', 'USER_ALREADY_EXISTS'));
-      }
-
-      // Create new user profile
-      const newUser = {
-        id: `usr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        displayName: displayName || 'Appex Quant Trader',
-        email,
-        role: 'USER' as UserRole, // Public registration is strictly Standard USER role
-        status: 'ACTIVE',
-      };
-
-      try {
-        await dbPool.query(
-          'INSERT INTO users (id, email, display_name, role, status) VALUES ($1, $2, $3, $4, $5)',
-          [newUser.id, newUser.email, newUser.displayName, newUser.role, newUser.status]
-        );
-        await dbPool.query(
-          'INSERT INTO user_preferences (user_id, theme, notifications_enabled) VALUES ($1, $2, $3) ON CONFLICT (user_id) DO NOTHING',
-          [newUser.id, 'dark', true]
-        );
-      } catch (dbErr: any) {
-        logger.error('Database user insert failed during registration:', { detail: dbErr.message });
-        return res.status(500).json(createErrorResponse(`Database insert error: ${dbErr.message || String(dbErr)}`, 'DATABASE_ERROR'));
-      }
-
-      // Automatically handle live broker handshake on authentication behind the scenes
-      try {
-        const liveToken =  `secure_pkce_deriv_${crypto.randomBytes(16).toString('hex')}`;
-        connectUserWithApiToken(newUser.id, liveToken);
-      } catch (err: any) {
-        logger.error('Failed to auto-connect live broker during registration handshake:', { error: err.message });
-      }
-
-      const csrfToken = crypto.randomBytes(32).toString('hex');
-      const sessionPayload: SessionPayload = {
-        userId: newUser.id,
-        email: newUser.email,
-        role: newUser.role,
-        isElevated: false,
-        elevatedUntil: null,
-        csrfToken,
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      };
-
-      const token = createSessionToken(sessionPayload);
-      res.setHeader('Set-Cookie', `session_token=${token}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=3600`);
-
-      logAuditEvent('USER_REGISTERED', newUser.id, { event: 'USER_REGISTER_SUCCESS', role: newUser.role });
-      logSecurityEvent(req, 'USER_REGISTER_SUCCESS', 'INFO', { userId: newUser.id, role: newUser.role });
-
-      res.json(createSuccessResponse({
-        user: redactSensitiveValues(newUser),
-        csrfToken,
-        isElevated: false,
-        expiresAt: sessionPayload.expiresAt,
-      }));
-    } catch (err: any) {
-      res.status(500).json(createErrorResponse('Registration failed', 'REGISTRATION_ERROR'));
-    }
-  });
+  // 1b. Referral-Gated Account Creation (Sign Up) Endpoint (Disabled: Use Login with Deriv)
+  app.post('/api/auth/register', authRateLimiterMiddleware, (_req, res) =>
+    res.status(410).json(createErrorResponse('Use "Login with Deriv".', 'REGISTER_DISABLED')));
 
   // 2. Session Refresh / Token Rotation Endpoint
   app.post('/api/auth/refresh', (req: Request, res: Response) => {
@@ -1130,88 +958,26 @@ export async function createApp() {
 
   // 3. Current Session Profile & Session Status Endpoints
   const sessionHandler = async (req: Request, res: Response) => {
-    try {
-      const parsedCookies = (req as any).cookies || parseCookies(req.headers.cookie);
-      const cookieUserId = parsedCookies['deriv_session_user_id'];
-      const headerUserId = req.headers['x-user-id'] as string;
-      const sessionUserId = req.sessionUser?.userId;
-      const sessionDerivAcct = req.sessionUser?.derivAccountId;
-
-      const lookupId = sessionDerivAcct || sessionUserId || cookieUserId || headerUserId;
-
-      if (!lookupId) {
-        return res.json(createSuccessResponse({
-          authenticated: false,
-          accountId: null,
-          currency: null,
-          balance: null,
-          accountType: null,
-          user: null,
-        }));
-      }
-
-      const record = await getUserDerivConnectionAsync(lookupId);
-      const hasValidConnection = Boolean(
-        record &&
-        record.connected &&
-        record.derivAccountId &&
-        isValidDerivAccountId(record.derivAccountId) &&
-        record.connectionStatus === 'CONNECTED'
-      );
-
-      if (!hasValidConnection) {
-        return res.json(createSuccessResponse({
-          authenticated: false,
-          accountId: null,
-          currency: null,
-          balance: null,
-          accountType: null,
-          user: req.sessionUser ? {
-            userId: req.sessionUser.userId,
-            email: req.sessionUser.email,
-            role: req.sessionUser.role,
-            derivAccountId: null,
-            balance: null,
-            accountType: null,
-            currency: null,
-            connectionStatus: record ? record.connectionStatus : 'DISCONNECTED',
-          } : null,
-        }));
-      }
-
-      const accountId = record.derivAccountId;
-      const currency = record.currency || null;
-      const balance = typeof record.balance === 'number' ? record.balance : null;
-      const accountType = record.accountType || null;
-      const email = record.email || req.sessionUser?.email;
-      const fullName = record.fullName || req.sessionUser?.fullName;
-
-      res.json(createSuccessResponse({
-        authenticated: true,
-        accountId,
-        currency,
-        balance,
-        accountType,
-        user: {
-          userId: req.sessionUser?.userId || accountId,
-          email,
-          role: req.sessionUser?.role || UserRole.USER,
-          derivAccountId: accountId,
-          displayName: fullName || accountId || email,
-          fullName: fullName || undefined,
-          balance,
-          accountType,
-          currency,
-          connectionStatus: record.connectionStatus,
-        },
-        csrfToken: req.sessionUser?.csrfToken,
-        isElevated: req.sessionUser?.isElevated || false,
-        elevatedUntil: req.sessionUser?.elevatedUntil || null,
-        expiresAt: req.sessionUser?.expiresAt,
+    res.setHeader('Cache-Control', 'no-store');
+    const s = req.sessionUser;
+    if (!s?.derivAccountId || !isValidDerivAccountId(s.derivAccountId)) {
+      return res.json(createSuccessResponse({
+        authenticated: false, accountId: null, currency: null, balance: null, accountType: null,
+        user: s ? { userId: s.userId, email: s.email, role: s.role, derivAccountId: null } : null,
       }));
-    } catch (err: any) {
-      res.status(500).json(createErrorResponse('Session query error', 'SESSION_ERROR'));
     }
+    const rec = getUserDerivConnection(s.derivAccountId);
+    const live = rec.connected && rec.derivAccountId === s.derivAccountId;
+    const balance = live && typeof rec.balance === 'number' ? rec.balance : (s.balance ?? null);
+    const currency = (live ? rec.currency : s.currency) || null;
+    const accountType = (live ? rec.accountType : s.accountType) || null;
+    res.json(createSuccessResponse({
+      authenticated: true, accountId: s.derivAccountId, currency, balance, accountType,
+      user: { userId: s.userId, email: s.email, role: s.role, derivAccountId: s.derivAccountId,
+        displayName: s.fullName || s.derivAccountId, fullName: s.fullName, balance, accountType, currency,
+        connectionStatus: live ? rec.connectionStatus : 'CONNECTED' },
+      csrfToken: s.csrfToken, isElevated: s.isElevated, elevatedUntil: s.elevatedUntil, expiresAt: s.expiresAt,
+    }));
   };
 
   app.get('/api/auth/session', sessionRateLimiterMiddleware, sessionHandler);
@@ -1336,7 +1102,20 @@ export async function createApp() {
       const requestHost = req.headers.host || 'localhost:3000';
       const requestProtocol = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
 
-      console.log('[DERIV_OAUTH_CALLBACK_RECEIVED]', { hasCode: Boolean(code), hasToken: Boolean(token1), host: requestHost, path: req.path });
+      console.log('[DERIV_OAUTH_CALLBACK_RECEIVED]', {
+        method: req.method,
+        hasCode: Boolean(code),
+        hasToken: Boolean(token1),
+        hasState: Boolean(state),
+        hasCookieState: Boolean(cookieState),
+        queryKeys: Object.keys(req.query || {}),
+        bodyKeys: Object.keys(req.body || {}),
+        error: error ? String(error).slice(0, 80) : undefined,
+        errorDescription: errorDescription ? String(errorDescription).slice(0, 200) : undefined,
+        referer: req.headers.referer,
+        host: requestHost,
+        path: req.path,
+      });
 
       const result = await handleDerivOAuthCallback({
         code,
@@ -2042,7 +1821,7 @@ export async function createApp() {
       const uemail = currentUser.email;
       const urole = currentUser.role;
 
-      if (code === '123456') {
+      if (process.env.NODE_ENV !== 'production' && code === '123456') {
         const elevatedUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // elevated for 15 minutes
         
         // Rotate session with elevated privileges

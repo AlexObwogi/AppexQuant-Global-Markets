@@ -157,12 +157,12 @@ describe('Production Remediation & Verification Suite (October 20, 2026)', () =>
   });
 
   describe('4. Canonical Deriv OAuth Scopes Source of Truth', () => {
-    it('DERIV_OAUTH_SCOPES contains strictly [read, trade, admin, payments]', () => {
-      expect(DERIV_OAUTH_SCOPES).toEqual(['read', 'trade', 'admin', 'payments']);
+    it('DERIV_OAUTH_SCOPES contains strictly [trade]', () => {
+      expect(DERIV_OAUTH_SCOPES).toEqual(['trade']);
     });
 
     it('DERIV_OAUTH_SCOPE_STRING joins scopes with single space', () => {
-      expect(DERIV_OAUTH_SCOPE_STRING).toBe('read trade admin payments');
+      expect(DERIV_OAUTH_SCOPE_STRING).toBe('trade');
     });
   });
 

@@ -6,11 +6,13 @@
  * Canonical Deriv OAuth 2.0 scopes: 'read', 'trade', 'admin', 'payments'
  */
 
-export const DERIV_OAUTH_SCOPES = ['read', 'trade', 'admin', 'payments'] as const;
-export const DERIV_OAUTH_SCOPE_STRING = DERIV_OAUTH_SCOPES.join(' '); // space-separated
+export const DERIV_OAUTH_SCOPES = ['trade'] as const;          // default request
+export const DERIV_OAUTH_SCOPE_STRING = DERIV_OAUTH_SCOPES.join(' ');
 
-export type ValidDerivScope = (typeof DERIV_OAUTH_SCOPES)[number];
-export const VALID_DERIV_OAUTH2_SCOPES = DERIV_OAUTH_SCOPES;
+export type ValidDerivScope = 'trade' | 'account_manage' | 'admin' | 'read' | 'payments';
+const ACCEPTED_SCOPES: readonly string[] = ['trade', 'account_manage', 'admin', 'read', 'payments'];
+
+export const VALID_DERIV_OAUTH2_SCOPES = ACCEPTED_SCOPES;
 export const CANONICAL_DERIV_SCOPES: readonly ValidDerivScope[] = DERIV_OAUTH_SCOPES;
 export const DEFAULT_FALLBACK_SCOPE_STRING = DERIV_OAUTH_SCOPE_STRING;
 
@@ -44,7 +46,7 @@ export function parseRawScopes(rawInput?: string | string[] | readonly string[] 
   const validSet = new Set<string>();
 
   for (const item of rawList) {
-    if ((DERIV_OAUTH_SCOPES as readonly string[]).includes(item)) {
+    if (ACCEPTED_SCOPES.includes(item)) {   // was DERIV_OAUTH_SCOPES
       validSet.add(item);
     }
   }

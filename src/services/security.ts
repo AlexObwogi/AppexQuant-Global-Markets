@@ -3,13 +3,24 @@ import { Request, Response, NextFunction } from 'express';
 import { UserRole, UserPermission } from '../types/user.ts';
 import { hasPermission } from '../utils/auth.ts';
 
-// 1. SECRET MANAGEMENT (With secure fallbacks)
-export function getJwtSecret(): string {
-  return process.env.JWT_SECRET || process.env.SESSION_SECRET || 'appexquant_default_jwt_secret_2026_key_9988';
+// 1. SECRET MANAGEMENT
+function requireSecret(...names: string[]): string {
+  for (const n of names) {
+    const v = process.env[n]?.trim();
+    if (v && v.length >= 32) return v;
+  }
+  // In test or development without env configured, provide secure fallback of 32+ chars
+  if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+    return 'appexquant_secure_fallback_secret_key_2026_32bytes_min';
+  }
+  throw new Error(`Missing secret: set ${names.join(' or ')} (32+ characters)`);
 }
 
+export function getJwtSecret(): string {
+  return requireSecret('JWT_SECRET', 'SESSION_SECRET');
+}
 export function getSessionSecret(): string {
-  return process.env.SESSION_SECRET || process.env.JWT_SECRET || 'appexquant_default_session_secret_2026_key_9988';
+  return requireSecret('SESSION_SECRET', 'JWT_SECRET');
 }
 
 export function getEncryptionKey(): Buffer {

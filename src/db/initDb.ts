@@ -16,6 +16,10 @@ let dbInitializationLogged = false;
 
 export async function initializeDatabaseSystem(): Promise<void> {
   if (dbInitialized) return;
+  if (process.env.VERCEL) {
+    dbInitialized = true;
+    return;
+  }
   if (dbInitPromise) return dbInitPromise;
 
   dbInitPromise = (async () => {

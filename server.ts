@@ -1385,10 +1385,7 @@ export async function createApp() {
   // Get current user's safe Deriv connection metadata (No secret tokens returned to normal users)
   app.get(['/api/auth/status', '/api/auth/deriv/status'], sessionRateLimiterMiddleware, async (req: Request, res: Response) => {
     try {
-      const parsedCookies = (req as any).cookies || parseCookies(req.headers.cookie);
-      const cookieUserId = parsedCookies['deriv_session_user_id'];
-      const headerUserId = req.headers['x-user-id'] as string;
-      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId || cookieUserId || headerUserId;
+      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId;
 
       if (!userId) {
         return res.json(createSuccessResponse({
@@ -1456,10 +1453,7 @@ export async function createApp() {
   // Authoritative Backend Balance Gateway
   app.get(['/api/auth/balance', '/api/auth/deriv/balance'], async (req: Request, res: Response) => {
     try {
-      const parsedCookies = (req as any).cookies || parseCookies(req.headers.cookie);
-      const cookieUserId = parsedCookies['deriv_session_user_id'];
-      const headerUserId = req.headers['x-user-id'] as string;
-      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId || cookieUserId || headerUserId;
+      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId;
 
       if (!userId) {
         return res.status(401).json(createErrorResponse('Authentication required for balance query', 'UNAUTHENTICATED'));
@@ -1493,10 +1487,7 @@ export async function createApp() {
   // Server-side Deriv Reconnect & Session Re-authorization
   app.post(['/api/auth/reconnect', '/api/auth/deriv/reconnect'], async (req: Request, res: Response) => {
     try {
-      const parsedCookies = (req as any).cookies || parseCookies(req.headers.cookie);
-      const cookieUserId = parsedCookies['deriv_session_user_id'];
-      const headerUserId = req.headers['x-user-id'] as string;
-      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId || cookieUserId || headerUserId;
+      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId;
 
       if (!userId) {
         return res.status(401).json(createErrorResponse('Authentication required for reconnect', 'UNAUTHENTICATED'));

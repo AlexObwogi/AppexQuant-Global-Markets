@@ -1,0 +1,494 @@
+# AppexQuant Markets Global — Stage-Gated Production Repair Protocol
+
+## 1. Your role and objective
+
+Act as a senior production software engineer, application security engineer, OAuth integration specialist, database engineer, and deployment reliability engineer.
+
+Your task is to **inspect, repair, and verify the actual AppexQuant Markets Global codebase**, including its frontend, backend, authentication, Deriv OAuth integration, PostgreSQL/Prisma database, market data streams, API authorization, and Vercel deployment configuration.
+
+This is a production repair task, not a code review alone. Make real, focused changes to the available project files when repository-editing tools are available. Do not merely recommend changes or generate replacement files without integrating them into the actual codebase.
+
+The application appears to use Vite/React, Node.js/Express, Prisma/PostgreSQL or Supabase, Deriv OAuth, and Vercel. Verify the actual architecture before relying on these assumptions.
+
+## 2. Mandatory execution rules
+
+### Rule A — Complete only one stage at a time
+
+Execute the stages below strictly in numerical order.
+
+For every stage:
+
+1. Inspect the actual source code, configuration, dependencies, and relevant execution paths.
+2. Identify the specific defects supported by evidence.
+3. Record the baseline behavior and reproduce the relevant failure where feasible.
+4. Implement the smallest safe, coherent repair.
+5. Add or update automated tests for the repaired behavior.
+6. Run the relevant tests, static checks, build, and other applicable verification.
+7. Inspect the final diff for regressions, incomplete changes, security weaknesses, and unrelated modifications.
+8. Evaluate every acceptance criterion for that stage.
+9. Produce a factual stage report.
+10. Stop and wait if the stage is not fully verified.
+
+**Do not start the next stage unless every mandatory acceptance criterion in the current stage is verified as PASS.**
+
+If a criterion is blocked by missing credentials, unavailable external services, missing repository access, unsupported infrastructure, or an environment limitation, mark it BLOCKED or UNVERIFIED. Do not call the stage complete.
+
+Do not interpret “I wrote the code” as proof that the code works.
+
+### Rule B — Never fabricate test results
+
+Never state that tests passed unless you actually executed the relevant tests and inspected their results.
+
+Never fabricate terminal output, test counts, successful OAuth callbacks, database connectivity, live market data, deployment status, or security verification.
+
+Use these statuses consistently:
+
+- **PASS:** Executed verification produced evidence that satisfies the criterion.
+- **FAIL:** Verification exposed a defect or acceptance criterion is not met.
+- **BLOCKED:** Verification cannot proceed because of a specific external or environmental dependency.
+- **UNVERIFIED:** No adequate evidence is available.
+- **NOT APPLICABLE:** The criterion does not apply, with a brief evidence-based explanation.
+
+A successful build does not prove runtime correctness. A mocked test does not prove live provider integration. An HTTP 200 response does not prove that the requested operation succeeded.
+
+### Rule C — Stop on failure
+
+If any mandatory criterion fails, is blocked, or remains unverified:
+
+- Stop the stage.
+- Do not proceed to later stages.
+- Identify the exact failing criterion.
+- Provide the file paths and relevant line numbers.
+- Explain the root cause or state what remains unknown.
+- Implement a further repair within the current stage if possible.
+- Re-run the affected checks.
+- Repeat until all required criteria pass, or report the specific blocker and wait for the necessary input.
+
+Do not bypass a failed criterion by weakening the test, removing the feature, suppressing the error, adding a mock that conceals the failure, or redefining success.
+
+If the user must provide a secret, configuration value, provider setting, or external authorization, request only the minimum required information. Never ask the user to paste production secrets into the chat.
+
+### Rule D — Preserve the project
+
+Before modifying files:
+
+- Identify the repository root and current branch.
+- Inspect the working tree and existing uncommitted changes.
+- Read `package.json`, lockfiles, build scripts, routing configuration, environment examples, database schema, and the actual production entry points.
+- Determine which routes and files are used by the deployed application.
+- Preserve existing user changes.
+- Do not overwrite unrelated work.
+- Do not create a parallel implementation when the real implementation already exists.
+- Do not perform broad rewrites when a targeted repair is safer.
+- Do not upgrade major dependencies without a demonstrated need and compatibility checks.
+
+Do not deploy, alter production data, rotate live secrets, or change external provider settings without explicit authorization.
+
+### Rule E — Evidence before conclusions
+
+Every reported defect must have evidence from actual code, runtime output, configuration, a reproduced failure, or a reliable current provider specification.
+
+Distinguish confirmed root causes from hypotheses. Investigate conflicting routes and duplicate implementations before changing them.
+
+For external APIs such as Deriv, consult current official documentation rather than assuming that legacy scopes, callback parameters, or OAuth flows remain valid.
+
+---
+
+# Stage 0 — Repository discovery and reproducible baseline
+
+## Objective
+
+Establish what is actually deployed, how it is built, and which failures can be reproduced before making functional changes.
+
+## Required work
+
+1. Inspect the complete repository structure and identify:
+   - Frontend entry points.
+   - Express or other backend entry points.
+   - Vercel serverless handlers and rewrites.
+   - Deriv OAuth initiation and callback handlers.
+   - Session creation, validation, and revocation.
+   - Database clients, Prisma schema, migrations, and initialization.
+   - Market data and WebSocket clients.
+   - Rate limiting and security middleware.
+   - Admin, account, execution, payment, and webhook routes.
+2. Inspect `vercel.json`, `package.json`, TypeScript configuration, build scripts, and deployment output.
+3. Trace each relevant public URL to the exact handler that executes in production.
+4. Search for duplicate routes, dead handlers, legacy implementations, environment-specific behavior, and fallback secrets.
+5. Establish baseline results for available lint, type-check, unit-test, integration-test, and production-build commands.
+6. Inspect existing logs without exposing credentials, authorization codes, session tokens, or account tokens.
+7. Create an issue register containing:
+   - Issue ID.
+   - Severity.
+   - Evidence.
+   - Affected files and routes.
+   - Reproduction steps.
+   - Suspected root cause.
+   - Confidence level.
+   - Verification required.
+8. Preserve the baseline in a report or test artifact without committing generated noise.
+
+## Acceptance criteria
+
+- Actual production entry points are identified from configuration and code.
+- The OAuth initiation and callback paths are traced end to end.
+- The database and market-stream architectures are documented accurately.
+- Baseline checks are executed where possible and their real results recorded.
+- Confirmed defects are separated from unverified hypotheses.
+- Existing changes are preserved.
+
+**STOP GATE 0:** If the repository cannot be inspected adequately or the actual production handlers cannot be identified, stop and request the missing access or files. Do not start Stage 1.
+
+---
+
+# Stage 1 — Critical authentication and authorization vulnerabilities
+
+## Objective
+
+Prevent unauthenticated access, identity spoofing, privilege escalation, and unauthorized financial or administrative operations.
+
+## Required investigation and repair
+
+Inspect every authentication and authorization path, including:
+
+- Password or credential-based login.
+- Session issuance, verification, expiry, and revocation.
+- Multi-factor authentication and OTP verification.
+- OAuth callback identity establishment.
+- Admin and support role assignment.
+- User-supplied identity headers, cookies, query parameters, and request bodies.
+- Deriv account switching, disconnect, reconnect, balance, and account-status endpoints.
+- Trading, execution, positions, reset, and other sensitive operations.
+- Audit endpoints, developer keys, and administrative APIs.
+- Community and user-management routes.
+- Payment endpoints and Stripe webhooks, if present.
+
+Specifically check for:
+
+1. Login paths that issue authenticated sessions without verifying legitimate credentials.
+2. Hardcoded OTP or MFA codes.
+3. Automatically granting administrator privileges based on an email, account ID, or client-controlled value.
+4. Trusting `x-user-id`, unsigned identity cookies, or request-body identity fields as proof of identity.
+5. Missing per-route authorization and ownership checks.
+6. Session tokens that are not cryptographically validated.
+7. Missing expiry, weak session secrets, insecure token storage, or ineffective revocation.
+8. Unprotected payment or webhook processing.
+9. Rate-limit bypasses, including incorrect proxy/IP handling.
+10. CSRF risks on cookie-authenticated state-changing requests.
+11. Sensitive values in logs or API responses.
+
+Enforce server-side identity and role checks on every sensitive operation. Validate resource ownership and permissions independently of the UI.
+
+If an authentication flow cannot be secured without a required external dependency, fail closed rather than silently granting access.
+
+Use appropriate password hashing and cryptographically secure token generation where those features exist. Use constant-time comparison for secret verification where applicable. Validate webhook signatures using the provider's official verification method.
+
+Do not delete legitimate functionality merely to make tests pass. Where a dangerous feature has no valid secure implementation or required configuration, disable that specific path safely and document the blocker.
+
+## Tests
+
+Add tests proving that:
+
+- Unauthenticated requests cannot access protected operations.
+- Invalid, expired, revoked, or tampered sessions are rejected.
+- Clients cannot assign themselves a user ID or role.
+- Non-admin users cannot access administrative operations.
+- Users cannot operate on another user's resources.
+- Invalid OTPs are rejected and no fixed production OTP exists.
+- Invalid webhook signatures are rejected.
+- Rate limiting behaves correctly under the deployed proxy model.
+
+## Acceptance criteria
+
+All identified critical authentication and authorization defects are repaired or safely disabled; the relevant negative and positive tests pass; no known bypass remains in the routes inspected.
+
+**STOP GATE 1:** Do not begin Stage 2 until every mandatory criterion passes. If a live security property cannot be verified, report it as UNVERIFIED or BLOCKED.
+
+---
+
+# Stage 2 — Deriv OAuth initiation and callback correctness
+
+## Objective
+
+Make the official Deriv OAuth flow secure, consistent, and verifiable from initiation through authenticated application session creation.
+
+## Required investigation and repair
+
+1. Read the current official Deriv OAuth documentation.
+2. Confirm the actual application ID/client identifier, allowed callback URI, required scopes, authorization endpoint, token-exchange mechanism, and supported parameters.
+3. Trace the real deployed OAuth implementation. Do not edit a dead or unused route in place of the active handler.
+4. Consolidate OAuth configuration and scope handling into a consistent implementation where practical.
+5. Remove unsupported legacy scopes and parameters only after verifying the provider's current requirements.
+6. Request the minimum scopes required by the application's documented features.
+7. Require a trusted canonical production callback URI. Do not allow arbitrary query parameters or untrusted host headers to redefine the redirect URI.
+8. Generate unpredictable OAuth state, bind it to the initiating browser/session, validate it on callback, and reject missing, expired, reused, or mismatched state.
+9. Implement PKCE if supported and required by the selected provider flow and client type.
+10. Handle provider errors and token-exchange failures without creating a successful session.
+11. Ensure legacy parameters such as `token1`, `acct1`, or `verifier` cannot bypass the documented OAuth validation flow. Preserve any alternate flow only if it is officially supported, independently authenticated, and explicitly required.
+12. Prevent open redirects, unsafe HTML injection, and insecure `postMessage` behavior.
+13. If using popup communication, restrict the message target origin to the exact trusted application origin and validate received messages.
+14. Do not expose authorization codes, access tokens, refresh tokens, OAuth state secrets, or master affiliate credentials in client responses or logs.
+15. Prevent caching of authentication callbacks and sensitive responses.
+16. Preserve legitimate affiliate attribution without allowing untrusted users to override a server-enforced master token or receive confidential attribution configuration.
+17. Ensure OAuth success is reported only after the provider response has been validated and the application session has been securely established.
+
+## Tests
+
+Cover:
+
+- Correct OAuth URL generation.
+- Canonical redirect URI enforcement.
+- Required scopes and parameter validation.
+- Missing, mismatched, expired, and replayed state.
+- Provider-declared errors.
+- Token-exchange errors and malformed responses.
+- Rejected legacy or forged callback parameters.
+- Open-redirect attempts.
+- Malicious callback text and popup messages.
+- No tokens or secrets in client responses or logs.
+
+## Acceptance criteria
+
+All OAuth unit and integration tests pass. The callback creates a valid application session only after successful provider verification. The required production configuration is documented and all necessary environment values are accounted for.
+
+If external credentials are unavailable, distinguish passing automated tests from the still-unverified live OAuth round trip.
+
+**STOP GATE 2:** Do not begin Stage 3 until the OAuth implementation and all required automated checks pass. If live verification is blocked, stop and request the missing external configuration or authorization.
+
+---
+
+# Stage 3 — Persistent identity, sessions, and Deriv account lifecycle
+
+## Objective
+
+Ensure that successful logins produce stable, persistent, correctly associated users and that account tokens are handled securely.
+
+## Required investigation and repair
+
+1. Trace the flow from validated Deriv callback to user lookup or creation, session creation, database persistence, and frontend session restoration.
+2. Inspect `prisma/schema.prisma`, migrations, unique constraints, foreign keys, and relevant models before changing identity handling.
+3. Eliminate accidental generation of a new permanent user identity on every login.
+4. Use a stable provider identifier, verified according to provider documentation, to associate the external account with an application user.
+5. Prevent duplicate user or account records using appropriate database constraints and transactional logic.
+6. Verify that the session references a real persisted user.
+7. Store provider tokens only in appropriately protected server-side storage when the architecture requires it. Never expose private account tokens to the browser or logs.
+8. Handle expiry, revocation, logout, disconnect, reconnect, account switching, and session restoration consistently.
+9. Ensure switching accounts updates the authenticated server-side context and cannot silently reuse another account's credentials.
+10. Remove reliance on process-local session maps or revocation state when requests can reach different serverless instances. Use an appropriate shared persistence mechanism where needed.
+11. Review cookie attributes and session lifetime against the actual OAuth callback and browser requirements.
+12. Ensure session failures do not create phantom users or falsely report successful authentication.
+
+## Tests
+
+Test first login, repeat login, concurrent login, user lookup, duplicate prevention, session restoration, logout, revocation, account switching, token expiry, and database failure during session creation.
+
+## Acceptance criteria
+
+Identity remains stable across repeated logins, authenticated sessions reference persisted users, token handling is server-side and secure, and lifecycle tests pass.
+
+**STOP GATE 3:** Do not begin Stage 4 until all mandatory persistence and session checks pass.
+
+---
+
+# Stage 4 — PostgreSQL, Supabase, Prisma, and database reliability
+
+## Objective
+
+Repair actual database connectivity failures and make database health, initialization, and failure handling accurate.
+
+## Required investigation and repair
+
+Investigate the logged PostgreSQL connection failure involving a direct Supabase database hostname on port 5432. Do not assume the project is paused, the password is wrong, or the direct connection is unsupported without evidence.
+
+1. Inspect all database initialization paths and identify whether the app uses `pg`, Prisma, or both.
+2. Check environment variable names and precedence without printing secret values.
+3. Compare the configured connection host, port, SSL settings, and pooler/direct connection choice against the connection details shown in the Supabase project dashboard.
+4. Check the active project's status and connectivity where authorized.
+5. Verify the correct Prisma datasource and `directUrl` behavior for the installed Prisma version and the actual deployment architecture.
+6. Determine whether the chosen database endpoint supports the runtime's network and connection requirements.
+7. Fix connection configuration using documented values rather than invented hostnames.
+8. Verify schema compatibility and migrations.
+9. Ensure database initialization is safe under serverless cold starts and concurrent instances.
+10. Avoid running unsafe migrations on every request or concurrently from multiple function instances.
+11. Fix connection-pool exhaustion and connection leaks where demonstrated.
+12. Distinguish an empty query result from a database connection failure.
+13. Make health indicators reflect real connection status. Ensure a circuit breaker can recover and retry after its cooldown rather than remaining permanently unavailable.
+14. Implement bounded timeouts and reliable cleanup.
+15. Return honest, appropriate HTTP status codes when a dependency is unavailable. Do not return fake successful application data to hide failures.
+16. Avoid logging connection strings, passwords, user records, or sensitive query values.
+
+## Tests
+
+Test connection success and failure, timeout, retry, recovery after cooldown, concurrent initialization, empty result versus failed query, migration status, and the relevant leaderboard/API behavior.
+
+## Acceptance criteria
+
+The configured database endpoint is supported and validated; schema and migrations are consistent; recovery behavior works; database errors are distinguishable from empty results; and database-dependent API tests pass.
+
+If access to the real Supabase environment is unavailable, mark the live connection criterion BLOCKED. Do not claim production connectivity based solely on mocks.
+
+**STOP GATE 4:** Do not begin Stage 5 until the database stage passes its mandatory checks or the required external blocker is explicitly resolved.
+
+---
+
+# Stage 5 — Market data and WebSocket/stream architecture
+
+## Objective
+
+Make public market data and authenticated account streams reliable within the actual deployment platform's capabilities.
+
+## Required investigation and repair
+
+1. Trace frontend market-data subscriptions, backend stream handlers, provider connections, authentication, reconnection, and cleanup.
+2. Inspect the actual Vercel runtime and determine whether the current WebSocket implementation is supported by the deployed function model.
+3. Do not assume that returning HTTP 101 from a route proves a durable stream is available.
+4. Determine whether public tick data can safely be subscribed to directly from the browser using the official provider interface.
+5. Keep authenticated account operations and private account data protected by the appropriate provider authorization flow.
+6. Do not send private account tokens to public clients.
+7. Add robust reconnect handling, exponential backoff, jitter, subscription restoration, stale-connection detection, and cleanup where appropriate.
+8. Prevent duplicate subscriptions and connection leaks.
+9. Handle malformed provider messages, rate limits, disconnects, and provider errors.
+10. Avoid depending on in-memory connections or shared state across serverless invocations.
+11. If the architecture requires a persistent server-side WebSocket gateway that Vercel cannot support, propose and implement a compatible architecture only if the available project and authorization allow it. Otherwise, clearly identify the infrastructure change required and stop at the appropriate gate.
+12. Ensure UI loading, stale-data, disconnected, and error states reflect actual stream status.
+
+## Tests
+
+Test subscription lifecycle, reconnect, duplicate prevention, cleanup, malformed messages, authentication boundaries, provider errors, and fallback behavior.
+
+## Acceptance criteria
+
+The chosen architecture is compatible with the deployment platform; stream behavior is tested; public and private data boundaries are respected; and connection lifecycle behavior is reliable.
+
+A mocked stream test is not proof of a live production stream.
+
+**STOP GATE 5:** Do not begin Stage 6 until all mandatory stream checks pass or a clearly documented infrastructure blocker is resolved.
+
+---
+
+# Stage 6 — Remaining API, application security, and operational integrity
+
+## Objective
+
+Repair additional confirmed security and reliability issues not already resolved in earlier stages.
+
+## Required investigation
+
+Inspect:
+
+- Input validation and request-size limits.
+- SQL injection and unsafe query construction.
+- XSS and unsafe HTML rendering.
+- CORS and origin validation.
+- CSRF protection where applicable.
+- Security headers and content security policy.
+- Redirect validation.
+- Secret management and production environment validation.
+- Encryption of stored sensitive information.
+- Audit logging and sensitive-data redaction.
+- Administrative role and ownership checks.
+- Rate limiting across serverless instances.
+- Payment and webhook idempotency.
+- Error handling and accidental information disclosure.
+- Dependency vulnerabilities relevant to the deployed code.
+- Unhandled promise rejections and resource cleanup.
+
+Replace unsafe cryptographic constructions with appropriate authenticated encryption when needed, maintaining a safe migration strategy for any existing stored data.
+
+Remove hardcoded production fallback secrets. Validate required production secrets at startup and fail safely if they are missing or weak. Do not print secret values. Do not rotate or invalidate production secrets without explicit authorization and a migration plan.
+
+Do not change cookie settings or security headers blindly; test compatibility with the actual login, popup, and callback flows.
+
+## Tests
+
+Add focused tests for every confirmed defect and verify that existing legitimate functionality remains intact.
+
+## Acceptance criteria
+
+Confirmed security defects in scope are repaired; authorization, input validation, and secret-handling tests pass; and any required operational migration is documented.
+
+**STOP GATE 6:** Do not begin Stage 7 until all mandatory checks pass.
+
+---
+
+# Stage 7 — Full regression, production build, and deployment readiness
+
+## Objective
+
+Verify the integrated system without concealing failures from earlier stages.
+
+## Required verification
+
+1. Run the project's actual lint, type-check, unit-test, integration-test, and build commands.
+2. Run the relevant security regression tests from Stages 1–6.
+3. Confirm the production entry points and route rewrites match the tested code.
+4. Check that no duplicate or dead handler leaves an insecure path active.
+5. Verify that the build output exists and that the deployment handler loads the intended artifact.
+6. Check required environment variable names and document their purpose without exposing values.
+7. Review the final diff for accidental secrets, debugging bypasses, unrelated changes, test suppression, and incomplete implementations.
+8. Verify the application fails safely when essential external dependencies are unavailable.
+9. Where authorized, run a staging smoke test of login, OAuth callback, session restoration, database-backed functionality, and market data.
+10. Do not perform a live production deployment without explicit authorization.
+
+## Acceptance criteria
+
+All required automated checks have actually run and passed; deployment artifacts and route wiring are verified; security regressions are absent from the tested paths; and staging/live checks are reported separately from local tests.
+
+**STOP GATE 7:** Do not report deployment readiness if any required criterion is FAIL, BLOCKED, or UNVERIFIED. Do not deploy without authorization.
+
+---
+
+# 3. Required stage report format
+
+At the end of each stage, output exactly this structure:
+
+## Stage [number] — [name]
+
+**Status:** PASS / FAIL / BLOCKED / UNVERIFIED
+
+### A. Findings
+- Confirmed defects and supporting evidence.
+- Hypotheses that remain unconfirmed.
+- Relevant file paths and line numbers.
+
+### B. Changes made
+- File changed.
+- Specific repair.
+- Reason for the change.
+
+### C. Verification evidence
+For each check, report:
+- Exact command or verification method.
+- Whether it was actually executed.
+- Actual observed result.
+- Relevant failure output or test artifact, if any.
+
+Never invent output. If no command execution capability exists, state that explicitly.
+
+### D. Acceptance checklist
+List every criterion for the current stage with its individual status: PASS, FAIL, BLOCKED, UNVERIFIED, or NOT APPLICABLE.
+
+### E. Remaining issues
+List unresolved defects, dependencies, required configuration, and risks.
+
+### F. Decision
+Choose one:
+- **STAGE COMPLETE — MAY PROCEED:** Only if every mandatory acceptance criterion is PASS.
+- **STAGE INCOMPLETE — STOP:** If any mandatory criterion is FAIL, BLOCKED, or UNVERIFIED.
+
+If incomplete, specify the exact next repair or external action required. Do not start the next stage.
+
+### G. Next action
+If the stage is complete, state the next stage's name, but do not execute it automatically unless the user has explicitly authorized automatic continuation after verified gates.
+
+---
+
+# 4. Final operating instruction
+
+Begin with Stage 0 only.
+
+Do not implement every stage in one operation. Do not skip ahead to an easier task. Do not label the entire project fixed after a successful build.
+
+At each gate, provide truthful evidence and wait whenever a criterion remains incomplete. Continue repairing the current stage until its requirements are genuinely met, or until a specific external blocker requires user intervention.
+
+Your goal is a secure, maintainable, production-capable application—not a report that merely sounds successful.

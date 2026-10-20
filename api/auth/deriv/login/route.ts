@@ -1,153 +1,238 @@
-/**
- * AppexQuant Markets Global - Affiliate Link & Traffic Lock-In Enforcer
- * Endpoint: /api/auth/deriv/login
- *
- * Capabilities:
- * - Enforces all authentication and account linking funnels to route strictly through proprietary gateway.
- * - Permanently embeds master affiliate tracking tag (`DERIV_AFFILIATE_TOKEN`) and UTM parameters.
- * - Utilizes unified scope normalization (`lib/auth/derivScope.ts`) formatting scopes with plus signs (+) for OAuth login redirects.
- * - Generates cryptographically secure PKCE code verifier/challenge and HMAC-signed state cookie.
- * - Returns structured JSON for SPA client applications or performs 302 redirect for direct browser flows.
- */
-
-import { initiateDerivOAuth, getDerivOAuthConfig } from '@/src/services/deriv/oauthServerService.ts';
-import { getLoginScopeString } from '@/lib/auth/derivScope.ts';
-import { MASTER_AFFILIATE_TOKEN } from '@/src/services/revenue/transactionInterceptor.ts';
-
 export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
 
-export async function GET(request: Request): Promise<Response> {
-  const url = new URL(request.url);
-  const action = (url.searchParams.get('action') as 'connect' | 'signup') || (url.pathname.includes('register') || url.pathname.includes('signup') ? 'signup' : 'connect');
-  const destination = url.searchParams.get('destination') || '/';
-  const customAffiliate = url.searchParams.get('affiliate_token') || url.searchParams.get('t') || MASTER_AFFILIATE_TOKEN;
+import crypto from 'crypto';
+import NodeWebSocket from 'ws';
 
-  const requestHost = request.headers.get('host') || 'localhost:3000';
-  const proto = request.headers.get('x-forwarded-proto') || (url.protocol.replace(':', '') || 'http');
-  const isHttps = proto === 'https' || process.env.APP_ENV === 'production' || Boolean(process.env.VERCEL);
-  const cookieSameSite = isHttps ? 'SameSite=None; Secure' : 'SameSite=Lax';
+import {
+  syncUserToSupabase,
+  syncDerivConnectionToSupabase,
+} from '../../lib/supabase.ts';
 
-  try {
-    const { authUrl, state, cookieValue, redirectUri } = initiateDerivOAuth({
-      action,
-      destination,
-      requestHost,
-      requestProtocol: proto,
-    });
+import { dbQueries } from '../../lib/db/prisma.ts';
 
-    const parsedAuthUrl = new URL(authUrl);
-    
-    // STRICT TRAFFIC LOCK-IN: Ensure master affiliate tracking tag is permanently attached
-    if (!parsedAuthUrl.searchParams.has('affiliate_token')) {
-      parsedAuthUrl.searchParams.set('affiliate_token', customAffiliate);
-    }
-    if (!parsedAuthUrl.searchParams.has('t')) {
-      parsedAuthUrl.searchParams.set('t', customAffiliate);
-    }
-    
-    // Ensure login scope formatting
-    parsedAuthUrl.searchParams.set('scope', getLoginScopeString());
+import { logger } from '../../observability/logger.ts';
 
-    const finalAuthUrl = parsedAuthUrl.toString();
+import {
+  buildAuthUrl,
+  DERIV_OAUTH_SCOPE,
+  exchangeCodeForToken,
+  getDerivOAuthClientId,
+  getDerivAppId,
+} from '../oauthService.ts';
 
-    const headers = new Headers();
-    headers.append('Set-Cookie', `deriv_oauth_state=${cookieValue}; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=600`);
-    headers.append('Set-Cookie', `affiliate_token=${encodeURIComponent(customAffiliate)}; Path=/; ${cookieSameSite}; Max-Age=2592000`);
-    headers.set('X-Affiliate-Tracking-Enforced', customAffiliate);
-    headers.set('X-Auth-Scope-Login', getLoginScopeString());
+import {
+  DERIV_OAUTH_SCOPES,
+  DERIV_OAUTH_SCOPE_STRING,
+  getLoginScopeString,
+  getBackendScopeString,
+  parseRawScopes,
+} from '../../lib/auth/derivScope.ts';
 
-    console.log('[TrafficLockIn:DerivOAuth:Initiated]', {
-      action,
-      destination,
-      affiliateTag: customAffiliate,
-      scopes: getLoginScopeString(),
-      redirectUri,
-      isVercel: Boolean(process.env.VERCEL),
-    });
+import { isValidDerivAccountId } from './syncStateMachine.ts';
 
-    // Check if client expects JSON
-    const acceptsHtml = request.headers.get('accept')?.includes('text/html');
-    const isJsonRequested = url.searchParams.get('json') === 'true' || request.headers.get('accept')?.includes('application/json');
+const DERIV_AUTH_ENDPOINT = 'https://auth.deriv.com/oauth2/auth';
+const DERIV_TOKEN_ENDPOINT = 'https://auth.deriv.com/oauth2/token';
+const DERIV_OPTIONS_API_BASE = 'https://api.derivws.com/trading/v1/options';
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const DERIV_WS_OTP_TTL_SECONDS = 120;
+const PROFILE_TIMEOUT_MS = 10_000;
+const OTP_WS_TIMEOUT_MS = 8_000;
 
-    if (isJsonRequested && !acceptsHtml) {
-      headers.set('Content-Type', 'application/json');
-      return new Response(
-        JSON.stringify({
-          success: true,
-          authUrl: finalAuthUrl,
-          state,
-          redirectUri,
-          affiliateToken: customAffiliate,
-          scopes: getLoginScopeString(),
-        }),
-        { status: 200, headers }
-      );
-    }
+export function getDerivOAuthConfig(requestHost?: string, requestProtocol?: string) {
+  const clientId = cleanString(process.env.DERIV_CLIENT_ID || getDerivOAuthClientId());
+  const appId = clientId;
+  const clientSecret = cleanString(process.env.DERIV_OAUTH_SECRET);
 
-    // Direct Browser Navigation: 302 Redirect to Deriv OAuth 2.0 Login Server
-    headers.set('Location', finalAuthUrl);
-    return new Response(null, { status: 302, headers });
-  } catch (error: any) {
-    const errorMsg = error?.message || 'Failed to initiate Deriv OAuth flow.';
-    console.error('[TrafficLockIn:DerivOAuth:Error]', { error: errorMsg, stack: error?.stack });
+  const configuredRedirect = cleanString(process.env.DERIV_REDIRECT_URI || process.env.VITE_REDIRECT_URI);
+  const appOrigin = cleanString(process.env.APP_URL || process.env.NEXT_PUBLIC_SITE_URL);
 
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: 'OAUTH_INIT_FAILED',
-        message: errorMsg,
-        troubleshooting: [
-          'Verify DERIV_CLIENT_ID and DERIV_REDIRECT_URI environment settings.',
-          'Ensure SESSION_SECRET is configured for HMAC state signing.',
-        ],
-      }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-}
+  let redirectUri = configuredRedirect || (appOrigin ? `${appOrigin.replace(/\/$/, '')}/api/auth/deriv/callback` : '');
 
-export async function POST(request: Request): Promise<Response> {
-  return GET(request);
-}
-
-// Handler for Express/Node/Vercel serverless integration
-export default async function handler(req: any, res: any) {
-  if (req.method !== 'GET' && req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
-  const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
-  const host = req.headers.host || 'localhost:3000';
-  const url = `${protocol}://${host}${req.url}`;
-
-  const webReq = new Request(url, {
-    method: req.method,
-    headers: req.headers,
-  });
-
-  const response = await GET(webReq);
-
-  response.headers.forEach((val, key) => {
-    if (key.toLowerCase() === 'set-cookie') {
-      const existing = res.getHeader('Set-Cookie');
-      if (Array.isArray(existing)) {
-        res.setHeader('Set-Cookie', [...existing, val]);
-      } else if (existing) {
-        res.setHeader('Set-Cookie', [existing, val]);
-      } else {
-        res.setHeader('Set-Cookie', [val]);
+  if (redirectUri) {
+    try {
+      const parsed = new URL(redirectUri);
+      if ((process.env.NODE_ENV === 'production' || process.env.VERCEL) && parsed.protocol !== 'https:') {
+        throw new Error('Production OAuth redirect must use HTTPS.');
       }
-    } else {
-      res.setHeader(key, val);
+    } catch {
+      throw new Error('DERIV_REDIRECT_URI must be a valid absolute URL.');
     }
-  });
-
-  const location = response.headers.get('Location');
-  if (location) {
-    return res.redirect(response.status, location);
+  } else if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+    throw new Error('DERIV_REDIRECT_URI is required in production.');
   }
 
-  const body = await response.text();
-  return res.status(response.status).send(body);
+  const scopes = getLoginScopeString(cleanString(process.env.DERIV_OAUTH_SCOPES) || cleanString(process.env.DERIV_OAUTH_SCOPE) || cleanString(process.env.DERIV_SCOPES) || DERIV_OAUTH_SCOPE_STRING);
+
+  return {
+    clientId,
+    appId,
+    clientSecret,
+    redirectUri,
+    scopes,
+    affiliateToken: cleanString(process.env.DERIV_AFFILIATE_TOKEN),
+    utmMedium: cleanString(process.env.DERIV_UTM_MEDIUM),
+    authBaseUrl: cleanString(process.env.DERIV_AUTH_URL) || DERIV_AUTH_ENDPOINT,
+    tokenEndpoint: cleanString(process.env.DERIV_TOKEN_ENDPOINT) || DERIV_TOKEN_ENDPOINT,
+  };
+}
+
+function cleanString(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value.trim().replace(/^['"]|['"]$/g, '');
+}
+
+function getStateSecret(): string {
+  const secret = cleanString(process.env.SESSION_SECRET || process.env.JWT_SECRET || process.env.JWT_ACCESS_SECRET);
+  if (secret) {
+    return secret;
+  }
+  if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+    throw new Error('SESSION_SECRET is required in production for secure OAuth state validation.');
+  }
+  return 'local-development-oauth-state-secret';
+}
+
+export function initiateDerivOAuth(params: {
+  userId?: string;
+  action?: 'connect' | 'signup';
+  destination?: string;
+  requestHost?: string;
+  requestProtocol?: string;
+  prompt?: string;
+  redirectUri?: string;
+}): {
+  authUrl: string;
+  state: string;
+  cookieValue: string;
+  redirectUri: string;
+} {
+  const action = params.action || 'connect';
+  cleanupExpiredTransactions();
+
+  const oauthConfig = getDerivOAuthConfig(params.requestHost, params.requestProtocol);
+  const canonicalRedirectUri = oauthConfig.redirectUri;
+  const requestedRedirectUri = cleanString(params.redirectUri);
+
+  if (requestedRedirectUri && canonicalRedirectUri && requestedRedirectUri !== canonicalRedirectUri) {
+    throw new Error('Caller-supplied redirect_uri does not match the canonical server-side redirect URI.');
+  }
+
+  const redirectUriToUse = canonicalRedirectUri;
+  if (!oauthConfig.clientId) {
+    throw new Error('DERIV_CLIENT_ID is not configured.');
+  }
+
+  const userId = cleanString(params.userId) || `usr-${crypto.randomBytes(12).toString('hex')}`;
+  const destination = cleanString(params.destination) || '/';
+  const { codeVerifier, codeChallenge } = generatePKCE();
+  const state = generateState();
+  const transaction: OAuthTransaction = {
+    state,
+    codeVerifier,
+    userId,
+    action,
+    destination,
+    redirectUri: redirectUriToUse,
+    createdAt: Date.now(),
+  };
+
+  oauthTransactionsStore.set(state, transaction);
+  const cookieValue = encodeOAuthStateCookie(transaction);
+
+  const extraParams: Record<string, string> = {};
+  if (params.prompt) {
+    extraParams.prompt = params.prompt;
+  }
+  if (oauthConfig.affiliateToken) {
+    extraParams.affiliate_token = oauthConfig.affiliateToken;
+    extraParams.t = oauthConfig.affiliateToken;
+  }
+  if (oauthConfig.utmMedium) {
+    extraParams.utm_medium = oauthConfig.utmMedium;
+  }
+
+  const authUrl = buildAuthUrl({
+    clientId: oauthConfig.clientId,
+    appId: oauthConfig.appId || undefined,
+    redirectUri: redirectUriToUse,
+    scope: oauthConfig.scopes || DERIV_OAUTH_SCOPE,
+    state,
+    codeChallenge,
+    codeChallengeMethod: 'S256',
+    action,
+    extraParams: Object.keys(extraParams).length > 0 ? extraParams : undefined,
+  });
+
+  return { authUrl, state, cookieValue, redirectUri: redirectUriToUse };
+}
+
+export interface OAuthTransaction {
+  state: string;
+  codeVerifier: string;
+  userId: string;
+  action: 'connect' | 'signup';
+  destination: string;
+  redirectUri: string;
+  createdAt: number;
+}
+
+const oauthTransactionsStore = new Map<string, OAuthTransaction>();
+
+function cleanupExpiredTransactions(): void {
+  const now = Date.now();
+  for (const [state, transaction] of oauthTransactionsStore.entries()) {
+    if (now - transaction.createdAt > OAUTH_STATE_TTL_MS) {
+      oauthTransactionsStore.delete(state);
+    }
+  }
+}
+
+export function base64UrlEncode(buffer: Buffer): string {
+  return buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+export function generatePKCE(): { codeVerifier: string; codeChallenge: string } {
+  const verifierBytes = crypto.randomBytes(32);
+  const codeVerifier = base64UrlEncode(verifierBytes);
+  const digest = crypto.createHash('sha256').update(codeVerifier).digest();
+  const codeChallenge = base64UrlEncode(digest);
+  return { codeVerifier, codeChallenge };
+}
+
+export function generateState(): string {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+export function encodeOAuthStateCookie(transaction: OAuthTransaction): string {
+  const payload = Buffer.from(JSON.stringify(transaction)).toString('base64url');
+  const signature = crypto.createHmac('sha256', getStateSecret()).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+export function decodeOAuthStateCookie(cookieValue?: string): OAuthTransaction | null {
+  const value = cleanString(cookieValue);
+  if (!value) {
+    return null;
+  }
+  try {
+    const parts = value.split('.');
+    if (parts.length !== 2) return null;
+    const [payload, signature] = parts;
+    const expectedSignature = crypto.createHmac('sha256', getStateSecret()).update(payload).digest('base64url');
+    const supplied = Buffer.from(signature);
+    const expected = Buffer.from(expectedSignature);
+    if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
+      return null;
+    }
+    const transaction = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as OAuthTransaction;
+    if (!transaction || !transaction.state || !transaction.codeVerifier || !transaction.redirectUri || !transaction.userId || !transaction.createdAt) {
+      return null;
+    }
+    if (Date.now() - transaction.createdAt > OAUTH_STATE_TTL_MS) {
+      return null;
+    }
+    return transaction;
+  } catch {
+    return null;
+  }
 }

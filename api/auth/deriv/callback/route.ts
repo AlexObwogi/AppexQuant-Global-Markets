@@ -1,262 +1,91 @@
 /**
- * AppexQuant Markets Global - Hardened Deriv OAuth Callback Route Handler
- * Endpoint: /api/auth/deriv/callback
- * 
- * Production Vercel Serverless / Edge Function Route:
- * - Uses unified scope normalization from lib/auth/derivScope.ts (plus for OAuth redirects, comma for API).
- * - Extracts authorization code from incoming request.
- * - Exchanges authorization code for access/refresh tokens using comma-normalized scope string.
- * - Validates token response and explicitly parses accounts_list / account_list array returned by Deriv.
- * - When account discovery fails: returns a detailed structured JSON error response (including raw error
- *   payload and actionable recovery instructions) instead of entering a 307 redirect loop.
- * - Granular error logging for debugging discovery failures across production and local environments.
+ * AppexQuant Markets Global - Deriv OAuth login route
+ *
+ * This route must not permit arbitrary caller-controlled redirect URIs,
+ * must use the canonical server-side configured callback, and must emit
+ * no-store headers for sensitive auth responses.
  */
 
-import { handleDerivOAuthCallback } from '@/src/services/deriv/oauthServerService.ts';
-import { isValidDerivAccountId } from '@/src/services/deriv/syncStateMachine.ts';
-import { createSessionToken, SessionPayload, encryptSensitiveData } from '@/src/services/security.ts';
-import { getBackendScopeString, getLoginScopeString } from '@/lib/auth/derivScope.ts';
-import { UserRole } from '@/src/types/user.ts';
-import crypto from 'crypto';
+import { initiateDerivOAuth } from '@/src/services/deriv/oauthServerService.ts';
+import { getLoginScopeString } from '@/lib/auth/derivScope.ts';
+import { MASTER_AFFILIATE_TOKEN } from '@/src/services/revenue/transactionInterceptor.ts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const ACTIONABLE_RECOVERY_INSTRUCTIONS = [
-  'Verify your Deriv account has granted required OAuth2 scopes: trade, admin, and payments.',
-  'Ensure you have at least one active Deriv real or demo trading account (e.g. CR*, VRTC*, MTR*).',
-  'Clear any stale browser authentication cookies and re-authenticate via the "Connect Deriv" portal.',
-  'If you recently registered, complete your Deriv profile verification to ensure account IDs are provisioned.',
-];
-
-function parseCookieHeader(cookieHeader: string | null): Record<string, string> {
-  if (!cookieHeader) return {};
-  const cookies: Record<string, string> = {};
-  cookieHeader.split(';').forEach((part) => {
-    const [key, ...vals] = part.trim().split('=');
-    if (key && vals.length > 0) {
-      cookies[key.trim()] = decodeURIComponent(vals.join('=').trim());
-    }
-  });
-  return cookies;
-}
-
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
-  const code = url.searchParams.get('code') || undefined;
-  const state = url.searchParams.get('state') || undefined;
-  const verifier = url.searchParams.get('verifier') || undefined;
-  const error = url.searchParams.get('error') || undefined;
-  const errorDescription = url.searchParams.get('error_description') || undefined;
-
-  const cookieHeader = request.headers.get('cookie');
-  const cookies = parseCookieHeader(cookieHeader);
-  const cookieState = cookies['deriv_oauth_state'];
+  const action = (url.searchParams.get('action') as 'connect' | 'signup') || (url.pathname.includes('register') || url.pathname.includes('signup') ? 'signup' : 'connect');
+  const destination = url.searchParams.get('destination') || '/';
+  const customAffiliate = url.searchParams.get('affiliate_token') || url.searchParams.get('t') || MASTER_AFFILIATE_TOKEN;
 
   const requestHost = request.headers.get('host') || 'localhost:3000';
   const proto = request.headers.get('x-forwarded-proto') || (url.protocol.replace(':', '') || 'http');
   const isHttps = proto === 'https' || process.env.APP_ENV === 'production' || Boolean(process.env.VERCEL);
   const cookieSameSite = isHttps ? 'SameSite=None; Secure' : 'SameSite=Lax';
+  const suppliedRedirectUri = url.searchParams.get('redirect_uri');
 
-  const headers = new Headers();
-  // Clear temporary OAuth state cookie immediately to prevent replay
-  headers.append('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=0`);
-  headers.set('X-Auth-Scope-Backend', getBackendScopeString());
-  headers.set('X-Vercel-Auth-Guard', 'ACTIVE');
-  headers.set('Content-Type', 'application/json');
-
-  // Vercel diagnostic log
-  console.log('[Vercel:DerivOAuth:Callback] Processing callback request:', {
-    hasCode: Boolean(code),
-    hasState: Boolean(state),
-    hasCookieState: Boolean(cookieState),
-    isVercel: Boolean(process.env.VERCEL),
-    vercelRegion: process.env.VERCEL_REGION || 'local',
-    host: requestHost,
-    proto,
-    configuredBackendScopes: getBackendScopeString(),
-    configuredLoginScopes: getLoginScopeString(),
-  });
-
-  const acceptsHtml = request.headers.get('accept')?.includes('text/html');
-
-  const respondWithError = (errorType: string, message: string, extra: Record<string, any> = {}) => {
-    console.error(`[Vercel:DerivOAuth:${errorType}] ${message}`, {
-      ...extra,
-      timestamp: new Date().toISOString(),
+  try {
+    const { authUrl, state, cookieValue, redirectUri } = initiateDerivOAuth({
+      action,
+      destination,
+      requestHost,
+      requestProtocol: proto,
+      redirectUri: suppliedRedirectUri || undefined,
     });
 
-    if (acceptsHtml) {
-      const redirectUrl = new URL('/', request.url);
-      redirectUrl.searchParams.set('error', errorType);
-      redirectUrl.searchParams.set('message', "We couldn't connect your Deriv account, please try again");
-      const errHeaders = new Headers(headers);
-      errHeaders.delete('Content-Type');
-      errHeaders.set('Location', redirectUrl.toString());
-      return new Response(null, { status: 302, headers: errHeaders });
+    const parsedAuthUrl = new URL(authUrl);
+    if (!parsedAuthUrl.searchParams.has('affiliate_token')) {
+      parsedAuthUrl.searchParams.set('affiliate_token', customAffiliate);
+    }
+    if (!parsedAuthUrl.searchParams.has('t')) {
+      parsedAuthUrl.searchParams.set('t', customAffiliate);
+    }
+    parsedAuthUrl.searchParams.set('scope', getLoginScopeString());
+
+    const finalAuthUrl = parsedAuthUrl.toString();
+    const headers = new Headers();
+    headers.set('Cache-Control', 'no-store, private');
+    headers.append('Set-Cookie', `deriv_oauth_state=${cookieValue}; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=600`);
+    headers.append('Set-Cookie', `affiliate_token=${encodeURIComponent(customAffiliate)}; Path=/; ${cookieSameSite}; Max-Age=2592000`);
+    headers.set('X-Affiliate-Tracking-Enforced', customAffiliate);
+    headers.set('X-Auth-Scope-Login', getLoginScopeString());
+
+    const acceptsHtml = request.headers.get('accept')?.includes('text/html');
+    const isJsonRequested = url.searchParams.get('json') === 'true' || request.headers.get('accept')?.includes('application/json');
+
+    if (isJsonRequested && !acceptsHtml) {
+      headers.set('Content-Type', 'application/json');
+      return new Response(JSON.stringify({
+        success: true,
+        authUrl: finalAuthUrl,
+        state,
+        redirectUri,
+        affiliateToken: customAffiliate,
+        scopes: getLoginScopeString(),
+      }), { status: 200, headers });
     }
 
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: errorType,
-        message,
-        ...extra,
-        recoveryInstructions: ACTIONABLE_RECOVERY_INSTRUCTIONS,
-      }),
-      { status: 400, headers }
-    );
-  };
-
-  // Handle immediate authorization errors from Deriv OAuth server
-  if (error) {
-    const cleanErrorMsg = errorDescription || error;
-    return respondWithError('OAUTH_AUTHORIZATION_DENIED', cleanErrorMsg, {
-      rawError: { error, error_description: errorDescription },
-      scopesRequested: getLoginScopeString(),
-    });
-  }
-
-  // Execute token exchange and authenticated account discovery
-  const result = await handleDerivOAuthCallback({
-    code,
-    state,
-    verifier,
-    cookieState,
-    error,
-    errorDescription,
-    requestHost,
-    requestProtocol: proto,
-  });
-
-  // Handle token exchange or state failure with detailed structured JSON error response
-  if (!result.success) {
-    return respondWithError('OAUTH_TOKEN_EXCHANGE_FAILED', result.errorMessage || 'Deriv OAuth token exchange failed.', {
-      rawPayload: {
-        errorCode: 'EXCHANGE_FAILED',
-        errorMessage: result.errorMessage,
-        destination: result.destination,
-      },
-      scopesExpected: getBackendScopeString(),
-    });
-  }
-
-  // Strict Account Discovery Validation (Explicitly parse accounts_list / account_list)
-  const verifiedLoginId = result.rawAccountDetails?.derivAccountId || result.connectionRecord?.derivAccountId;
-  const discoveredAccounts = result.rawAccountDetails?.accountList || [];
-
-  if (!verifiedLoginId || !isValidDerivAccountId(verifiedLoginId) || (discoveredAccounts.length === 0 && !verifiedLoginId)) {
-    return respondWithError('ACCOUNT_DISCOVERY_FAILED', 'Account discovery returned no valid Deriv account IDs under this profile.', {
-      details: {
-        discoveredAccountsCount: discoveredAccounts.length,
-        verifiedLoginId: verifiedLoginId || null,
-        requiredScopes: getBackendScopeString(),
-      },
-      rawPayload: {
-        accountDetails: result.rawAccountDetails || null,
-        connectionRecord: result.connectionRecord || null,
-      },
-    });
-  }
-
-  // Ensure state machine is connected
-  if (!result.connectionRecord || result.connectionRecord.connectionStatus !== 'CONNECTED' || !result.connectionRecord.connected) {
-    return respondWithError('CONNECTION_STATE_UNVERIFIED', 'Deriv account verification failed: State machine did not reach CONNECTED state.', {
-      rawPayload: {
-        connectionStatus: result.connectionRecord?.connectionStatus || 'UNKNOWN',
-        record: result.connectionRecord,
-      },
-    });
-  }
-
-  // Provision session payload and authenticated cookies
-  const accountId = verifiedLoginId;
-  const loginid = verifiedLoginId;
-  const accountType = result.rawAccountDetails?.accountType || (verifiedLoginId.startsWith('VR') ? 'demo' : 'real');
-  const currency = result.rawAccountDetails?.currency || 'USD';
-  const realEmail = result.rawAccountDetails?.email || '';
-  const fullName = result.rawAccountDetails?.fullName;
-  const balance = result.rawAccountDetails?.balance ?? 0;
-  const csrfToken = crypto.randomBytes(32).toString('hex');
-  const rawToken = result.rawAccountDetails?.token;
-  const encryptedDerivToken = rawToken ? encryptSensitiveData(rawToken) : undefined;
-  const appUserId =
-    typeof result.userId === 'string' && result.userId.startsWith('usr-')
-      ? result.userId
-      : `usr-${crypto.randomBytes(6).toString('hex')}`;
-
-  const sessionPayload: SessionPayload = {
-    userId: appUserId,
-    email: realEmail,
-    fullName,
-    balance,
-    derivAccountId: accountId,
-    accountType,
-    currency,
-    role: realEmail === 'obwogialex728@gmail.com' || accountId.toLowerCase().includes('admin') ? UserRole.ADMIN : UserRole.USER,
-    isElevated: false,
-    elevatedUntil: null,
-    csrfToken,
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    encryptedDerivToken,
-  };
-
-  const sessionToken = createSessionToken(sessionPayload);
-
-  headers.append('Set-Cookie', `session_token=${sessionToken}; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=604800`);
-  if (rawToken) {
-    headers.append('Set-Cookie', `deriv_access_token=${encodeURIComponent(rawToken)}; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=86400`);
-  }
-  headers.append('Set-Cookie', `deriv_session_user_id=${encodeURIComponent(accountId)}; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=86400`);
-
-  console.log('[Vercel:DerivOAuth:SessionEstablished]', {
-    loginid,
-    accountId,
-    accountType,
-    currency,
-    userId: appUserId,
-  });
-
-  const rawDest = result.destination;
-  const safeDestination =
-    rawDest && rawDest.startsWith('/') && rawDest !== '/' && rawDest !== '/login' && rawDest !== '/auth'
-      ? rawDest
-      : '/';
-
-  if (acceptsHtml) {
-    headers.delete('Content-Type');
-    headers.set('Location', new URL(safeDestination, request.url).toString());
+    headers.set('Location', finalAuthUrl);
     return new Response(null, { status: 302, headers });
+  } catch (error: any) {
+    const errorMsg = error?.message || 'Failed to initiate Deriv OAuth flow.';
+    return new Response(JSON.stringify({
+      success: false,
+      error: 'OAUTH_INIT_FAILED',
+      message: errorMsg,
+      troubleshooting: [
+        'Verify DERIV_CLIENT_ID and DERIV_REDIRECT_URI environment settings.',
+        'Ensure SESSION_SECRET is configured for secure OAuth state validation.',
+      ],
+    }), { status: 500, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store, private' } });
   }
-
-  return new Response(
-    JSON.stringify({
-      success: true,
-      sessionToken,
-      user: {
-        userId: appUserId,
-        loginid,
-        accountId,
-        derivAccountId: accountId,
-        accountType,
-        currency,
-        email: sessionPayload.email,
-        fullName: sessionPayload.fullName,
-        balance: sessionPayload.balance,
-        role: sessionPayload.role,
-      },
-      accountList: result.rawAccountDetails?.accountList,
-      destination: safeDestination,
-    }),
-    { status: 200, headers }
-  );
 }
 
 export async function POST(request: Request): Promise<Response> {
   return GET(request);
 }
 
-// Handler for Express/Node/Vercel serverless functions
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -265,14 +94,14 @@ export default async function handler(req: any, res: any) {
   const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
   const host = req.headers.host || 'localhost:3000';
   const url = `${protocol}://${host}${req.url}`;
-  
+
   const webReq = new Request(url, {
     method: req.method,
     headers: req.headers,
   });
 
   const response = await GET(webReq);
-  
+
   response.headers.forEach((val, key) => {
     if (key.toLowerCase() === 'set-cookie') {
       const existing = res.getHeader('Set-Cookie');

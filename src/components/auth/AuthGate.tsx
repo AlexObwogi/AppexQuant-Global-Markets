@@ -552,7 +552,8 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   // Connect to official secure broker platform
   const handleDerivLogin = useCallback(
-    (action: 'connect' | 'signup' = 'connect') => {
+    async (action: 'connect' | 'signup' = 'connect') => {
+      if (isAuthorizing) return;
       setIsAuthorizing(true);
       setErrorMessage(null);
       setAuthStatusMessage(
@@ -561,10 +562,38 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
           : 'Connecting to secure gateway...'
       );
 
-      const targetPath = action === 'signup' ? '/api/auth/deriv/signup' : '/api/auth/deriv/login';
-      window.location.href = `${targetPath}?action=${action}&destination=/`;
+      try {
+        const targetPath = action === 'signup' ? '/api/auth/deriv/signup' : '/api/auth/deriv/login';
+        const res = await apiFetch(`${targetPath}?action=${action}&destination=/&json=true`).catch(() => null);
+        if (res?.ok) {
+          const json = await res.json().catch(() => null);
+          const authUrl = json?.data?.authUrl || json?.authUrl;
+          if (authUrl) {
+            const width = 650;
+            const height = 750;
+            const left = Math.max(0, (window.screen.width - width) / 2);
+            const top = Math.max(0, (window.screen.height - height) / 2);
+            const popup = window.open(
+              authUrl,
+              'deriv_oauth_popup',
+              `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes`
+            );
+
+            if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+              window.location.href = authUrl;
+            } else {
+              setAuthStatusMessage('Awaiting authorization in popup window...');
+            }
+            return;
+          }
+        }
+        window.location.href = `${targetPath}?action=${action}&destination=/`;
+      } catch {
+        const targetPath = action === 'signup' ? '/api/auth/deriv/signup' : '/api/auth/deriv/login';
+        window.location.href = `${targetPath}?action=${action}&destination=/`;
+      }
     },
-    []
+    [isAuthorizing]
   );
 
   // Listen for popup OAuth messages
@@ -1325,21 +1354,25 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
               </button>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <a
-                  href="/api/auth/deriv/login?action=connect&destination=/"
-                  className={`w-full py-3 px-4 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer ${syncStyles.primaryBtn}`}
+                <button
+                  type="button"
+                  onClick={() => handleDerivLogin('connect')}
+                  disabled={isAuthorizing}
+                  className={`w-full py-3 px-4 rounded-xl font-black text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer ${syncStyles.primaryBtn} disabled:opacity-50`}
                 >
                   <Zap className="w-4 h-4 fill-current" />
-                  <span>Log In</span>
-                </a>
+                  <span>{isAuthorizing ? 'Connecting...' : 'Log In'}</span>
+                </button>
 
-                <a
-                  href="/api/auth/deriv/signup?action=signup&destination=/"
-                  className="w-full py-3 px-4 rounded-xl font-bold text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer bg-[#FF444F] hover:bg-[#E03B44] text-white shadow-lg shadow-[#FF444F]/20"
+                <button
+                  type="button"
+                  onClick={() => handleDerivLogin('signup')}
+                  disabled={isAuthorizing}
+                  className="w-full py-3 px-4 rounded-xl font-bold text-xs tracking-wider uppercase transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer bg-[#FF444F] hover:bg-[#E03B44] text-white shadow-lg shadow-[#FF444F]/20 disabled:opacity-50"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Open Account</span>
-                </a>
+                  <span>{isAuthorizing ? 'Opening...' : 'Open Account'}</span>
+                </button>
               </div>
             )}
 

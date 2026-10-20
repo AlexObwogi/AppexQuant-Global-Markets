@@ -38,6 +38,8 @@ import {
   requestIdMiddleware,
   rateLimiterMiddleware,
   authRateLimiterMiddleware,
+  sessionRateLimiterMiddleware,
+  oauthCallbackRateLimiterMiddleware,
   ingestionRateLimiterMiddleware,
   aiRateLimiterMiddleware,
   mfaRateLimiterMiddleware,
@@ -52,6 +54,7 @@ import {
   validateStrategyActivation,
   redactSensitiveValues,
   logSecurityEvent,
+  getClientIp,
   parseCookies,
   encryptSensitiveData,
   decryptSensitiveData,
@@ -59,6 +62,7 @@ import {
 } from './src/services/security.ts';
 import { edgeCache, edgeCacheStore } from './src/lib/cache/edgeCache.ts';
 import { dbQueries } from './src/lib/db/prisma.ts';
+import { isDirectDatabaseAvailable } from './src/lib/db/directPrismaClient.ts';
 import { leaderboardService } from './src/services/leaderboard/leaderboardService.ts';
 import { LeaderboardWindow } from './src/types/leaderboard.ts';
 import { fimMonitor } from './src/services/security/fileIntegrityMonitor.ts';
@@ -130,6 +134,8 @@ import { getDatabasePool, testDatabaseConnection } from './src/db/connection.ts'
 
 export async function createApp() {
   const app = express();
+  // Trust proxy: Enable accurate client IP resolution behind Vercel / Cloudflare edge proxies
+  app.set('trust proxy', 1);
   const config = loadAppConfig();
   const PORT = 3000;
 
@@ -215,15 +221,19 @@ export async function createApp() {
   };
 
   // API Endpoints
-  // 1. Health Check with Edge Caching
-  app.get('/api/health', edgeCache({ ttlSeconds: 10, swrSeconds: 30, tags: ['health'], isPublic: true }), (req: Request, res: Response) => {
+  // 1. Health Check with Edge Caching (Distinguishes application liveness from database readiness)
+  app.get('/api/health', edgeCache({ ttlSeconds: 10, swrSeconds: 30, tags: ['health'], isPublic: true }), async (req: Request, res: Response) => {
+    const dbTest = await testDatabaseConnection();
+    const isDbConnected = dbTest.success;
+    const dbStatus = isDbConnected ? 'CONNECTED' : (process.env.DATABASE_URL ? 'UNAVAILABLE' : 'NOT_CONFIGURED');
+
     res.json(
       createSuccessResponse({
-        status: 'ok',
+        status: isDbConnected ? 'ok' : 'degraded',
         liveness: true,
-        readiness: true,
+        readiness: isDbConnected,
         dependencies: {
-          database: 'STANDBY_READY',
+          database: dbStatus,
           brokerAdapterQueue: 'IDLE',
           pwaServiceWorker: 'ACTIVE',
         },
@@ -258,9 +268,17 @@ export async function createApp() {
         return res.json(createSuccessResponse(prismaEntries));
       }
 
-      // Memory-fallback path
+      // If database is down or empty, return cached entries with explicit transparency metadata
+      const isDbReady = isDirectDatabaseAvailable();
       const entries = leaderboardService.getLeaderboard(window).slice(0, limit);
-      res.json(createSuccessResponse(entries));
+      return res.json({
+        ...createSuccessResponse(entries),
+        meta: {
+          source: isDbReady ? 'database_unpopulated' : 'cache_fallback',
+          isStale: !isDbReady,
+          databaseStatus: isDbReady ? 'CONNECTED' : 'UNAVAILABLE',
+        },
+      });
     } catch (err: any) {
       res.status(500).json(createErrorResponse('Failed to fetch top leaderboard', 'LEADERBOARD_ERROR'));
     }
@@ -1196,8 +1214,8 @@ export async function createApp() {
     }
   };
 
-  app.get('/api/auth/session', authRateLimiterMiddleware, sessionHandler);
-  app.get('/api/auth/me', authRateLimiterMiddleware, sessionHandler);
+  app.get('/api/auth/session', sessionRateLimiterMiddleware, sessionHandler);
+  app.get('/api/auth/me', sessionRateLimiterMiddleware, sessionHandler);
 
   // 4. Secure Logout Endpoint
   app.post('/api/auth/logout', (req: Request, res: Response) => {
@@ -1300,7 +1318,7 @@ export async function createApp() {
     '/callback/',
   ];
 
-  app.all(derivCallbackPaths, authRateLimiterMiddleware, async (req: Request, res: Response) => {
+  app.all(derivCallbackPaths, oauthCallbackRateLimiterMiddleware, async (req: Request, res: Response) => {
     const isHttps = (req.headers['x-forwarded-proto'] as string) === 'https' || req.secure || process.env.APP_ENV === 'production';
     const secureFlag = isHttps ? '; Secure' : '';
 
@@ -1359,7 +1377,7 @@ export async function createApp() {
         }
 
         const cleanErrMsg = result.errorMessage || 'Deriv authorization failed.';
-        return res.send(`<!DOCTYPE html>
+        return res.status(400).send(`<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
@@ -1417,7 +1435,7 @@ export async function createApp() {
           ));
         }
 
-        return res.send(`<!DOCTYPE html>
+        return res.status(400).send(`<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
@@ -1568,7 +1586,7 @@ export async function createApp() {
       if (req.headers.accept?.includes('application/json') || req.query.json === 'true') {
         return res.status(500).json(createErrorResponse(`Deriv OAuth Callback Error: ${errMsg}`, 'SERVER_ERROR'));
       }
-      return res.send(`<!DOCTYPE html>
+      return res.status(500).send(`<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
@@ -1586,7 +1604,7 @@ export async function createApp() {
   });
 
   // Get current user's safe Deriv connection metadata (No secret tokens returned to normal users)
-  app.get(['/api/auth/status', '/api/auth/deriv/status'], async (req: Request, res: Response) => {
+  app.get(['/api/auth/status', '/api/auth/deriv/status'], sessionRateLimiterMiddleware, async (req: Request, res: Response) => {
     try {
       const parsedCookies = (req as any).cookies || parseCookies(req.headers.cookie);
       const cookieUserId = parsedCookies['deriv_session_user_id'];

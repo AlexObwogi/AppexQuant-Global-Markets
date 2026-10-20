@@ -59,9 +59,11 @@ globalForDirectPrisma.directPrismaInstance = directPrisma;
 
 let isDirectDbAvailableState = false;
 let dbAvailabilityTested = false;
+let lastDbTestTime = 0;
+const PRISMA_CHECK_TTL_MS = 30000;
 
 export function isDirectDatabaseAvailable(): boolean {
-  if (!dbAvailabilityTested) {
+  if (!dbAvailabilityTested || (Date.now() - lastDbTestTime > PRISMA_CHECK_TTL_MS)) {
     if (!process.env.DATABASE_URL || !process.env.DATABASE_URL.trim()) {
       return false;
     }
@@ -71,6 +73,7 @@ export function isDirectDatabaseAvailable(): boolean {
 
 export function setDirectDatabaseAvailable(status: boolean): void {
   dbAvailabilityTested = true;
+  lastDbTestTime = Date.now();
   isDirectDbAvailableState = status;
 }
 
@@ -78,8 +81,15 @@ export function setDirectDatabaseAvailable(status: boolean): void {
  * Verifies that the direct PostgreSQL connection is live and active.
  * Returns true if connected, false if database is unreachable.
  */
-export async function verifyDirectDatabaseConnection(): Promise<boolean> {
+export async function verifyDirectDatabaseConnection(forceRetry = false): Promise<boolean> {
+  const now = Date.now();
+  if (dbAvailabilityTested && !forceRetry && (now - lastDbTestTime < PRISMA_CHECK_TTL_MS)) {
+    return isDirectDbAvailableState;
+  }
+
   dbAvailabilityTested = true;
+  lastDbTestTime = now;
+
   if (!process.env.DATABASE_URL || !process.env.DATABASE_URL.trim()) {
     isDirectDbAvailableState = false;
     return false;
@@ -90,7 +100,12 @@ export async function verifyDirectDatabaseConnection(): Promise<boolean> {
       isDirectDbAvailableState = false;
       return false;
     }
-    await directPrisma.$queryRaw`SELECT 1 AS health_check`;
+    await Promise.race([
+      directPrisma.$queryRaw`SELECT 1 AS health_check`,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Prisma database health check timeout (3000ms)')), 3000)
+      ),
+    ]);
     logger.info('Direct PostgreSQL database connection successfully established and verified via Prisma.');
     isDirectDbAvailableState = true;
     return true;

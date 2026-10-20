@@ -47,6 +47,7 @@ import {
 
 import {
   DERIV_OAUTH_SCOPES,
+  DERIV_OAUTH_SCOPE_STRING,
   getLoginScopeString,
   getBackendScopeString,
   parseRawScopes,
@@ -448,9 +449,10 @@ export function getDerivOAuthConfig(
 
   const scopes =
     getLoginScopeString(
-      cleanString(process.env.DERIV_OAUTH_SCOPE) ||
       cleanString(process.env.DERIV_OAUTH_SCOPES) ||
-      DERIV_OAUTH_SCOPE
+      cleanString(process.env.DERIV_OAUTH_SCOPE) ||
+      cleanString(process.env.DERIV_SCOPES) ||
+      DERIV_OAUTH_SCOPE_STRING
     );
 
   return {

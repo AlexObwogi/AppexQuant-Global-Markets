@@ -1792,6 +1792,7 @@ export class DerivGateway {
 
     this.publicReconnectAttempts += 1;
 
+    const jitter = Math.floor(Math.random() * 500);
     const delay =
       Math.min(
         DEFAULT_RECONNECT_DELAY *
@@ -1800,7 +1801,7 @@ export class DerivGateway {
             5,
           ),
         MAX_RECONNECT_DELAY,
-      );
+      ) + jitter;
 
     this.setConnectionState('RECONNECTING');
 

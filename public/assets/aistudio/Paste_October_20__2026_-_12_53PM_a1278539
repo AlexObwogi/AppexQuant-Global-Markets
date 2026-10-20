@@ -1,0 +1,460 @@
+# APPEX QUANT GLOBAL MARKETS
+## Production Incident Repair — Root-Cause Analysis, Targeted File Fixes, Security, OAuth, Database and Streaming
+
+Act as a **principal software engineer, backend architect, application-security engineer, database reliability engineer, and production incident investigator**. Work directly inside the existing AppEx Quant Global Markets codebase.
+
+Your mission is to **identify, fix, test, and verify the root causes** of the production issues evidenced in the Vercel logs dated 20 October 2026. Do not merely explain the bugs, suppress logs, return success-shaped responses, or provide code snippets without implementing the fixes in the repository.
+
+**Start by inspecting the existing codebase. Do not ask me to identify files that you can discover yourself.**
+
+## 1. Production evidence that must drive the investigation
+
+Treat the following logs as evidence, not as proof of an assumed root cause.
+
+| Observed evidence | Required investigation |
+|---|---|
+| `GET /api/auth/deriv/callback` reports `hasCode: false`, `hasToken: false`, yet returns `200` | Determine whether the callback is reached directly, through provider denial, an incorrect redirect, a middleware rewrite, query-parameter loss, or another cause. |
+| `/api/auth/deriv/login` and `/signup` repeatedly return `307` | Inspect redirect destinations, browser/client triggers, retries, duplicate event handlers, and any redirect loops. |
+| `/api/auth/deriv/signup` returns `429` with `AUTH_RATE_LIMIT_EXCEEDED` | Inspect rate-limit keys, request bursts, legitimate-user impact, and proxy-aware IP extraction. |
+| Direct PostgreSQL connection to `db.yfiacyphtrsnkglfxgaj.supabase.co:5432` fails | Validate environment configuration, hostname, TLS, network accessibility, connection pooling, and whether this connection path is actually required. |
+| `/api/auth/session`, `/api/auth/status`, and `/api/leaderboard/top` return `200` while database connectivity errors are logged | Determine whether valid data comes from a deliberate cache or whether failures are hidden by stale, mock, or in-memory fallback data. |
+| Deriv streaming logs repeatedly show `STREAM_OPEN`, `STREAM_CONNECTING`, and `STREAM_CLOSED` | Trace connection ownership, browser lifecycle, reconnect logic, subscription cleanup, and serverless-runtime assumptions. |
+| A security event records `ip: 127.0.0.1` | Establish how the real client IP is obtained and whether rate limiting and security monitoring use trustworthy request metadata. |
+| Previous logs showed `RevenueEngine:TransactionIntercepted` activity on read-only endpoints | Trace whether this is logging only, simulation, or actual transaction processing. Ensure read-only requests never trigger financial side effects. |
+
+The `200`, `307`, `429`, and `101` responses must be interpreted correctly. A `101` WebSocket upgrade is not inherently a failure, and a `200` does not prove that the application returned correct or authoritative data.
+
+## 2. Mandatory phase one — Discover the actual files
+
+Before editing anything, inspect the repository structure, package scripts, routing framework, API handlers, imports, environment-variable access, middleware, database clients, tests, and deployment configuration.
+
+Search for the following symbols, concepts, and log messages:
+
+- `DERIV_OAUTH_CALLBACK_RECEIVED`
+- `OAUTH_INIT_START`
+- `AUTH_RATE_LIMIT_EXCEEDED`
+- `STREAM_CONNECTING`
+- `STREAM_OPEN`
+- `STREAM_CLOSED`
+- `Direct PostgreSQL database connection unavailable`
+- `RevenueEngine`
+- `/api/auth/deriv/login`
+- `/api/auth/deriv/signup`
+- `/api/auth/deriv/callback`
+- `/api/auth/session`
+- `/api/auth/status`
+- `/api/market/active-symbols`
+- `/api/leaderboard/top`
+- `/api/deriv/stream`
+
+Identify the real files responsible for each behavior. Build an internal file map containing:
+
+1. Route handler and HTTP response owner.
+2. Frontend component or hook initiating the request.
+3. Authentication and session implementation.
+4. OAuth URL builder, state creation, callback handler, and token exchange.
+5. Rate-limiting implementation and IP extraction.
+6. Database client, repositories, schema and migrations.
+7. Stream gateway, subscriptions, connection lifecycle and reconnect logic.
+8. Revenue engine, transaction interception and event handlers.
+9. Middleware, rewrites, redirects and cache configuration.
+10. Existing unit, integration and end-to-end tests.
+
+Use the real filenames and exact call paths you discover. **Never invent filenames, overwrite entire modules unnecessarily, or replace existing working functionality with a generic implementation.**
+
+Before modifying files, provide a concise mapping of each bug to its root-cause hypothesis, the evidence needed to confirm it, the files involved, and the planned fix. Then proceed with the implementation without waiting for approval for ordinary, safe code changes.
+
+## 3. Mandatory phase two — Fix Deriv OAuth end to end
+
+Inspect the entire OAuth lifecycle from the user's click through successful authentication.
+
+### A. Login and signup initiation
+
+Trace how the frontend initiates each action:
+
+- Connect existing Deriv account.
+- Sign up or register through Deriv.
+- Return from the provider.
+- Establish the authenticated application session.
+- Restore the session after page reload.
+
+Verify that each button initiates the intended flow exactly once. Eliminate duplicate click handlers, repeated effects, automatic retries of non-idempotent initiation, redirect loops, and multiple competing navigation paths.
+
+A `307` can be correct when redirecting to the provider. Verify its `Location` destination and ensure the redirect points to the expected provider authorization endpoint with correctly encoded parameters.
+
+Use a single canonical production callback URL, configured centrally and used consistently in the authorization request and provider configuration. Do not hardcode a mixture of preview, localhost, and production URLs.
+
+### B. Secure OAuth state and callback validation
+
+Implement or repair the existing OAuth flow according to the provider's supported protocol.
+
+Requirements:
+
+- Generate cryptographically secure, unpredictable state.
+- Bind state to the initiating browser/session using an appropriate secure mechanism.
+- Validate state on callback and reject missing, expired, mismatched, or already-consumed state.
+- Prevent callback replay and account/session confusion.
+- Validate the provider's authorization response and handle explicit denial or error parameters.
+- Exchange authorization codes only on the server where required by the provider protocol.
+- Never accept arbitrary client-provided tokens as proof of identity.
+- Validate the token response and identity information using the provider-supported method.
+- Persist the authenticated session using the application's established secure session architecture.
+- Use appropriate `HttpOnly`, `Secure`, and `SameSite` cookie settings for the actual deployment flow.
+- Prevent open redirects and untrusted `returnTo` destinations.
+- Never expose client secrets, access tokens, authorization codes, or raw state values in logs.
+
+If the provider requires PKCE, implement it correctly. If the existing Deriv integration uses a different supported flow, follow that flow instead of blindly imposing an incompatible protocol.
+
+### C. Correct the callback's misleading success response
+
+Investigate why callback requests arrive without `code` or `token`.
+
+Distinguish among:
+
+1. A legitimate provider denial or OAuth error.
+2. A callback manually opened without parameters.
+3. A malformed or incomplete provider redirect.
+4. A query string lost through middleware, rewrites, or frontend navigation.
+5. An incorrect callback URL or provider configuration.
+6. Invalid or missing state.
+7. A stale callback or duplicated initiation flow.
+
+Do not assume that every missing-code callback is a provider configuration failure.
+
+Return the correct outcome for each case. A missing authorization code must never result in a fabricated authenticated session or a misleading successful-login response. Use an appropriate error status for malformed requests and a safe user-facing failure page or redirect for browser-based OAuth flows.
+
+If callback processing is intentionally followed by a frontend redirect, ensure the final destination and status clearly communicate success or failure. Never leak sensitive provider error details.
+
+### D. OAuth acceptance tests
+
+Test all of the following:
+
+- Valid login and signup callback.
+- Missing authorization code.
+- Provider denial.
+- Provider error response.
+- Missing, mismatched, expired, and replayed state.
+- Invalid token exchange response.
+- Token exchange timeout or provider outage.
+- Duplicate callback.
+- Session persistence and reload.
+- Redirect URI mismatch.
+- Repeated clicks and duplicate requests.
+- Legitimate retries after a failed attempt.
+
+Mock the provider in automated tests where appropriate, then provide a separate production verification procedure for testing the real provider integration.
+
+## 4. Mandatory phase three — Repair database connectivity and data integrity
+
+Find every place the application initializes or connects to PostgreSQL or Supabase.
+
+Investigate why the application reports that the direct PostgreSQL host is unavailable while endpoints continue returning `200`.
+
+Determine the intended architecture before changing it:
+
+- Is the application supposed to use Supabase's supported client/API?
+- Is direct PostgreSQL connectivity required for server-side operations?
+- Is the hostname correct for the current project and deployment?
+- Is the selected endpoint appropriate for the deployment environment?
+- Are TLS, credentials, connection limits, DNS and networking configured correctly?
+- Is a pooled connection required for the chosen runtime?
+- Are different database clients using inconsistent environment variables?
+
+Do not solve this by disabling the database check, swallowing exceptions, changing log severity, or inventing a replacement data source.
+
+### Database repair requirements
+
+1. Establish one clearly defined and documented database access strategy for each runtime.
+2. Validate required environment variables at startup or request initialization, without exposing their values.
+3. Use secure TLS and appropriate connection management.
+4. Reuse clients safely where supported by the framework, without assuming a serverless instance is permanent.
+5. Avoid unbounded connection creation and retry storms.
+6. Use bounded retries with backoff only for appropriate transient failures.
+7. Use timeouts and a circuit breaker where appropriate.
+8. Keep database transactions atomic where multiple related writes must succeed together.
+9. Preserve existing schema and data unless a verified migration is necessary.
+10. Never log credentials or database URLs containing secrets.
+
+### Honest data behavior
+
+When the database is unavailable:
+
+- Return valid cached data only if the cache is intentional, sufficiently fresh for its purpose, and clearly identified as cached where relevant.
+- Do not report a database-backed operation as successful if it did not succeed.
+- Do not create fake users, balances, transactions, leaderboard entries, or market data as a fallback.
+- Return appropriate service errors for operations that require unavailable data.
+- Ensure health and status endpoints distinguish application availability from database readiness.
+- Preserve legitimate stale-cache behavior where it is intentional, but expose freshness and source information appropriately.
+
+Do not unnecessarily remove working caching or convert every endpoint to an uncached database request.
+
+### Database acceptance tests
+
+Prove that the application behaves correctly when the database is:
+
+- Reachable and healthy.
+- Temporarily unavailable.
+- Misconfigured.
+- Slow or timing out.
+- Returning an authorization error.
+- Recovering after an outage.
+
+Verify that successful writes persist and can be read back. Verify that failed writes are not reported as successful and that fallback data cannot silently masquerade as authoritative data.
+
+## 5. Mandatory phase four — Fix rate limiting and proxy-aware security
+
+Investigate the `AUTH_RATE_LIMIT_EXCEEDED` event associated with repeated signup requests and the reported `127.0.0.1` address.
+
+Determine whether the requests originate from:
+
+- Repeated frontend actions.
+- Browser refreshes or navigation loops.
+- A legitimate user retrying.
+- Automated traffic.
+- A shared proxy or serverless runtime.
+- Another component accidentally calling the endpoint.
+
+### Required fixes
+
+- Use a stable rate-limit key appropriate to the endpoint and authentication stage.
+- Use a shared, durable rate-limit store when the deployed architecture requires distributed enforcement.
+- Do not depend on an in-memory counter as the only production protection across serverless instances.
+- Respect Vercel's trusted proxy/request metadata according to the deployed platform's documented behavior.
+- Do not blindly trust arbitrary `X-Forwarded-For` or similar client-controlled headers.
+- Do not treat `127.0.0.1` as a real client identity when it is only the runtime or proxy address.
+- If a reliable client IP is unavailable, use an explicit fallback strategy rather than pretending the IP is verified.
+- Apply rate limits appropriate to login, signup, callback processing, session reads, and other routes rather than a single arbitrary global limit.
+- Ensure valid users are not trapped in repeated retry loops after receiving `429`.
+- Include `Retry-After` where appropriate.
+- Prevent rate-limit bypass without blocking legitimate users behind shared networks.
+- Record useful security events without logging secrets or excessive personal data.
+
+Keep the security controls enabled. Do not remove rate limiting to make the errors disappear.
+
+Test burst traffic, repeated legitimate requests, separate clients, shared-IP scenarios, and requests containing forged proxy headers.
+
+## 6. Mandatory phase five — Repair Deriv stream lifecycle
+
+Investigate the repeated stream events around:
+
+- `/api/deriv/stream`
+- `STREAM_CONNECTING`
+- `STREAM_OPEN`
+- `STREAM_CLOSED`
+
+The logs show successful `101` upgrades, so do not classify every upgrade as a failure. Find the actual cause of the repeated opening and closing.
+
+Trace the stream from its frontend owner through the backend gateway and upstream Deriv connection.
+
+Inspect:
+
+- Component mounting and unmounting.
+- Duplicate subscriptions and event listeners.
+- Browser tab visibility and reconnect behavior.
+- Explicit close calls and cleanup handlers.
+- Heartbeat, ping/pong and idle timeout behavior.
+- Network interruptions and upstream errors.
+- Retry timers and retry limits.
+- Subscription creation and disposal.
+- Whether a public connection is incorrectly coupled to an authenticated session.
+- Whether the code assumes that a Vercel serverless process remains alive indefinitely.
+
+### Required behavior
+
+1. Assign clear ownership to each connection and subscription.
+2. Ensure one logical client subscription does not create duplicate upstream subscriptions unnecessarily.
+3. Clean up listeners, timers and subscriptions when the owner disconnects.
+4. Use bounded exponential backoff with jitter for recoverable failures.
+5. Avoid rapid reconnect loops and retry amplification.
+6. Handle upstream errors, malformed messages, heartbeat failures and shutdowns.
+7. Ensure reconnects resubscribe only to the intended active subscriptions.
+8. Avoid logging secrets, authentication tokens or full sensitive message payloads.
+9. Ensure stream failures do not break unrelated market-symbol, session or leaderboard endpoints.
+10. Preserve any existing, working WebSocket functionality.
+
+If the current implementation relies on a process-wide singleton or permanent background worker that Vercel cannot reliably provide, redesign only the affected component using an architecture compatible with the deployed runtime. Consider a dedicated persistent service only if the required connection lifetime cannot be supported by the existing hosting model.
+
+Do not introduce an entirely new infrastructure dependency unless it is necessary, justified, and documented.
+
+### Stream acceptance tests
+
+Test connection open, clean close, abnormal disconnect, upstream outage, reconnect, multiple clients, duplicate subscriptions, browser unmount, and recovery after deployment/runtime interruption.
+
+Measure connection counts and reconnection attempts to verify that a single logical subscription does not create uncontrolled connection churn.
+
+## 7. Mandatory phase six — Protect the revenue and transaction engine
+
+Search the complete codebase for `RevenueEngine`, transaction interception, simulated events, revenue calculations, transaction persistence, and all imports that trigger initialization.
+
+Previously observed logs showed transaction-interception messages appearing during ordinary reads. Determine whether those messages reflect real writes, event generation, simulations, or logging only. Prove the behavior from the actual call paths and persistence layer.
+
+### Non-negotiable financial integrity rules
+
+- `GET /api/auth/session` must not create financial transactions.
+- `GET /api/auth/status` must not create financial transactions.
+- `GET /api/market/active-symbols` must not create financial transactions.
+- `GET /api/leaderboard/top` must not create financial transactions.
+- Importing an authentication, market-data, or leaderboard module must not trigger financial side effects.
+- Financial writes must occur only through explicitly authorized business operations or verified event handlers.
+- Production must not silently process demo identities, synthetic transaction IDs, mock balances, or simulated revenue as real financial data.
+- Real transaction processing must use durable persistence, appropriate authorization, validation, audit trails, and idempotency.
+- Retries and duplicate provider events must not double-count revenue.
+- Any derived financial totals must reconcile with their authoritative source records.
+- Separate test fixtures and simulation modes from production behavior.
+
+If an intercepted event is only an audit log, retain appropriate observability while making the distinction clear. Do not falsely claim that money moved merely because a log contains a transaction-like object.
+
+Write tests asserting that all listed read-only routes leave transaction tables, revenue totals, balances and other financial state unchanged.
+
+## 8. Mandatory phase seven — Middleware, caching and environment audit
+
+Inspect middleware, route matching, rewrites, redirects, cache headers, frontend API helpers and environment configuration.
+
+Verify that:
+
+- OAuth callback query parameters survive the intended routing path.
+- API requests are not accidentally rewritten to unrelated routes.
+- Authentication middleware does not cause redirect loops.
+- Session-specific responses are not cached publicly.
+- Public market-symbol or leaderboard caching is deliberate and does not leak private user data.
+- Stale-cache behavior is explicit and appropriate.
+- Missing configuration fails clearly rather than selecting an accidental development fallback.
+- Production and preview environments do not unintentionally share OAuth callbacks, credentials or session configuration.
+- Secrets remain server-side.
+- Error responses never expose stack traces, database credentials, provider secrets or internal tokens.
+
+Inspect the existing deployment configuration before changing it. Make the smallest justified changes.
+
+## 9. Mandatory phase eight — Exact file scope and implementation discipline
+
+Organize the work into these scopes after discovering the repository's actual files.
+
+**SCOPE A — Required fixes**
+
+The minimum set of files necessary to resolve confirmed root causes in OAuth, database connectivity, rate limiting, stream lifecycle, transaction side effects, and related routing.
+
+**SCOPE B — Supporting changes**
+
+Targeted tests, schema migrations when necessary, safe logging improvements, environment validation, and documentation directly required to verify the fixes.
+
+**SCOPE C — Protected areas**
+
+Unrelated UI, branding, chart design, trading strategies, pricing, unrelated business logic, and functioning application features that do not cause the identified failures.
+
+Do not expand the scope without a demonstrated dependency.
+
+For every changed file, record:
+
+- Actual file path.
+- Confirmed bug or risk.
+- Root cause.
+- Specific change.
+- Relevant tests.
+- Any migration or environment change required.
+
+Preserve public APIs and established interfaces unless a verified defect requires a change. If an interface must change, update all affected callers and tests together.
+
+Do not replace a production implementation with hardcoded mock responses, fake credentials, in-memory-only persistence, or placeholder success responses.
+
+## 10. Mandatory phase nine — Test, verify and prevent regression
+
+First inspect the available package scripts and project tooling. Run the appropriate existing checks and add focused tests where missing.
+
+Required verification:
+
+- Type checking.
+- Linting.
+- Production build.
+- OAuth unit and integration tests.
+- Rate-limit and proxy-header tests.
+- Database health and failure-mode tests.
+- Read-only endpoint side-effect tests.
+- Stream lifecycle and reconnect tests.
+- Financial idempotency and persistence tests.
+- Regression tests for previously working routes.
+- Security tests for invalid sessions, malformed callbacks, replay attempts and unauthorized access.
+
+Use mocks for external services in deterministic automated tests. Never use fabricated test success as evidence that real production credentials or provider integrations work.
+
+Do not disable failing tests, weaken assertions, suppress relevant exceptions, or change expected outcomes solely to make the test suite pass.
+
+If a test cannot run because credentials or an external service are unavailable, identify it explicitly as **not verified**, explain the dependency, and provide the exact safe verification procedure.
+
+## 11. Production smoke-test plan
+
+After local checks pass, provide a production verification checklist for the canonical domain:
+
+`https://appex-quant-global-markets.vercel.app`
+
+Verify the following without exposing secrets:
+
+1. A user can initiate the correct Deriv login flow.
+2. The provider returns to the configured callback.
+3. Valid authentication creates the expected session.
+4. Denied, malformed and replayed callbacks fail safely.
+5. Database-backed reads return valid data or honest service errors.
+6. A database outage does not create fake authoritative results.
+7. The rate limiter identifies and limits requests appropriately.
+8. Market symbols and leaderboard behavior remain correct.
+9. Stream connections open, close and reconnect predictably.
+10. Read-only endpoints create no financial side effects.
+11. Duplicate transaction events cannot double-count financial records.
+12. Logs contain sufficient diagnostic information without leaking secrets.
+
+Correlate requests using request IDs. Compare log events before and after the changes and verify that the specific failure patterns are gone or have a documented, legitimate explanation.
+
+Do not claim production success merely because the code builds.
+
+## 12. Scaling and resilience requirements
+
+Apply proportionate, measurable production engineering:
+
+- Bounded retries and timeouts.
+- Idempotent write operations.
+- Appropriate database pooling and connection limits.
+- Shared rate limiting where required.
+- Intentional caching and cache invalidation.
+- Input validation and authorization at server boundaries.
+- Structured logs and request correlation.
+- Graceful degradation for noncritical dependencies.
+- No hidden in-memory source of truth for durable user or financial data.
+- No unbounded connection, retry or event loops.
+
+Do not claim that the app supports billions of users or requests unless that capacity has been demonstrated through a suitable architecture, load testing, and infrastructure evidence. Focus on fixing correctness and establishing measurable scalability.
+
+## 13. Final deliverable required from AI Studio
+
+At completion, produce a concise but evidence-based report containing:
+
+### A. Root-cause findings
+For every issue, state whether the cause was confirmed, ruled out, or remains unverified. Explain the evidence.
+
+### B. Exact files changed
+List each actual file path, the problem corrected, and the reason for the change.
+
+### C. Tests and results
+List commands executed, tests added, passed checks, failed checks, and anything that could not be run.
+
+### D. Environment and deployment actions
+List required environment variable *names* and provider-dashboard configuration changes without printing secret values. Identify which actions require my manual intervention.
+
+### E. Remaining risks
+List unresolved dependencies, external-provider limitations, migrations, and production checks that have not been verified.
+
+### F. Production acceptance matrix
+For OAuth, database, rate limiting, streaming, financial integrity, and general regression, mark each item as:
+
+- **PASS** — supported by actual test or verification evidence.
+- **FAIL** — known defect remains.
+- **BLOCKED** — cannot be verified because a required external dependency or permission is unavailable.
+- **NOT TESTED** — no verification was performed.
+
+Never mark an item as passed merely because the code was edited.
+
+## Final execution instruction
+
+**Begin now.** Inspect the actual repository, trace the production log signatures to their real implementations, establish the root causes, and implement the smallest complete set of fixes. Run the relevant tests, repair regressions caused by your changes, and report the evidence.
+
+Do not stop after producing an audit report. Do not stop after proposing a plan. Do not generate an unrelated replacement application. Do not conceal failures.
+
+The objective is a correct, secure, maintainable, production-ready AppEx Quant Global Markets application with verified OAuth behavior, reliable database access, trustworthy security controls, predictable streaming, and financially safe request handling.

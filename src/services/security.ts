@@ -151,8 +151,37 @@ class SlidingWindowRateLimiter {
   }
 }
 
+// Helper to extract reliable client IP behind proxies (Vercel, Cloudflare, load balancers)
+export function getClientIp(req: Request | null): string {
+  if (!req) return '0.0.0.0';
+  // Vercel deployment header
+  const vercelIp = req.headers['x-vercel-forwarded-for'];
+  if (typeof vercelIp === 'string' && vercelIp.trim()) {
+    return vercelIp.split(',')[0].trim();
+  }
+  // Standard reverse proxy headers
+  const realIp = req.headers['x-real-ip'];
+  if (typeof realIp === 'string' && realIp.trim()) {
+    return realIp.trim();
+  }
+  const cfConnectingIp = req.headers['cf-connecting-ip'];
+  if (typeof cfConnectingIp === 'string' && cfConnectingIp.trim()) {
+    return cfConnectingIp.trim();
+  }
+  const fwdFor = req.headers['x-forwarded-for'];
+  if (typeof fwdFor === 'string' && fwdFor.trim()) {
+    return fwdFor.split(',')[0].trim();
+  }
+  if (req.ip && req.ip !== '::1' && req.ip !== '127.0.0.1') {
+    return req.ip;
+  }
+  return req.socket?.remoteAddress || req.ip || '127.0.0.1';
+}
+
 const globalLimiter = new SlidingWindowRateLimiter(300, 60000); // 300 reqs/min general API
-const authLimiter = new SlidingWindowRateLimiter(15, 60000); // 15 login/session attempts/min (brute-force defense)
+const authLimiter = new SlidingWindowRateLimiter(30, 60000); // 30 login/signup attempts/min per action
+const sessionLimiter = new SlidingWindowRateLimiter(180, 60000); // 180 session queries/min (ambient auth checks)
+const callbackLimiter = new SlidingWindowRateLimiter(45, 60000); // 45 OAuth callbacks/min
 const mfaLimiter = new SlidingWindowRateLimiter(10, 30000); // 10 attempts/30 secs
 const orderLimiter = new SlidingWindowRateLimiter(20, 10000); // 20 orders/10 secs (order flood defense)
 const ingestionLimiter = new SlidingWindowRateLimiter(60, 60000); // 60 data writes/min
@@ -165,10 +194,11 @@ export function logSecurityEvent(
   severity: 'INFO' | 'WARNING' | 'CRITICAL',
   details: Record<string, unknown>
 ): void {
+  const ip = getClientIp(req);
   const logObj = {
     timestamp: new Date().toISOString(),
     requestId: req?.id || 'sys-request',
-    ip: req?.ip || '0.0.0.0',
+    ip,
     userAgent: req?.headers['user-agent'] || 'internal',
     userId: req?.sessionUser?.userId || 'anonymous',
     role: req?.sessionUser?.role || 'unauthenticated',
@@ -201,7 +231,7 @@ export function rateLimiterMiddleware(req: Request, res: Response, next: NextFun
     return next();
   }
 
-  const ip = req.ip || req.socket.remoteAddress || '0.0.0.0';
+  const ip = getClientIp(req);
   const key = `global:${ip}`;
   const result = globalLimiter.check(key);
   applyRateLimitHeaders(res, result);
@@ -219,18 +249,71 @@ export function rateLimiterMiddleware(req: Request, res: Response, next: NextFun
   next();
 }
 
+/**
+ * Authentication Initiation & Brute-Force Rate Limiter.
+ * Segregates keys by action ('login', 'signup', etc.) so legitimate user signup attempts
+ * are never throttled by login attempts or shared IP pools.
+ */
 export function authRateLimiterMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const ip = req.ip || req.socket.remoteAddress || '0.0.0.0';
-  const key = `auth:${ip}`;
+  const ip = getClientIp(req);
+  const path = req.path || '';
+  const action = path.includes('signup') || path.includes('register') || path.includes('open_account')
+    ? 'signup'
+    : (path.includes('login') || path.includes('signin') ? 'login' : 'auth');
+  const key = `auth:${action}:${ip}`;
   const result = authLimiter.check(key);
   applyRateLimitHeaders(res, result);
 
   if (result.limited) {
-    logSecurityEvent(req, 'AUTH_RATE_LIMIT_EXCEEDED', 'CRITICAL', { path: req.path, ip });
+    logSecurityEvent(req, 'AUTH_RATE_LIMIT_EXCEEDED', 'CRITICAL', { path: req.path, ip, action });
     res.status(429).json({
       success: false,
       error: 'Too many authentication attempts. Please wait before retrying.',
       code: 'AUTH_RATE_LIMITED',
+      retryAfter: result.retryAfterSeconds,
+    });
+    return;
+  }
+  next();
+}
+
+/**
+ * Dedicated Ambient Session Rate Limiter.
+ * Validates session checks (/api/auth/session, /api/auth/status) without blocking active logins.
+ */
+export function sessionRateLimiterMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const ip = getClientIp(req);
+  const key = `session:${ip}`;
+  const result = sessionLimiter.check(key);
+  applyRateLimitHeaders(res, result);
+
+  if (result.limited) {
+    res.status(429).json({
+      success: false,
+      error: 'Session check rate limit exceeded. Please retry after ' + result.retryAfterSeconds + 's',
+      code: 'SESSION_RATE_LIMITED',
+      retryAfter: result.retryAfterSeconds,
+    });
+    return;
+  }
+  next();
+}
+
+/**
+ * Dedicated OAuth Callback Rate Limiter.
+ */
+export function oauthCallbackRateLimiterMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const ip = getClientIp(req);
+  const key = `oauth_cb:${ip}`;
+  const result = callbackLimiter.check(key);
+  applyRateLimitHeaders(res, result);
+
+  if (result.limited) {
+    logSecurityEvent(req, 'OAUTH_CALLBACK_RATE_LIMIT_EXCEEDED', 'WARNING', { path: req.path, ip });
+    res.status(429).json({
+      success: false,
+      error: 'Too many OAuth callback attempts. Please wait before retrying.',
+      code: 'CALLBACK_RATE_LIMITED',
       retryAfter: result.retryAfterSeconds,
     });
     return;

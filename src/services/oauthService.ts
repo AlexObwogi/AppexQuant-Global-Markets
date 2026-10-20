@@ -28,6 +28,7 @@ import {
   getLoginScopeString,
   getBackendScopeString,
   parseRawScopes,
+  DERIV_OAUTH_SCOPE_STRING,
 } from '../lib/auth/derivScope.ts';
 
 export const DERIV_OAUTH_SCOPE = getLoginScopeString();
@@ -233,7 +234,11 @@ export function buildAuthUrl(
 
   params.set(
     'scope',
-    getLoginScopeString(options.scope || DERIV_OAUTH_SCOPE),
+    getLoginScopeString(
+      options.scope ||
+      (typeof process !== 'undefined' && process.env ? (process.env.DERIV_OAUTH_SCOPES || process.env.DERIV_OAUTH_SCOPE || process.env.DERIV_SCOPES) : undefined) ||
+      DERIV_OAUTH_SCOPE_STRING
+    ),
   );
 
   params.set(

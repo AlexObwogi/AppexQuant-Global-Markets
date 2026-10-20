@@ -3,11 +3,11 @@
  * File: lib/auth/derivScope.ts
  *
  * Single source of truth for Deriv OAuth scopes.
- * Deriv OAuth 2.0 valid scopes: 'read', 'trade', 'admin', 'payments'
+ * Canonical Deriv OAuth 2.0 scopes: 'read', 'trade', 'admin', 'payments'
  */
 
-export const DERIV_OAUTH_SCOPES = ['trade', 'admin', 'payments'] as const;
-export const DERIV_OAUTH_SCOPE_STRING = DERIV_OAUTH_SCOPES.join(' '); // space-separated, NEVER '+' joined
+export const DERIV_OAUTH_SCOPES = ['read', 'trade', 'admin', 'payments'] as const;
+export const DERIV_OAUTH_SCOPE_STRING = DERIV_OAUTH_SCOPES.join(' '); // space-separated
 
 export type ValidDerivScope = (typeof DERIV_OAUTH_SCOPES)[number];
 export const VALID_DERIV_OAUTH2_SCOPES = DERIV_OAUTH_SCOPES;
@@ -57,7 +57,7 @@ export function parseRawScopes(rawInput?: string | string[] | readonly string[] 
 }
 
 /**
- * Reads process.env.DERIV_OAUTH_SCOPE or process.env.DERIV_OAUTH_SCOPES
+ * Reads process.env.DERIV_OAUTH_SCOPES || process.env.DERIV_OAUTH_SCOPE || process.env.DERIV_SCOPES
  * with fallback to DERIV_OAUTH_SCOPE_STRING ("read trade admin payments").
  */
 export function getRawConfiguredScope(): string {
@@ -66,10 +66,9 @@ export function getRawConfiguredScope(): string {
   }
 
   const envValue =
-    process.env.DERIV_OAUTH_SCOPE ||
     process.env.DERIV_OAUTH_SCOPES ||
-    process.env.VITE_DERIV_OAUTH_SCOPE ||
-    process.env.NEXT_PUBLIC_DERIV_OAUTH_SCOPE;
+    process.env.DERIV_OAUTH_SCOPE ||
+    process.env.DERIV_SCOPES;
 
   if (typeof envValue === 'string' && envValue.trim().length > 0) {
     return envValue.trim();
@@ -88,8 +87,7 @@ export function getDerivScopeList(): string[] {
 
 /**
  * Formats scopes into space-separated format ('read trade admin payments')
- * strictly required for Deriv OAuth login redirect URLs. Standard URL encoding
- * (e.g. URLSearchParams) encodes spaces appropriately; NEVER pre-join with literal '+'.
+ * strictly required for Deriv OAuth login redirect URLs.
  */
 export function getLoginScopeString(customScopes?: string | string[] | readonly string[]): string {
   const list = customScopes ? parseRawScopes(customScopes) : getDerivScopeList();

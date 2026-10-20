@@ -297,20 +297,19 @@ export function recordInterceptedTransaction(params: {
  * Strictly excludes GET, HEAD, OPTIONS and read-only routes.
  */
 export function transactionInterceptorMiddleware(req: Request, res: Response, next: NextFunction): void {
-  // HARD RULE: GET, HEAD, OPTIONS methods MUST NEVER intercept transactions
-  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+  // HARD RULE: Only POST and PUT mutations on explicit financial routes can ever trigger financial interception
+  if (req.method !== 'POST' && req.method !== 'PUT') {
     return next();
   }
 
-  // Explicitly exclude read-only routes
+  // Explicit financial transaction endpoints whitelist
   const path = req.path || '';
-  if (
-    path.includes('/auth/session') ||
-    path.includes('/auth/status') ||
-    path.includes('/leaderboard') ||
-    path.includes('/market/active-symbols') ||
-    path.includes('/health')
-  ) {
+  const isTradeRoute = path.startsWith('/api/trade/execute') || path.startsWith('/api/orders') || path.startsWith('/api/deriv/contract/buy');
+  const isSubscriptionRoute = path.startsWith('/api/subscription/checkout') || path.startsWith('/api/creator/subscribe');
+  const isSettlementRoute = path.startsWith('/api/settlement') || path.startsWith('/api/v1/revenue/intercept');
+
+  // Any non-financial route (including all auth, session, status, leaderboard, market data, and config routes) is strictly bypassed
+  if (!isTradeRoute && !isSubscriptionRoute && !isSettlementRoute) {
     return next();
   }
 
@@ -319,12 +318,7 @@ export function transactionInterceptorMiddleware(req: Request, res: Response, ne
 
   res.json = function (body: any) {
     try {
-      // Analyze request and response payload for financial indicators
-      const isTradeRoute = req.path.includes('/trade') || req.path.includes('/order') || req.path.includes('/deriv/contract');
-      const isSubscriptionRoute = req.path.includes('/subscription') || req.path.includes('/tier') || req.path.includes('/creator/subscribe');
-      const isSettlementRoute = req.path.includes('/settlement') || req.path.includes('/payout') || req.path.includes('/revenue');
-
-      if (isTradeRoute || isSubscriptionRoute || isSettlementRoute || body?.trade || body?.contract) {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
         const { partnerId, affiliateToken } = extractAffiliateContext(req);
         const userId = (req as any).sessionUser?.userId || req.body?.userId || req.query?.userId || body?.userId || 'anonymous_trader';
         const derivAccountId = (req as any).sessionUser?.derivAccountId || req.body?.derivAccountId || body?.derivAccountId;
@@ -346,7 +340,7 @@ export function transactionInterceptorMiddleware(req: Request, res: Response, ne
           instrumentSymbol = 'SETTLEMENT_PAYOUT';
         } else {
           eventType = 'TRADE_EXECUTION';
-          tradedVolumeUsd = Number(req.body?.amount || req.body?.stake || body?.buy_price || body?.stake || body?.amount || 0);
+          tradedVolumeUsd = Number(req.body?.amount || req.body?.stake || body?.buy_price || body?.stake || 0);
           grossRevenueUsd = Number(body?.payout ? (body.payout - tradedVolumeUsd) : (tradedVolumeUsd * 0.05));
           instrumentSymbol = String(req.body?.symbol || req.body?.instrument || body?.symbol || body?.underlying || 'R_100');
         }

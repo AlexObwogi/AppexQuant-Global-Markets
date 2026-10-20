@@ -13,6 +13,9 @@ let isConnectionVerified = false;
 let verificationAttempted = false;
 let cachedConnectionResult: { success: boolean; latencyMs?: number; error?: string; stats?: PoolStats | null } | null = null;
 
+let lastCheckTime = 0;
+const DB_CHECK_TTL_MS = 30000; // 30-second circuit breaker recheck interval
+
 export interface PoolStats {
   totalCount: number;
   idleCount: number;
@@ -34,10 +37,12 @@ export function getDatabasePool(): pkg.Pool {
     const statementTimeout = parseInt(process.env.DB_STATEMENT_TIMEOUT_MS || '10000', 10);
 
     const isProd = process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
+    const isRemote = !connectionString.includes('localhost') && !connectionString.includes('127.0.0.1');
+    const requiresSsl = isProd || isRemote || connectionString.includes('sslmode=require') || connectionString.includes('supabase');
 
     pool = new Pool({
       connectionString,
-      ssl: isProd ? { rejectUnauthorized: false } : undefined,
+      ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
       max: maxConnections,
       min: 0,
       idleTimeoutMillis: idleTimeout,
@@ -69,16 +74,18 @@ export function getPoolStats(): PoolStats | null {
 }
 
 /**
- * Startup Verification & Retry Strategy
+ * Startup Verification & Circuit Breaker Retry Strategy
  * Verifies the pooled PostgreSQL connection with exponential backoff retries and strict timeout handling.
- * Caches the result to prevent repeated fallback logs or connection overhead.
+ * Caches the result for a 30s TTL window to avoid connection storms while permitting automated recovery.
  */
 export async function testDatabaseConnection(forceRetry = false): Promise<{ success: boolean; latencyMs?: number; error?: string; stats?: PoolStats | null }> {
-  if (cachedConnectionResult && !forceRetry) {
+  const now = Date.now();
+  if (cachedConnectionResult && !forceRetry && (now - lastCheckTime < DB_CHECK_TTL_MS)) {
     return cachedConnectionResult;
   }
 
   if (!process.env.DATABASE_URL || !process.env.DATABASE_URL.trim()) {
+    lastCheckTime = now;
     cachedConnectionResult = {
       success: false,
       error: 'DATABASE_URL environment variable is missing. Direct PostgreSQL connection is required.',
@@ -110,6 +117,7 @@ export async function testDatabaseConnection(forceRetry = false): Promise<{ succ
       const latencyMs = Date.now() - start;
       isConnectionVerified = true;
       verificationAttempted = true;
+      lastCheckTime = Date.now();
       cachedConnectionResult = { success: true, latencyMs, stats: getPoolStats() };
       return cachedConnectionResult;
     } catch (err: any) {
@@ -123,6 +131,7 @@ export async function testDatabaseConnection(forceRetry = false): Promise<{ succ
 
   verificationAttempted = true;
   isConnectionVerified = false;
+  lastCheckTime = Date.now();
   cachedConnectionResult = {
     success: false,
     error: `PostgreSQL connection failed after ${maxRetries} attempts: ${lastError}`,

@@ -121,7 +121,6 @@ export async function GET(request: Request): Promise<Response> {
   const result = await handleDerivOAuthCallback({
     code,
     state,
-    verifier,
     cookieState,
     error,
     errorDescription,

@@ -1,22 +1,30 @@
 /**
  * AppexQuant Markets Global - PKCE Cryptographic Security Utility
- * Re-exports centralized RFC 7636 PKCE functions from src/services/deriv/pkce.ts
- * and provides browser client-side encrypted storage utilities.
+ * Provides browser client-side encrypted storage utilities.
  */
 
-export {
-  base64UrlEncode,
-  base64UrlDecode,
-  generateCodeVerifier,
-  generateCodeChallenge,
-  deriveCodeChallenge,
-  generatePKCE,
-  generateState,
-  encodeOAuthStateCookie,
-  decodeOAuthStateCookie,
-} from '../../services/deriv/pkce.ts';
+function base64UrlEncode(input: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < input.byteLength; i++) {
+    binary += String.fromCharCode(input[i]);
+  }
+  const base64 = btoa(binary);
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
 
-import { base64UrlEncode, base64UrlDecode } from '../../services/deriv/pkce.ts';
+function base64UrlDecode(str: string): Uint8Array {
+  let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (base64.length % 4) {
+    base64 += '=';
+  }
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
 
 /**
  * Client-Side Encrypted Cookie Manager (Web Crypto AES-GCM + Secure Attributes)

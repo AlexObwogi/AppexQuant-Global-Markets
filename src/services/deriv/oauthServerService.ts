@@ -51,7 +51,7 @@ import {
   getLoginScopeString,
   getBackendScopeString,
   parseRawScopes,
-} from '../../lib/auth/derivScope.ts';
+} from '../../../lib/auth/derivScope.ts';
 
 import { isValidDerivAccountId } from './syncStateMachine.ts';
 
@@ -527,19 +527,19 @@ export function generateState(): string {
     .toString('hex');
 }
 
-function getStateSecret(): string {
-  const secret =
-    cleanString(
-      process.env.SESSION_SECRET ||
-      process.env.JWT_SECRET ||
-      process.env.JWT_ACCESS_SECRET
-    );
-
-  if (secret) {
-    return secret;
+function requireSecret(...names: string[]): string {
+  for (const n of names) {
+    const v = process.env[n]?.trim();
+    if (v && v.length >= 32) return v;
   }
+  if (process.env.NODE_ENV !== 'production') {
+    return 'dev-fallback-secret-key-32chars-minimum-length-for-local-dev-mode!!';
+  }
+  throw new Error(`Missing secret: set ${names.join(' or ')} (32+ characters)`);
+}
 
-  return 'appexquant-default-session-secret-fallback-secure';
+function getStateSecret(): string {
+  return requireSecret('SESSION_SECRET', 'JWT_SECRET');
 }
 
 export function encodeOAuthStateCookie(
@@ -1221,27 +1221,7 @@ export async function discoverDerivAccounts(
   accounts: DerivAccountProfileData[];
   primaryAccount: DerivAccountProfileData | null;
 }> {
-  // 1. Try WebSocket authorize (Authoritative Deriv v3)
-  const wsResult = await discoverDerivAccountsViaWebSocket(token, appId);
-  if (wsResult.primaryAccount && wsResult.accounts.length > 0) {
-    logger.info('[DerivDiscovery] Discovered accounts via WebSocket authorize:', {
-      primary: wsResult.primaryAccount.loginid,
-      count: wsResult.accounts.length,
-    });
-    return wsResult;
-  }
-
-  // 2. Try REST discovery (/trading/v1/options/accounts)
-  const restResult = await discoverDerivAccountsREST(token, appId);
-  if (restResult.primaryAccount && restResult.accounts.length > 0) {
-    logger.info('[DerivDiscovery] Discovered accounts via REST API:', {
-      primary: restResult.primaryAccount.loginid,
-      count: restResult.accounts.length,
-    });
-    return restResult;
-  }
-
-  return wsResult.primaryAccount ? wsResult : restResult;
+  return discoverDerivAccountsREST(token, appId);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1649,34 +1629,6 @@ export async function fetchDerivAccountProfile(
 
   const account =
     discovery.primaryAccount;
-
-  /*
-   * Request the authenticated WS URL if options endpoint is supported.
-   * This is validated for Options streaming, but non-blocking so
-   * standard account access is preserved.
-   */
-  try {
-    const otpResult =
-      await requestDerivAccountOtp(
-        account.loginid,
-        cleanToken,
-        cleanAppId,
-      );
-
-    if (otpResult.success && otpResult.url) {
-      await verifyDerivWebSocketWithOtp(
-        otpResult.url,
-      ).catch(() => null);
-    }
-  } catch (err: any) {
-    logger.warn(
-      '[DerivOAuth] Options OTP check non-fatal warning.',
-      {
-        accountId: account.loginid,
-        error: err?.message,
-      },
-    );
-  }
 
   return {
     ...account,
@@ -2140,7 +2092,7 @@ export async function hydrateDerivAccount(
       currency,
 
       token:
-        cleanToken,
+        '',
 
       accountList,
     },
@@ -2815,39 +2767,20 @@ export async function switchUserDerivAccountAsync(
 export async function handleDerivOAuthCallback(
   params: {
     code?: string;
-    token1?: string;
-    token?: string;
-    acct1?: string;
-    acct?: string;
     state?: string;
-
-    /*
-     * Supported only for backwards-compatible callers that already
-     * possess the verifier server-side.
-     */
-    verifier?: string;
-
     cookieState?: string;
-
     redirectUri?: string;
-
     error?: string;
     errorDescription?: string;
-
     requestHost?: string;
     requestProtocol?: string;
   },
 ): Promise<{
   success: boolean;
   destination: string;
-
   errorMessage?: string;
-
   userId?: string;
-
-  connectionRecord?:
-    SafeDerivConnectionMetadata;
-
+  connectionRecord?: SafeDerivConnectionMetadata;
   rawAccountDetails?: {
     derivAccountId: string;
     email?: string;
@@ -2855,12 +2788,7 @@ export async function handleDerivOAuthCallback(
     balance?: number;
     accountType: 'demo' | 'real';
     currency: string;
-
-    /*
-     * Always blank in the callback result.
-     */
     token: string;
-
     accountList?: Array<{
       loginid: string;
       account_type: string;
@@ -2879,220 +2807,87 @@ export async function handleDerivOAuthCallback(
   const {
     code,
     state,
-    verifier,
     cookieState,
     error,
     errorDescription,
   } = params;
 
   if (error) {
-    const message =
-      cleanString(
-        errorDescription ||
-        error,
-      ) ||
-      'Deriv authorization failed.';
-
-    logger.warn(
-      '[DerivOAuth] Provider returned an authorization error.',
-      {
-        error:
-          cleanString(error),
-      },
-    );
-
+    const message = cleanString(errorDescription || error) || 'Deriv authorization failed.';
+    logger.warn('[DerivOAuth] Provider returned an authorization error.', { error: cleanString(error) });
     return {
       success: false,
-
-      destination:
-        `/?auth_error=oauth_error&message=${encodeURIComponent(message)}`,
-
-      errorMessage:
-        `Deriv OAuth authorization error: ${message}`,
+      destination: `/?auth_error=oauth_error&message=${encodeURIComponent(message)}`,
+      errorMessage: `Deriv OAuth authorization error: ${message}`,
     };
   }
 
-  const tokenFromParam = cleanString(params.token1 || params.token);
-  const acctFromParam = cleanString(params.acct1 || params.acct);
-
-  if (!state && !tokenFromParam) {
+  if (!state) {
     return {
       success: false,
-
-      destination:
-        '/dashboard/error?error=invalid_state&message=Missing%20OAuth%20state',
-
-      errorMessage:
-        'Deriv OAuth callback is missing state.',
+      destination: '/dashboard/error?error=invalid_state&message=Missing%20OAuth%20state',
+      errorMessage: 'Deriv OAuth callback is missing state.',
     };
   }
 
-  const oauthConfig =
-    getDerivOAuthConfig(
-      params.requestHost,
-      params.requestProtocol,
-    );
-
+  const oauthConfig = getDerivOAuthConfig(params.requestHost, params.requestProtocol);
   if (!oauthConfig.clientId) {
     return {
       success: false,
-
-      destination:
-        '/?auth_error=configuration&message=OAuth%20client%20ID%20is%20not%20configured',
-
-      errorMessage:
-        'DERIV_CLIENT_ID is not configured.',
+      destination: '/?auth_error=configuration&message=OAuth%20client%20ID%20is%20not%20configured',
+      errorMessage: 'DERIV_CLIENT_ID is not configured.',
     };
   }
 
-  /* ---------------------------------------------------------------------- */
-  /* Resolve transaction                                                     */
-  /* ---------------------------------------------------------------------- */
+  let transaction = oauthTransactionsStore.get(state);
 
-  let transaction =
-    oauthTransactionsStore.get(
-      state,
-    );
-
-  /*
-   * Vercel can execute callback on a different instance.
-   * Signed cookie is therefore the authoritative fallback.
-   */
   if (!transaction && cookieState) {
-    const decoded =
-      decodeOAuthStateCookie(
-        cookieState,
-      );
-
-    if (
-      decoded &&
-      decoded.state === state
-    ) {
-      transaction =
-        decoded;
+    const decoded = decodeOAuthStateCookie(cookieState);
+    if (decoded && decoded.state === state) {
+      transaction = decoded;
     }
-  }
-
-  /*
-   * A caller-supplied verifier is accepted only when state is still
-   * explicitly present. It must never create a fake state.
-   */
-  if (
-    !transaction &&
-    verifier
-  ) {
-    const cleanVerifier =
-      cleanString(verifier);
-
-    if (cleanVerifier) {
-      transaction = {
-        state,
-        codeVerifier:
-          cleanVerifier,
-        userId:
-          `usr-${crypto.randomBytes(12).toString('hex')}`,
-        action:
-          'connect',
-        destination:
-          '/',
-        redirectUri:
-          oauthConfig.redirectUri,
-        createdAt:
-          Date.now(),
-      };
-    }
-  }
-
-  if (!transaction && tokenFromParam) {
-    transaction = {
-      state: state || 'token_callback',
-      codeVerifier: '',
-      userId: `usr-${crypto.randomBytes(12).toString('hex')}`,
-      action: 'connect',
-      destination: '/',
-      redirectUri: oauthConfig.redirectUri,
-      createdAt: Date.now(),
-    };
   }
 
   if (!transaction) {
-    logger.warn(
-      '[DerivOAuth] OAuth transaction could not be validated.',
-      {
-        hasState:
-          Boolean(state),
-
-        hasCookieState:
-          Boolean(cookieState),
-      },
-    );
-
+    logger.warn('[DerivOAuth] OAuth transaction could not be validated.', {
+      hasState: Boolean(state),
+      hasCookieState: Boolean(cookieState),
+    });
     return {
       success: false,
-
-      destination:
-        '/dashboard/error?error=invalid_state&message=OAuth%20session%20expired%20or%20state%20mismatch',
-
-      errorMessage:
-        'OAuth state expired or could not be verified.',
+      destination: '/dashboard/error?error=invalid_state&message=OAuth%20session%20expired%20or%20state%20mismatch',
+      errorMessage: 'OAuth state expired or could not be verified.',
     };
   }
 
-  if (
-    state &&
-    transaction.state !== state
-  ) {
+  if (transaction.state !== state) {
     return {
       success: false,
-
-      destination:
-        '/dashboard/error?error=invalid_state&message=OAuth%20state%20mismatch',
-
-      errorMessage:
-        'OAuth state mismatch.',
+      destination: '/dashboard/error?error=invalid_state&message=OAuth%20state%20mismatch',
+      errorMessage: 'OAuth state mismatch.',
     };
   }
 
-  if (
-    Date.now() -
-    transaction.createdAt >
-    OAUTH_STATE_TTL_MS
-  ) {
+  if (Date.now() - transaction.createdAt > OAUTH_STATE_TTL_MS) {
     if (state) {
-      oauthTransactionsStore.delete(
-        state,
-      );
+      oauthTransactionsStore.delete(state);
     }
-
     return {
       success: false,
-
-      destination:
-        '/dashboard/error?error=expired_state&message=OAuth%20session%20expired',
-
-      errorMessage:
-        'OAuth transaction expired.',
+      destination: '/dashboard/error?error=expired_state&message=OAuth%20session%20expired',
+      errorMessage: 'OAuth transaction expired.',
     };
   }
 
-  /*
-   * Single-use state.
-   */
   if (state) {
-    oauthTransactionsStore.delete(
-      state,
-    );
+    oauthTransactionsStore.delete(state);
   }
 
-  if (!code && !tokenFromParam) {
+  if (!code) {
     return {
       success: false,
-
-      destination:
-        '/dashboard/error?error=missing_code&message=Authorization%20code%20missing',
-
-      errorMessage:
-        'Deriv OAuth callback did not contain an authorization code.',
+      destination: '/dashboard/error?error=missing_code&message=Authorization%20code%20missing',
+      errorMessage: 'Deriv OAuth callback did not contain an authorization code.',
     };
   }
 
@@ -3163,10 +2958,6 @@ export async function handleDerivOAuthCallback(
         cleanString(
           tokenData?.refresh_token,
         ) || undefined;
-    } else if (tokenFromParam) {
-      accessToken = tokenFromParam;
-      tokenExpiry = null;
-      scopes = [...DERIV_OAUTH_SCOPES];
     }
 
     /*
@@ -3192,14 +2983,6 @@ export async function handleDerivOAuthCallback(
         tokenExpiry,
 
         scopes,
-
-        fallbackAccount: acctFromParam ? {
-          loginid: acctFromParam,
-          accountType: acctFromParam.startsWith('VR') ? 'demo' : 'real',
-          currency: 'USD',
-          balance: 0,
-          scopes,
-        } : undefined,
       });
 
     if (

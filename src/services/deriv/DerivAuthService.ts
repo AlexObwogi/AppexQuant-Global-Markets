@@ -8,7 +8,7 @@
  * - Browser-side token authority has been completely eliminated.
  */
 
-import { DERIV_OAUTH_SCOPES } from '../../lib/auth/derivScope.ts';
+import { DERIV_OAUTH_SCOPES } from '../../../lib/auth/derivScope.ts';
 
 export type DerivAuthStatus =
   | 'NOT_CONNECTED'

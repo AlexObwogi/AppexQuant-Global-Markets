@@ -62,7 +62,7 @@ import {
 } from './src/services/security.ts';
 import { edgeCache, edgeCacheStore } from './src/lib/cache/edgeCache.ts';
 import { dbQueries } from './src/lib/db/prisma.ts';
-import { isDirectDatabaseAvailable } from './src/lib/db/directPrismaClient.ts';
+import { isDirectDatabaseAvailable, directPrisma } from './src/lib/db/directPrismaClient.ts';
 import { leaderboardService } from './src/services/leaderboard/leaderboardService.ts';
 import { LeaderboardWindow } from './src/types/leaderboard.ts';
 import { fimMonitor } from './src/services/security/fileIntegrityMonitor.ts';
@@ -147,7 +147,9 @@ export async function createApp() {
   fimMonitor.verifyIntegrity();
 
   // Initialize PostgreSQL database system (migrations & seed data)
-  await initializeDatabaseSystem();
+  if (!process.env.VERCEL) {
+    await initializeDatabaseSystem();
+  }
 
   // Restrict JSON payload body size to prevent payload floods / DoS
   app.use(express.json({ limit: '100kb' }));
@@ -945,7 +947,7 @@ export async function createApp() {
       };
 
       const newToken = createSessionToken(rotatedPayload);
-      res.setHeader('Set-Cookie', `session_token=${newToken}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=3600`);
+      res.setHeader('Set-Cookie', `session_token=${newToken}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=3600`);
 
       logSecurityEvent(req, 'TOKEN_ROTATED', 'INFO', { userId: req.sessionUser.userId });
 
@@ -993,11 +995,11 @@ export async function createApp() {
       revokeSessionToken(req.sessionToken);
     }
     res.setHeader('Set-Cookie', [
-      `session_token=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`,
-      `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`,
-      `deriv_oauth_token=; Path=/; SameSite=None; Secure; Max-Age=0`,
-      `deriv_access_token=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`,
-      `deriv_session_user_id=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`,
+      `session_token=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`,
+      `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`,
+      `deriv_oauth_token=; Path=/; SameSite=Lax; Secure; Max-Age=0`,
+      `deriv_token_enc=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`,
+      `deriv_session_user_id=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`,
     ]);
     logSecurityEvent(req, 'USER_LOGOUT', 'INFO', { userId: req.sessionUser?.userId });
     res.json(createSuccessResponse({ message: 'Logged out successfully' }));
@@ -1026,7 +1028,7 @@ export async function createApp() {
         redirectUri: explicitRedirectUri,
       });
 
-      res.setHeader('Set-Cookie', `deriv_oauth_state=${cookieValue}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=600`);
+      res.setHeader('Set-Cookie', `deriv_oauth_state=${cookieValue}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=600`);
 
       logSecurityEvent(req, 'DERIV_OAUTH_INITIATED', 'INFO', { action, redirectUri });
 
@@ -1089,19 +1091,19 @@ export async function createApp() {
     '/callback/',
   ];
 
-  app.all(derivCallbackPaths, oauthCallbackRateLimiterMiddleware, async (req: Request, res: Response) => {
+  app.get(derivCallbackPaths, oauthCallbackRateLimiterMiddleware, async (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store');
+    if (req.method !== 'GET') {
+      return res.status(405).send('Method Not Allowed');
+    }
     const isHttps = (req.headers['x-forwarded-proto'] as string) === 'https' || req.secure || process.env.APP_ENV === 'production';
     const secureFlag = isHttps ? '; Secure' : '';
 
     try {
-      const code = (req.query.code || req.body?.code) as string | undefined;
-      const state = (req.query.state || req.body?.state) as string | undefined;
-      const verifier = (req.query.verifier || req.body?.verifier) as string | undefined;
-      const error = (req.query.error || req.body?.error) as string | undefined;
-      const errorDescription = (req.query.error_description || req.body?.error_description) as string | undefined;
-      const token1 = (req.query.token1 || req.body?.token1 || req.query.token || req.body?.token) as string | undefined;
-      const acct1 = (req.query.acct1 || req.body?.acct1 || req.query.acct || req.body?.acct || req.query.account_id) as string | undefined;
+      const code = req.query.code as string | undefined;
+      const state = req.query.state as string | undefined;
+      const error = req.query.error as string | undefined;
+      const errorDescription = req.query.error_description as string | undefined;
 
       const cookies = parseCookies(req.headers.cookie);
       const cookieState = cookies['deriv_oauth_state'];
@@ -1111,11 +1113,8 @@ export async function createApp() {
       console.log('[DERIV_OAUTH_CALLBACK_RECEIVED]', {
         method: req.method,
         hasCode: Boolean(code),
-        hasToken: Boolean(token1),
         hasState: Boolean(state),
         hasCookieState: Boolean(cookieState),
-        queryKeys: Object.keys(req.query || {}),
-        bodyKeys: Object.keys(req.body || {}),
         error: error ? String(error).slice(0, 80) : undefined,
         errorDescription: errorDescription ? String(errorDescription).slice(0, 200) : undefined,
         referer: req.headers.referer,
@@ -1125,12 +1124,7 @@ export async function createApp() {
 
       const result = await handleDerivOAuthCallback({
         code,
-        token1,
-        token: token1,
-        acct1,
-        acct: acct1,
         state,
-        verifier,
         cookieState,
         error,
         errorDescription,
@@ -1141,7 +1135,7 @@ export async function createApp() {
       if (!result.success) {
         console.error('[DerivREST] OAuth callback verification failed:', result.errorMessage);
         logSecurityEvent(req, 'DERIV_OAUTH_FAILED', 'WARNING', { errorMessage: result.errorMessage });
-        res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`);
+        res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`);
 
         if (req.headers.accept?.includes('application/json') || req.query.json === 'true') {
           return res.status(400).json(createErrorResponse(
@@ -1200,7 +1194,7 @@ export async function createApp() {
         const errorReason = 'Account discovery returned no valid Deriv account IDs under this profile.';
         logger.error('[DerivOAuth] Verification failure - rejected loginid:', { loginid: verifiedLoginId });
         logSecurityEvent(req, 'DERIV_OAUTH_FAILED', 'WARNING', { reason: 'ACCOUNT_DISCOVERY_FAILED', loginid: verifiedLoginId });
-        res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`);
+        res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`);
 
         if (req.headers.accept?.includes('application/json') || req.query.json === 'true') {
           return res.status(400).json(createErrorResponse(
@@ -1245,16 +1239,15 @@ export async function createApp() {
       const fullName = result.rawAccountDetails?.fullName;
       const balance = result.rawAccountDetails?.balance ?? 0;
       const csrfToken = crypto.randomBytes(32).toString('hex');
-      const rawToken = result.serverOnly?.accessToken || result.rawAccountDetails?.token;
+      const rawToken = result.serverOnly?.accessToken;
       const encryptedDerivToken = rawToken ? encryptSensitiveData(rawToken) : undefined;
-      const appUserId = (typeof result.userId === 'string' && result.userId.startsWith('usr-'))
-        ? result.userId
-        : `usr-${crypto.randomBytes(6).toString('hex')}`;
+      const rawSeed = String(result.userId ?? accountId);
+      const appUserId = 'usr-' + crypto.createHash('sha256').update(rawSeed).digest('hex').substring(0, 16);
 
       // Invariants: accountId strictly matches discovered loginid; accountId never equals appUserId
       const sessionPayload: SessionPayload = {
         userId: appUserId,
-        email: realEmail,
+        email: realEmail || `${appUserId}@deriv.user`,
         fullName,
         balance,
         derivAccountId: accountId,
@@ -1268,19 +1261,47 @@ export async function createApp() {
         encryptedDerivToken,
       };
 
-      const sessionToken = createSessionToken(sessionPayload);
+      let sessionToken = createSessionToken(sessionPayload);
+      let derivTokenEncCookie: string | null = null;
+      if (sessionToken.length > 3500 && encryptedDerivToken) {
+        delete sessionPayload.encryptedDerivToken;
+        sessionToken = createSessionToken(sessionPayload);
+        derivTokenEncCookie = `deriv_token_enc=${encodeURIComponent(encryptedDerivToken)}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=86400`;
+      }
 
-      // Set session cookie, deriv_access_token cookie for sync pipeline, & clean temporary OAuth state cookie
-      const isProd = process.env.NODE_ENV === 'production';
-      const cookieSameSite = isHttps ? 'SameSite=None; Secure' : 'SameSite=Lax';
+      // Best-effort upsert in users table
+      try {
+        await directPrisma.user.upsert({
+          where: { id: appUserId },
+          create: {
+            id: appUserId,
+            email: realEmail || `${appUserId}@deriv.user`,
+            displayName: fullName || accountId,
+            role: sessionPayload.role,
+            status: 'ACTIVE',
+            derivAccountId: accountId,
+            accountType,
+          },
+          update: {
+            email: realEmail || undefined,
+            displayName: fullName || undefined,
+            derivAccountId: accountId,
+            accountType,
+            updatedAt: new Date(),
+          },
+        });
+      } catch (err) {
+        logger.warn('User upsert failed:', err);
+      }
+
+      const cookieSameSite = 'SameSite=Lax; Secure';
       const cookieList = [
         `session_token=${sessionToken}; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=604800`,
         `deriv_oauth_state=; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=0`,
       ];
-      if (rawToken) {
-        cookieList.push(`deriv_access_token=${encodeURIComponent(rawToken)}; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=86400`);
+      if (derivTokenEncCookie) {
+        cookieList.push(derivTokenEncCookie);
       }
-      cookieList.push(`deriv_session_user_id=${encodeURIComponent(accountId)}; Path=/; HttpOnly; ${cookieSameSite}; Max-Age=86400`);
       res.setHeader('Set-Cookie', cookieList);
 
       console.log('[DERIV_OAUTH_SESSION_PERSISTED]', { loginid, accountId, accountType, currency, scopes });
@@ -1288,7 +1309,6 @@ export async function createApp() {
 
       if (req.headers.accept?.includes('application/json') || req.query.json === 'true') {
         return res.json(createSuccessResponse({
-          sessionToken,
           user: {
             userId: appUserId,
             loginid,
@@ -1367,7 +1387,7 @@ export async function createApp() {
     } catch (err: any) {
       const errMsg = err?.message || 'Unknown OAuth callback error';
       logger.error('Deriv OAuth callback server error:', { error: errMsg, stack: err?.stack });
-      res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`);
+      res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`);
       if (req.headers.accept?.includes('application/json') || req.query.json === 'true') {
         return res.status(500).json(createErrorResponse(`Deriv OAuth Callback Error: ${errMsg}`, 'SERVER_ERROR'));
       }
@@ -1459,11 +1479,11 @@ export async function createApp() {
   // Authoritative Backend Balance Gateway
   app.get(['/api/auth/balance', '/api/auth/deriv/balance'], async (req: Request, res: Response) => {
     try {
-      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId;
-
-      if (!userId) {
+      const s = req.sessionUser;
+      if (!s || !s.derivAccountId) {
         return res.status(401).json(createErrorResponse('Authentication required for balance query', 'UNAUTHENTICATED'));
       }
+      const userId = s.derivAccountId;
 
       const balanceResult = await fetchUserDerivBalanceAsync(userId);
       if (balanceResult.success) {
@@ -1493,11 +1513,11 @@ export async function createApp() {
   // Server-side Deriv Reconnect & Session Re-authorization
   app.post(['/api/auth/reconnect', '/api/auth/deriv/reconnect'], async (req: Request, res: Response) => {
     try {
-      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId;
-
-      if (!userId) {
+      const s = req.sessionUser;
+      if (!s || !s.derivAccountId) {
         return res.status(401).json(createErrorResponse('Authentication required for reconnect', 'UNAUTHENTICATED'));
       }
+      const userId = s.derivAccountId;
 
       const meta = await reconnectUserDerivAsync(userId);
       logAuditEvent('ACCOUNT_CONNECTED', userId, { event: 'DERIV_SESSION_RECONNECTED', connectionStatus: meta.connectionStatus }, meta.derivAccountId);
@@ -1510,14 +1530,11 @@ export async function createApp() {
   // Sanitized Diagnostics endpoint for user's Deriv connection & sync state
   app.get(['/api/auth/deriv/diagnostics', '/api/deriv/diagnostics'], (req: Request, res: Response) => {
     try {
-      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId || (req.headers['x-user-id'] as string);
-      if (!userId) {
-        return res.json(createSuccessResponse({
-          authenticated: false,
-          connectionStatus: 'DISCONNECTED',
-          message: 'No active user session',
-        }));
+      const s = req.sessionUser;
+      if (!s || (!s.derivAccountId && !s.userId)) {
+        return res.status(401).json(createErrorResponse('Authentication required', 'UNAUTHENTICATED'));
       }
+      const userId = s.derivAccountId || s.userId;
       const diag = getUserDerivDiagnostics(userId);
       res.json(createSuccessResponse(diag));
     } catch (err: any) {
@@ -1548,10 +1565,14 @@ export async function createApp() {
   // Switch active Deriv account from authorized account list
   app.post('/api/auth/deriv/switch-account', async (req: Request, res: Response) => {
     try {
-      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId || (req.headers['x-user-id'] as string);
+      const s = req.sessionUser;
+      if (!s || !s.derivAccountId) {
+        return res.status(401).json(createErrorResponse('Authentication required', 'UNAUTHENTICATED'));
+      }
+      const userId = s.derivAccountId;
       const { loginid } = req.body;
-      if (!userId || !loginid) {
-        return res.status(400).json(createErrorResponse('User ID and loginid required', 'BAD_REQUEST'));
+      if (!loginid) {
+        return res.status(400).json(createErrorResponse('loginid required', 'BAD_REQUEST'));
       }
       const metadata = await switchUserDerivAccountAsync(userId, loginid);
       if (!metadata.connected || !metadata.derivAccountId || !isValidDerivAccountId(metadata.derivAccountId)) {
@@ -1568,10 +1589,11 @@ export async function createApp() {
   // Disconnect Deriv connection (User action or Admin)
   app.post('/api/auth/deriv/disconnect', (req: Request, res: Response) => {
     try {
-      const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId || (req.headers['x-user-id'] as string);
-      if (!userId) {
+      const s = req.sessionUser;
+      if (!s || (!s.derivAccountId && !s.userId)) {
         return res.status(401).json(createErrorResponse('Authentication required', 'UNAUTHENTICATED'));
       }
+      const userId = s.derivAccountId || s.userId;
       const success = disconnectUserDeriv(userId);
       logAuditEvent('ACCOUNT_DISCONNECTED', userId, { event: 'DERIV_ACCOUNT_DISCONNECTED' });
       res.json(createSuccessResponse({ disconnected: success }));
@@ -1583,37 +1605,20 @@ export async function createApp() {
   // Trigger manual Deriv account metadata & balance sync with authoritative reconciliation
   app.all(['/api/auth/deriv/sync', '/api/deriv/sync'], async (req: Request, res: Response) => {
     try {
-      const parsedCookies = (req as any).cookies || parseCookies(req.headers.cookie);
-      const cookieUserId = parsedCookies['deriv_session_user_id'];
-      const bodyUserId = req.body?.userId || req.body?.loginid || req.body?.accountId;
-      const headerUserId = req.headers['x-user-id'] as string;
-      const sessionUserId = req.sessionUser?.userId;
-      const sessionDerivAcct = req.sessionUser?.derivAccountId;
-
-      const userId = sessionDerivAcct || sessionUserId || headerUserId || bodyUserId || cookieUserId;
-      if (!userId) {
+      const s = req.sessionUser;
+      if (!s || (!s.derivAccountId && !s.userId)) {
         return res.status(401).json(createErrorResponse('Authentication required for Deriv synchronization', 'UNAUTHENTICATED'));
       }
+      const userId = s.derivAccountId || s.userId;
+      const parsedCookies = parseCookies(req.headers.cookie);
 
-      let tokenToUse = req.body?.apiToken || req.body?.token || parsedCookies['deriv_access_token'];
-      if (tokenToUse && tokenToUse.startsWith('usr-')) {
-        tokenToUse = undefined;
+      let tokenToUse: string | undefined = undefined;
+      if (s.encryptedDerivToken) {
+        try { tokenToUse = decryptSensitiveData(s.encryptedDerivToken); } catch {}
       }
-      if (!tokenToUse && req.headers.authorization?.startsWith('Bearer ')) {
-        const bearer = req.headers.authorization.substring(7);
-        if (!bearer.startsWith('usr-')) {
-          tokenToUse = bearer;
-        }
+      if (!tokenToUse && parsedCookies['deriv_token_enc']) {
+        try { tokenToUse = decryptSensitiveData(parsedCookies['deriv_token_enc']); } catch {}
       }
-      if (!tokenToUse && req.sessionUser?.encryptedDerivToken) {
-        try {
-          const decrypted = decryptSensitiveData(req.sessionUser.encryptedDerivToken);
-          if (decrypted && !decrypted.startsWith('usr-')) {
-            tokenToUse = decrypted;
-          }
-        } catch {}
-      }
-
       if (!tokenToUse && userId) {
         const record = getDerivConnectionRecord(userId);
         if (record?.accessToken && !record.accessToken.startsWith('usr-')) {
@@ -1685,51 +1690,39 @@ export async function createApp() {
   });
 
   // Request a fresh OTP (One-Time Password) & Authenticated WebSocket URL for live trading
-  // Valid for 120 seconds per Deriv official documentation
   app.post(['/api/auth/deriv/otp', '/api/deriv/otp', '/api/auth/deriv/ws-url'], async (req: Request, res: Response) => {
     try {
-      const parsedCookies = (req as any).cookies || parseCookies(req.headers.cookie);
-      const cookieUserId = parsedCookies['deriv_session_user_id'];
-      const bodyUserId = req.body?.userId || req.body?.loginid || req.body?.accountId;
-      const headerUserId = req.headers['x-user-id'] as string;
-      const sessionUserId = req.sessionUser?.userId;
-      const sessionDerivAcct = req.sessionUser?.derivAccountId;
-
-      const userId = sessionDerivAcct || sessionUserId || headerUserId || bodyUserId || cookieUserId;
-      if (!userId) {
+      const s = req.sessionUser;
+      if (!s || (!s.derivAccountId && !s.userId)) {
         return res.status(401).json(createErrorResponse('Authentication required for Deriv OTP generation', 'UNAUTHENTICATED'));
       }
+      const userId = s.derivAccountId || s.userId;
+      const parsedCookies = parseCookies(req.headers.cookie);
 
-      let tokenToUse = req.body?.apiToken || req.body?.token || parsedCookies['deriv_access_token'];
-      if (tokenToUse && tokenToUse.startsWith('usr-')) {
-        tokenToUse = undefined;
+      let tokenToUse: string | undefined = undefined;
+      if (s.encryptedDerivToken) {
+        try { tokenToUse = decryptSensitiveData(s.encryptedDerivToken); } catch {}
       }
-      if (!tokenToUse && req.headers.authorization?.startsWith('Bearer ')) {
-        const bearer = req.headers.authorization.substring(7);
-        if (!bearer.startsWith('usr-')) {
-          tokenToUse = bearer;
+      if (!tokenToUse && parsedCookies['deriv_token_enc']) {
+        try { tokenToUse = decryptSensitiveData(parsedCookies['deriv_token_enc']); } catch {}
+      }
+      if (!tokenToUse && userId) {
+        const record = getDerivConnectionRecord(userId);
+        if (record?.accessToken && !record.accessToken.startsWith('usr-')) {
+          tokenToUse = record.accessToken;
         }
-      }
-      if (!tokenToUse && req.sessionUser?.encryptedDerivToken) {
-        try {
-          const decrypted = decryptSensitiveData(req.sessionUser.encryptedDerivToken);
-          if (decrypted && !decrypted.startsWith('usr-')) {
-            tokenToUse = decrypted;
-          }
-        } catch {}
-      }
-
-      const connectionRecord = getDerivConnectionRecord(userId);
-      if (!tokenToUse && connectionRecord?.accessToken && !connectionRecord.accessToken.startsWith('usr-')) {
-        tokenToUse = connectionRecord.accessToken;
       }
 
       if (!tokenToUse) {
         return res.status(422).json(createErrorResponse('Missing Deriv access token. Please re-authenticate.', 'MISSING_TOKEN'));
       }
 
-      const targetAccountId = req.body?.accountId || req.body?.loginid || connectionRecord?.derivAccountId || (isValidDerivAccountId(userId) ? userId : undefined);
-      if (!targetAccountId || !isValidDerivAccountId(targetAccountId)) {
+      const connectionRecord = getDerivConnectionRecord(userId);
+      const targetAccountId = req.body?.accountId || req.body?.loginid || connectionRecord?.derivAccountId || s.derivAccountId;
+      const accountList = connectionRecord?.accountList || [];
+      const validAccounts = [s.derivAccountId, connectionRecord?.derivAccountId, ...accountList.map(a => a.loginid)].filter(Boolean);
+
+      if (!targetAccountId || !validAccounts.includes(targetAccountId) || !isValidDerivAccountId(targetAccountId)) {
         return res.status(422).json(createErrorResponse('No valid Deriv account ID found for OTP request', 'INVALID_ACCOUNT_ID'));
       }
 
@@ -1744,7 +1737,7 @@ export async function createApp() {
         otp: otpResult.otp,
         url: otpResult.url,
         accountId: targetAccountId,
-        expiresIn: 120, // 120 seconds TTL
+        expiresIn: 120,
       }));
     } catch (err: any) {
       console.error('[DERIV_OTP_ENDPOINT_ERROR]', err);
@@ -1755,11 +1748,15 @@ export async function createApp() {
   // Login using Deriv API Token
   app.post('/api/auth/deriv/token-login', async (req: Request, res: Response) => {
     try {
+      const s = req.sessionUser;
+      if (!s) {
+        return res.status(401).json(createErrorResponse('Authentication required', 'UNAUTHENTICATED'));
+      }
       const { apiToken } = req.body;
       if (!apiToken || typeof apiToken !== 'string' || apiToken.trim().length < 5) {
         return res.status(400).json(createErrorResponse('Invalid Deriv API token provided', 'INVALID_API_TOKEN'));
       }
-      const userId = req.sessionUser?.userId || (req.headers['x-user-id'] as string) || `usr-${crypto.randomBytes(6).toString('hex')}`;
+      const userId = s.userId;
       const metadata = await connectUserWithApiTokenAsync(userId, apiToken);
       if (!metadata.connected || !metadata.derivAccountId || !isValidDerivAccountId(metadata.derivAccountId)) {
         logAuditEvent('DERIV_SYNC_FAILED', userId, { event: 'DERIV_API_TOKEN_CONNECTED_FAILED' });
@@ -1775,8 +1772,9 @@ export async function createApp() {
   // --- ADMIN-ONLY DERIV GATEWAY CONTROL & DIAGNOSTICS ENDPOINTS ---
   // Server-side RBAC guard helper
   const requireAdminRole = (req: Request, res: Response): boolean => {
-    const userRole = req.sessionUser?.role || (req.headers['x-user-role'] as string);
-    if (userRole !== 'ADMIN' && userRole !== 'SUPER_ADMIN' && userRole !== 'RISK_MANAGER') {
+    const s = req.sessionUser;
+    const userRole = s?.role;
+    if (!s || (userRole !== 'ADMIN' && userRole !== 'SUPER_ADMIN' && userRole !== 'RISK_MANAGER')) {
       res.status(403).json(createErrorResponse('Forbidden: Administrator privileges required', 'FORBIDDEN_ADMIN_ONLY'));
       return false;
     }
@@ -1829,7 +1827,7 @@ export async function createApp() {
             elevatedUntil,
           };
           const elevatedToken = createSessionToken(elevatedPayload);
-          res.setHeader('Set-Cookie', `session_token=${elevatedToken}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=3600`);
+          res.setHeader('Set-Cookie', `session_token=${elevatedToken}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=3600`);
         }
 
         logAuditEvent('ADMIN_ACTION', uid, {
@@ -2986,7 +2984,7 @@ export async function createApp() {
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, hmr: false },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -3027,6 +3025,18 @@ export async function startServer() {
   // Initiate resilient upstream connection
   derivGateway.connect().catch((err) => {
     logger.warn('[Server] Initial DerivGateway connection notice:', { error: err?.message || String(err) });
+  });
+
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.warn(`[Server] Port ${PORT} is busy, retrying in 1000ms...`);
+      setTimeout(() => {
+        try { server.close(); } catch {}
+        server.listen(PORT, '0.0.0.0');
+      }, 1000);
+    } else {
+      logger.error('[Server] HTTP server error:', err);
+    }
   });
 
   server.listen(PORT, '0.0.0.0', () => {

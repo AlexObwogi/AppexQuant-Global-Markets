@@ -470,16 +470,8 @@ export async function exchangeCodeForToken(
 
     console.error('[DerivOAuth:TokenExchange:Error]', {
       status: response.status,
-      statusText: response.statusText,
       errorCode,
       errorDescription: description,
-      rawPayload: payload,
-      tokenEndpoint,
-      clientIdPrefix: resolvedClientId ? `${resolvedClientId.substring(0, 4)}***` : 'missing',
-      redirectUri: callbackUri,
-      isVercel: Boolean(process.env.VERCEL),
-      vercelRegion: process.env.VERCEL_REGION || 'local',
-      timestamp: new Date().toISOString(),
     });
 
     throw new Error(

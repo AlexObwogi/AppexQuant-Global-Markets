@@ -9,13 +9,13 @@
 export const DERIV_OAUTH_SCOPES = ['trade'] as const;          // default request
 export const DERIV_OAUTH_SCOPE_STRING = DERIV_OAUTH_SCOPES.join(' ');
 
-export type ValidDerivScope = 'trade' | 'account_manage' | 'admin' | 'read' | 'payments';
-const ACCEPTED_SCOPES: readonly string[] = ['trade', 'account_manage', 'admin', 'read', 'payments'];
+export type ValidDerivScope = 'trade';
+const ACCEPTED_SCOPES = ['trade'] as const;
 
 // Scopes accepted by Deriv OAuth 2.0 PKCE /oauth2/auth endpoint:
-export const VALID_OAUTH2_AUTH_SCOPES: readonly string[] = ['trade', 'account_manage'];
+export const VALID_OAUTH2_AUTH_SCOPES: readonly string[] = ACCEPTED_SCOPES;
 
-export const VALID_DERIV_OAUTH2_SCOPES = ACCEPTED_SCOPES;
+export const VALID_DERIV_OAUTH2_SCOPES: readonly string[] = ACCEPTED_SCOPES;
 export const CANONICAL_DERIV_SCOPES: readonly ValidDerivScope[] = DERIV_OAUTH_SCOPES;
 export const DEFAULT_FALLBACK_SCOPE_STRING = DERIV_OAUTH_SCOPE_STRING;
 
@@ -54,16 +54,12 @@ export function parseRawScopes(rawInput?: any): string[] {
   const validSet = new Set<string>();
 
   for (const item of rawList) {
-    if (ACCEPTED_SCOPES.includes(item)) {
-      validSet.add(item);
+    if (item === 'trade' || (ACCEPTED_SCOPES as readonly string[]).includes(item)) {
+      validSet.add('trade');
     }
   }
 
-  if (validSet.size === 0) {
-    return [...DERIV_OAUTH_SCOPES];
-  }
-
-  return Array.from(validSet);
+  return ['trade'];
 }
 
 /**

@@ -8,7 +8,6 @@
  */
 
 import { useState, useCallback } from 'react';
-import { generateCodeVerifier, deriveCodeChallenge } from './pkce.ts';
 import { derivAuthService, DerivAccountProfile } from '../../services/deriv/DerivAuthService.ts';
 import { DERIV_OAUTH_SCOPES } from '../../../lib/auth/derivScope.ts';
 
@@ -43,32 +42,17 @@ export function useDerivAuth() {
     setAuthStatusMessage(
       action === 'signup'
         ? 'Redirecting to official Deriv account registration...'
-        : 'Generating high-entropy PKCE challenge and connecting to Deriv...'
+        : 'Connecting to Deriv OAuth gateway...'
     );
 
     try {
-      const verifier = await generateCodeVerifier(64);
-      const challenge = await deriveCodeChallenge(verifier);
-
-      // Persist verifier in session and local storage for retrieval during callback
-      try {
-        sessionStorage.setItem('deriv_pkce_verifier', verifier);
-        localStorage.setItem('deriv_pkce_verifier', verifier);
-      } catch (err) {
-        console.warn('Storage warning for PKCE verifier:', err);
-      }
-
-      const redirectUrl = `/api/auth/deriv/login?action=${action}&code_challenge=${encodeURIComponent(
-        challenge
-      )}&code_verifier=${encodeURIComponent(verifier)}&destination=${encodeURIComponent(destination)}`;
-
-      // Allow UI status indicator to display briefly before browser navigation
+      const redirectUrl = `/api/auth/deriv/login?action=${action}&destination=${encodeURIComponent(destination)}`;
       setTimeout(() => {
         window.location.href = redirectUrl;
       }, 350);
     } catch (err: any) {
       setIsAuthenticating(false);
-      setAuthError(err.message || 'Failed to initiate PKCE authorization with Deriv.');
+      setAuthError(err.message || 'Failed to initiate authorization with Deriv.');
     }
   }, []);
 

@@ -140,12 +140,7 @@ export async function GET(request: Request): Promise<Response> {
   // Execute token exchange and authenticated account discovery
   const result = await handleDerivOAuthCallback({
     code,
-    token1,
-    token: token1,
-    acct1,
-    acct: acct1,
     state,
-    verifier,
     cookieState,
     error,
     errorDescription,

@@ -9,9 +9,8 @@ function requireSecret(...names: string[]): string {
     const v = process.env[n]?.trim();
     if (v && v.length >= 32) return v;
   }
-  // In test or development without env configured, provide secure fallback of 32+ chars
-  if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
-    return 'appexquant_secure_fallback_secret_key_2026_32bytes_min';
+  if (process.env.NODE_ENV !== 'production') {
+    return 'dev-fallback-secret-key-32chars-minimum-length-for-local-dev-mode!!';
   }
   throw new Error(`Missing secret: set ${names.join(' or ')} (32+ characters)`);
 }
@@ -30,26 +29,40 @@ export function getEncryptionKey(): Buffer {
 // In-memory blacklist for revoked sessions (simulating session rotation / revoking)
 const revokedSessionTokens = new Set<string>();
 
-// 2. ENCRYPTED SENSITIVE DATA
+// 2. ENCRYPTED SENSITIVE DATA (AES-256-GCM)
 export function encryptSensitiveData(text: string): string {
   if (!text) return '';
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-cbc', getEncryptionKey(), iv);
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', getEncryptionKey(), iv);
   let encrypted = cipher.update(text, 'utf8', 'hex');
   encrypted += cipher.final('hex');
-  return `${iv.toString('hex')}:${encrypted}`;
+  const tag = cipher.getAuthTag();
+  return `v2:${iv.toString('hex')}:${tag.toString('hex')}:${encrypted}`;
 }
 
 export function decryptSensitiveData(encryptedHex: string): string {
   if (!encryptedHex) return '';
-  const parts = encryptedHex.split(':');
-  if (parts.length !== 2) throw new Error('Malformed cipher text');
-  const iv = Buffer.from(parts[0], 'hex');
-  const encryptedText = Buffer.from(parts[1], 'hex');
-  const decipher = crypto.createDecipheriv('aes-256-cbc', getEncryptionKey(), iv);
-  let decrypted = decipher.update(encryptedText, undefined, 'utf8');
-  decrypted += decipher.final('utf8');
-  return decrypted;
+  if (encryptedHex.startsWith('v2:')) {
+    const parts = encryptedHex.split(':');
+    if (parts.length !== 4) throw new Error('Malformed v2 cipher text');
+    const iv = Buffer.from(parts[1], 'hex');
+    const tag = Buffer.from(parts[2], 'hex');
+    const encryptedText = Buffer.from(parts[3], 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', getEncryptionKey(), iv);
+    decipher.setAuthTag(tag);
+    let decrypted = decipher.update(encryptedText);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted.toString('utf8');
+  } else {
+    const parts = encryptedHex.split(':');
+    if (parts.length !== 2) throw new Error('Malformed cipher text');
+    const iv = Buffer.from(parts[0], 'hex');
+    const encryptedText = Buffer.from(parts[1], 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', getEncryptionKey(), iv);
+    let decrypted = decipher.update(encryptedText, undefined, 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  }
 }
 
 // 3. CRYPTOGRAPHIC SESSION SIGNATURES (JWT-like)
@@ -90,7 +103,9 @@ export function verifySessionToken(token: string): SessionPayload | null {
         .createHmac('sha256', getSessionSecret())
         .update(jsonStr)
         .digest('base64url');
-      if (signature !== expectedSignature) return null;
+      const sigBuf = Buffer.from(signature);
+      const expBuf = Buffer.from(expectedSignature);
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
       const payload = JSON.parse(jsonStr) as SessionPayload;
       if (Date.now() > new Date(payload.expiresAt).getTime()) return null;
       return payload;
@@ -100,7 +115,9 @@ export function verifySessionToken(token: string): SessionPayload | null {
         .createHmac('sha256', getJwtSecret())
         .update(`${header}.${body}`)
         .digest('base64url');
-      if (signature !== expectedSignature) return null;
+      const sigBuf = Buffer.from(signature);
+      const expBuf = Buffer.from(expectedSignature);
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
       const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as SessionPayload;
       if (Date.now() > new Date(payload.expiresAt).getTime()) return null;
       return payload;

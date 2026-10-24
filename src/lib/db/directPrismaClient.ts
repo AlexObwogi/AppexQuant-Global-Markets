@@ -1,7 +1,6 @@
 /**
  * AppexQuant Markets Global - Direct Server-Side Prisma Client Utility
- * Enforces a direct PostgreSQL connection and eliminates all in-memory database fallbacks.
- * Ensures the application explicitly fails if the PostgreSQL database is unreachable.
+ * Implements a 10-second circuit breaker and Supabase connection pool optimizations.
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -11,7 +10,7 @@ const globalForDirectPrisma = globalThis as unknown as {
   directPrismaInstance: PrismaClient | undefined;
 };
 
-function getRequiredDatabaseUrl(): string | undefined {
+function buildDatabaseUrl(): string | undefined {
   const rawUrl = process.env.DATABASE_URL;
   if (!rawUrl || !rawUrl.trim()) {
     return undefined;
@@ -19,12 +18,13 @@ function getRequiredDatabaseUrl(): string | undefined {
 
   try {
     const url = new URL(rawUrl);
-    if (!url.searchParams.has('connection_limit')) {
-      url.searchParams.set('connection_limit', '10');
+    const isSupabasePooler = url.host.includes('pooler.supabase.com') || url.port === '6543';
+    if (isSupabasePooler && !url.searchParams.has('pgbouncer')) {
+      url.searchParams.set('pgbouncer', 'true');
     }
-    if (!url.searchParams.has('pool_timeout')) {
-      url.searchParams.set('pool_timeout', '15');
-    }
+    const connLimit = process.env.VERCEL ? '1' : '10';
+    url.searchParams.set('connection_limit', connLimit);
+    url.searchParams.set('pool_timeout', '15');
     return url.toString();
   } catch {
     return rawUrl;
@@ -36,20 +36,13 @@ function createDirectPrismaClient(): PrismaClient {
     return globalForDirectPrisma.directPrismaInstance;
   }
 
-  const datasourceUrl = getRequiredDatabaseUrl();
+  const datasourceUrl = buildDatabaseUrl();
+  const client = new PrismaClient(
+    datasourceUrl ? { datasourceUrl } : undefined
+  );
 
-  try {
-    const client = new PrismaClient(
-      datasourceUrl ? { datasourceUrl } : undefined
-    );
-
-    globalForDirectPrisma.directPrismaInstance = client;
-    return client;
-  } catch (err: any) {
-    const errMsg = (err?.message || String(err)).trim().replace(/^\n+/, '');
-    logger.warn('PrismaClient instantiation notice:', { detail: errMsg });
-    return null as unknown as PrismaClient;
-  }
+  globalForDirectPrisma.directPrismaInstance = client;
+  return client;
 }
 
 export const directPrisma: PrismaClient =
@@ -57,62 +50,48 @@ export const directPrisma: PrismaClient =
 
 globalForDirectPrisma.directPrismaInstance = directPrisma;
 
-let isDirectDbAvailableState = false;
-let dbAvailabilityTested = false;
-let lastDbTestTime = 0;
-const PRISMA_CHECK_TTL_MS = 30000;
+let downUntil = 0;
 
 export function isDirectDatabaseAvailable(): boolean {
-  if (!dbAvailabilityTested || (Date.now() - lastDbTestTime > PRISMA_CHECK_TTL_MS)) {
-    if (!process.env.DATABASE_URL || !process.env.DATABASE_URL.trim()) {
-      return false;
-    }
-  }
-  return isDirectDbAvailableState;
+  const hasUrl = Boolean(process.env.DATABASE_URL?.trim());
+  return hasUrl && Date.now() >= downUntil;
 }
 
 export function setDirectDatabaseAvailable(status: boolean): void {
-  dbAvailabilityTested = true;
-  lastDbTestTime = Date.now();
-  isDirectDbAvailableState = status;
+  if (!status) {
+    downUntil = Date.now() + 10000; // 10 second circuit breaker
+  } else {
+    downUntil = 0;
+  }
 }
 
-/**
- * Verifies that the direct PostgreSQL connection is live and active.
- * Returns true if connected, false if database is unreachable.
- */
+export function isConnectivityError(err: any): boolean {
+  const code = err?.code;
+  const codes = ['P1000', 'P1001', 'P1002', 'P1008', 'P1017', 'P2024'];
+  return (code && codes.includes(code)) || err?.name === 'PrismaClientInitializationError';
+}
+
 export async function verifyDirectDatabaseConnection(forceRetry = false): Promise<boolean> {
-  const now = Date.now();
-  if (dbAvailabilityTested && !forceRetry && (now - lastDbTestTime < PRISMA_CHECK_TTL_MS)) {
-    return isDirectDbAvailableState;
+  if (!isDirectDatabaseAvailable() && !forceRetry) {
+    return false;
   }
 
-  dbAvailabilityTested = true;
-  lastDbTestTime = now;
-
   if (!process.env.DATABASE_URL || !process.env.DATABASE_URL.trim()) {
-    isDirectDbAvailableState = false;
+    setDirectDatabaseAvailable(false);
     return false;
   }
 
   try {
-    if (!directPrisma) {
-      isDirectDbAvailableState = false;
-      return false;
-    }
     await Promise.race([
       directPrisma.$queryRaw`SELECT 1 AS health_check`,
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Prisma database health check timeout (3000ms)')), 3000)
       ),
     ]);
-    logger.info('Direct PostgreSQL database connection successfully established and verified via Prisma.');
-    isDirectDbAvailableState = true;
+    setDirectDatabaseAvailable(true);
     return true;
   } catch (err: any) {
-    isDirectDbAvailableState = false;
-    const cleanErrMsg = (err?.message || String(err)).trim().replace(/^\n+/, '').split('\n').pop() || 'Unreachable';
-    logger.info(`Direct PostgreSQL database connection unavailable (${cleanErrMsg}).`);
+    setDirectDatabaseAvailable(false);
     return false;
   }
 }

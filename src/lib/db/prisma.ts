@@ -4,17 +4,12 @@
  * Includes connection reuse, query timeouts, and automatic retry handling for transient connection drops.
  */
 
-/**
- * AppexQuant Markets Global - High-Performance Prisma Client & Connection Pool Manager
- * Configured for PgBouncer / Prisma Accelerate & Serverless Execution.
- * Includes connection reuse, query timeouts, and automatic retry handling for transient connection drops.
- */
-
 import { logger } from '../../observability/logger.ts';
 import {
   directPrisma,
   isDirectDatabaseAvailable,
   setDirectDatabaseAvailable,
+  isConnectivityError,
 } from './directPrismaClient.ts';
 
 export { directPrisma as prisma };
@@ -55,13 +50,7 @@ export interface LeanLeaderboardEntry {
   isVerified: boolean;
 }
 
-/**
- * High-frequency query helpers executing directly against PostgreSQL via directPrisma.
- */
 export const dbQueries = {
-  /**
-   * Fast session validation using composite index [userId, expiresAt]
-   */
   async findActiveSession(token: string): Promise<LeanSession | null> {
     if (!isDirectDatabaseAvailable()) return null;
     try {
@@ -86,16 +75,16 @@ export const dbQueries = {
         },
       });
     } catch (err: any) {
-      setDirectDatabaseAvailable(false);
       const cleanMsg = (err?.message || String(err)).split('\n').filter((l: string) => !l.includes('invocation') && !l.includes('→') && l.trim().length > 0).pop() || 'Database query failed';
-      logger.warn('Prisma session lookup fallback:', { detail: cleanMsg.trim() });
+      if (isConnectivityError(err)) {
+        setDirectDatabaseAvailable(false);
+      } else {
+        logger.error('Prisma query error', { code: err?.code, detail: cleanMsg });
+      }
       return null;
     }
   },
 
-  /**
-   * Lean top leaderboard query with selective projection and indexed sort
-   */
   async getTopLeaderboard(window: string = 'MONTHLY', limit: number = 20): Promise<LeanLeaderboardEntry[] | null> {
     if (!isDirectDatabaseAvailable()) return null;
     try {
@@ -132,16 +121,16 @@ export const dbQueries = {
         maxDrawdownPercentage: Number(r.maxDrawdownPercentage),
       }));
     } catch (err: any) {
-      setDirectDatabaseAvailable(false);
       const cleanMsg = (err?.message || String(err)).split('\n').filter((l: string) => !l.includes('invocation') && !l.includes('→') && l.trim().length > 0).pop() || 'Database query failed';
-      logger.warn('Prisma leaderboard query fallback:', { detail: cleanMsg.trim() });
+      if (isConnectivityError(err)) {
+        setDirectDatabaseAvailable(false);
+      } else {
+        logger.error('Prisma query error', { code: err?.code, detail: cleanMsg });
+      }
       return null;
     }
   },
 
-  /**
-   * High-speed user profile query using unique index on email or id
-   */
   async findUserById(id: string): Promise<any | null> {
     if (!isDirectDatabaseAvailable()) return null;
     try {
@@ -178,18 +167,18 @@ export const dbQueries = {
         },
       });
     } catch (err: any) {
-      setDirectDatabaseAvailable(false);
       const cleanMsg = (err?.message || String(err)).split('\n').filter((l: string) => !l.includes('invocation') && !l.includes('→') && l.trim().length > 0).pop() || 'Database query failed';
-      logger.warn('Prisma findUserById fallback:', { detail: cleanMsg.trim() });
+      if (isConnectivityError(err)) {
+        setDirectDatabaseAvailable(false);
+      } else {
+        logger.error('Prisma query error', { code: err?.code, detail: cleanMsg });
+      }
       return null;
     }
   },
 
-  /**
-   * Idempotently upserts a DerivAccount record mapped to a user
-   */
   async upsertDerivAccount(data: {
-    id: string; // Deriv loginid
+    id: string;
     userId: string;
     accountType?: string;
     currency?: string;
@@ -238,33 +227,30 @@ export const dbQueries = {
         },
       });
     } catch (err: any) {
-      setDirectDatabaseAvailable(false);
       const cleanMsg = (err?.message || String(err)).split('\n').filter((l: string) => !l.includes('invocation') && !l.includes('→') && l.trim().length > 0).pop() || 'Database query failed';
-      logger.warn('Prisma upsertDerivAccount fallback:', { detail: cleanMsg.trim() });
+      if (isConnectivityError(err)) {
+        setDirectDatabaseAvailable(false);
+      } else {
+        logger.error('Prisma query error', { code: err?.code, detail: cleanMsg });
+      }
       return null;
     }
   },
 
-  /**
-   * Retrieves the primary active Deriv account for a given user or loginid from database
-   */
   async getDerivAccountByUserId(userIdOrLoginId: string): Promise<any | null> {
     if (!isDirectDatabaseAvailable()) return null;
     try {
-      // 1. Try finding by loginid directly
       const byLoginId = await directPrisma.derivAccount.findUnique({
         where: { id: userIdOrLoginId },
       });
       if (byLoginId) return byLoginId;
 
-      // 2. Try finding by userId
       const byUserId = await directPrisma.derivAccount.findFirst({
         where: { userId: userIdOrLoginId },
         orderBy: { lastSyncedAt: 'desc' },
       });
       if (byUserId) return byUserId;
 
-      // 3. Try finding user session mapping
       const userWithAccount = await directPrisma.user.findFirst({
         where: { OR: [{ id: userIdOrLoginId }, { derivAccountId: userIdOrLoginId }] },
         include: { derivAccounts: true },
@@ -274,14 +260,16 @@ export const dbQueries = {
       }
       return null;
     } catch (err: any) {
-      setDirectDatabaseAvailable(false);
+      const cleanMsg = (err?.message || String(err)).split('\n').filter((l: string) => !l.includes('invocation') && !l.includes('→') && l.trim().length > 0).pop() || 'Database query failed';
+      if (isConnectivityError(err)) {
+        setDirectDatabaseAvailable(false);
+      } else {
+        logger.error('Prisma query error', { code: err?.code, detail: cleanMsg });
+      }
       return null;
     }
   },
 
-  /**
-   * Idempotently captures an account snapshot (balance & equity)
-   */
   async recordAccountSnapshot(data: {
     derivAccountId: string;
     userId: string;
@@ -322,16 +310,16 @@ export const dbQueries = {
         },
       });
     } catch (err: any) {
-      setDirectDatabaseAvailable(false);
       const cleanMsg = (err?.message || String(err)).split('\n').filter((l: string) => !l.includes('invocation') && !l.includes('→') && l.trim().length > 0).pop() || 'Database query failed';
-      logger.warn('Prisma recordAccountSnapshot fallback:', { detail: cleanMsg.trim() });
+      if (isConnectivityError(err)) {
+        setDirectDatabaseAvailable(false);
+      } else {
+        logger.error('Prisma query error', { code: err?.code, detail: cleanMsg });
+      }
       return null;
     }
   },
 
-  /**
-   * Maps an external Deriv account ID to an internal user and active session
-   */
   async mapDerivAccountToUserSession(derivAccountId: string, userId: string): Promise<boolean> {
     if (!isDirectDatabaseAvailable()) return false;
     try {
@@ -345,9 +333,12 @@ export const dbQueries = {
       });
       return true;
     } catch (err: any) {
-      setDirectDatabaseAvailable(false);
       const cleanMsg = (err?.message || String(err)).split('\n').filter((l: string) => !l.includes('invocation') && !l.includes('→') && l.trim().length > 0).pop() || 'Database query failed';
-      logger.warn('Prisma mapDerivAccountToUserSession fallback:', { detail: cleanMsg.trim() });
+      if (isConnectivityError(err)) {
+        setDirectDatabaseAvailable(false);
+      } else {
+        logger.error('Prisma query error', { code: err?.code, detail: cleanMsg });
+      }
       return false;
     }
   },

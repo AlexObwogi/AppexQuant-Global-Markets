@@ -97,12 +97,7 @@ export function generateCodeVerifier(length: number = 64): string {
     return base64UrlEncode(bytes).substring(0, clampedLength);
   }
 
-  // Fallback for isolated runtime environments
-  const fallbackBytes = new Uint8Array(randomBytesCount);
-  for (let i = 0; i < randomBytesCount; i++) {
-    fallbackBytes[i] = Math.floor(Math.random() * 256);
-  }
-  return base64UrlEncode(fallbackBytes).substring(0, clampedLength);
+  throw new Error('Cryptographically secure random number generator not available');
 }
 
 /**
@@ -115,7 +110,6 @@ export function generateCodeChallenge(codeVerifier: string): string {
     return base64UrlEncode(hash);
   }
 
-  // Synchronous browser fallback (if web crypto sync is needed)
   return base64UrlEncode(codeVerifier);
 }
 
@@ -164,18 +158,26 @@ export function generateState(bytesCount: number = 24): string {
     return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
   }
 
-  return `${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 15)}`;
+  throw new Error('Cryptographically secure random number generator not available');
 }
 
 /**
  * Retrieves the cryptographic signing key for state cookie verification
  */
-function getStateSecret(customSecret?: string): string {
-  if (customSecret) return customSecret;
-  if (typeof process !== 'undefined' && process.env) {
-    return process.env.SESSION_SECRET || process.env.JWT_SECRET || 'appexquant_default_state_secret_2026_key_9988';
+function requireSecret(...names: string[]): string {
+  for (const n of names) {
+    const v = process.env[n]?.trim();
+    if (v && v.length >= 32) return v;
   }
-  return 'appexquant_default_state_secret_2026_key_9988';
+  if (process.env.NODE_ENV !== 'production') {
+    return 'dev-fallback-secret-key-32chars-minimum-length-for-local-dev-mode!!';
+  }
+  throw new Error(`Missing secret: set ${names.join(' or ')} (32+ characters)`);
+}
+
+function getStateSecret(customSecret?: string): string {
+  if (customSecret && customSecret.length >= 32) return customSecret;
+  return requireSecret('SESSION_SECRET', 'JWT_SECRET');
 }
 
 /**
@@ -196,7 +198,6 @@ export function encodeOAuthStateCookie(payload: OAuthStatePayload, secret?: stri
       .update(base64Payload)
       .digest('base64url');
   } else {
-    // In environments without node crypto HMAC, hash payload with secret
     signature = base64UrlEncode(`${base64Payload}:${signingSecret}`);
   }
 
@@ -227,7 +228,9 @@ export function decodeOAuthStateCookie<T = OAuthStatePayload>(cookieValue?: stri
       expectedSignature = base64UrlEncode(`${payload}:${signingSecret}`);
     }
 
-    if (signature !== expectedSignature) {
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expectedSignature);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
       return null;
     }
 

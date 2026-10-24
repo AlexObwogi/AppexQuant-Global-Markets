@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { getClientIp, authRateLimiterMiddleware, sessionRateLimiterMiddleware } from '../src/services/security.ts';
 import { transactionInterceptorMiddleware, getRevenueTelemetrySummary } from '../src/services/revenue/transactionInterceptor.ts';
-import { DERIV_OAUTH_SCOPES, DERIV_OAUTH_SCOPE_STRING } from '../lib/auth/derivScope.ts';
+import {
+  DERIV_OAUTH_SCOPES,
+  DERIV_OAUTH_SCOPE_STRING,
+  getLoginScopeString,
+  parseRawScopes,
+  VALID_OAUTH2_AUTH_SCOPES,
+  validateDerivScopes,
+} from '../lib/auth/derivScope.ts';
 import { testDatabaseConnection } from '../src/db/connection.ts';
 import { isDirectDatabaseAvailable } from '../src/lib/db/directPrismaClient.ts';
 
@@ -163,6 +170,25 @@ describe('Production Remediation & Verification Suite (October 20, 2026)', () =>
 
     it('DERIV_OAUTH_SCOPE_STRING joins scopes with single space', () => {
       expect(DERIV_OAUTH_SCOPE_STRING).toBe('trade');
+    });
+
+    it('getLoginScopeString filters legacy scopes and returns trade for OAuth2 authorization', () => {
+      expect(getLoginScopeString()).toBe('trade');
+      // If legacy scopes like read, admin, payments are passed, they must be filtered out for OAuth2
+      expect(getLoginScopeString('read trade admin payments')).toBe('trade');
+      expect(getLoginScopeString(['read', 'trade', 'admin'])).toBe('trade');
+    });
+
+    it('parseRawScopes accepts valid scopes and handles various formats', () => {
+      expect(parseRawScopes('trade')).toEqual(['trade']);
+      expect(parseRawScopes('read,trade')).toEqual(['read', 'trade']);
+      expect(parseRawScopes({ scopes: ['trade'] })).toEqual(['trade']);
+      expect(parseRawScopes(null)).toEqual(['trade']);
+    });
+
+    it('validateDerivScopes checks trade permission', () => {
+      expect(validateDerivScopes(['trade']).valid).toBe(true);
+      expect(validateDerivScopes('trade').valid).toBe(true);
     });
   });
 

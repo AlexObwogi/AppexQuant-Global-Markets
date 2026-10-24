@@ -247,6 +247,10 @@ export interface HydrateDerivAccountResult {
     token: string;
     accountList?: any[];
   };
+  serverOnly?: {
+    accessToken?: string;
+    refreshToken?: string;
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -427,15 +431,19 @@ export function getDerivOAuthConfig(
     );
 
   if (configuredRedirect) {
-    try {
-      const configuredHost = new URL(configuredRedirect).host;
-      if (requestHost && configuredHost && configuredHost !== host) {
-        redirectUri = `${proto}://${host}/api/auth/deriv/callback`;
-      } else {
+    if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+      redirectUri = configuredRedirect;
+    } else {
+      try {
+        const configuredHost = new URL(configuredRedirect).host;
+        if (requestHost && configuredHost && configuredHost !== host) {
+          redirectUri = `${proto}://${host}/api/auth/deriv/callback`;
+        } else {
+          redirectUri = configuredRedirect;
+        }
+      } catch {
         redirectUri = configuredRedirect;
       }
-    } catch {
-      redirectUri = configuredRedirect;
     }
   } else {
     const siteUrl =
@@ -2132,9 +2140,13 @@ export async function hydrateDerivAccount(
       currency,
 
       token:
-        '',
+        cleanToken,
 
       accountList,
+    },
+    serverOnly: {
+      accessToken: cleanToken,
+      refreshToken,
     },
   };
 }
@@ -2857,6 +2869,10 @@ export async function handleDerivOAuthCallback(
       landing_company_name: string;
     }>;
   };
+  serverOnly?: {
+    accessToken: string;
+    refreshToken?: string;
+  };
 }> {
   cleanupExpiredTransactions();
 
@@ -3235,6 +3251,11 @@ export async function handleDerivOAuthCallback(
 
       rawAccountDetails:
         hydration.rawAccountDetails,
+
+      serverOnly: {
+        accessToken,
+        refreshToken,
+      },
     };
   } catch (error: any) {
     const message =

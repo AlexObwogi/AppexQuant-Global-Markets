@@ -12,6 +12,9 @@ export const DERIV_OAUTH_SCOPE_STRING = DERIV_OAUTH_SCOPES.join(' ');
 export type ValidDerivScope = 'trade' | 'account_manage' | 'admin' | 'read' | 'payments';
 const ACCEPTED_SCOPES: readonly string[] = ['trade', 'account_manage', 'admin', 'read', 'payments'];
 
+// Scopes accepted by Deriv OAuth 2.0 PKCE /oauth2/auth endpoint:
+export const VALID_OAUTH2_AUTH_SCOPES: readonly string[] = ['trade', 'account_manage'];
+
 export const VALID_DERIV_OAUTH2_SCOPES = ACCEPTED_SCOPES;
 export const CANONICAL_DERIV_SCOPES: readonly ValidDerivScope[] = DERIV_OAUTH_SCOPES;
 export const DEFAULT_FALLBACK_SCOPE_STRING = DERIV_OAUTH_SCOPE_STRING;
@@ -22,7 +25,7 @@ export type ScopeFormat = 'plus' | 'comma' | 'space' | 'array';
  * Parses any raw scope input (plus, comma, space, semicolon separated or array)
  * into a deduplicated, trimmed array of valid Deriv OAuth2 scope identifiers.
  */
-export function parseRawScopes(rawInput?: string | string[] | readonly string[] | null): string[] {
+export function parseRawScopes(rawInput?: any): string[] {
   if (!rawInput) {
     return [...DERIV_OAUTH_SCOPES];
   }
@@ -41,12 +44,17 @@ export function parseRawScopes(rawInput?: string | string[] | readonly string[] 
       .split(/[\s,;+]+/)
       .map((s) => s.trim().toLowerCase())
       .filter((s) => s.length > 0);
+  } else if (typeof rawInput === 'object' && rawInput !== null) {
+    const candidate = rawInput.scopes || rawInput.scope || rawInput.permissions;
+    if (candidate) {
+      return parseRawScopes(candidate);
+    }
   }
 
   const validSet = new Set<string>();
 
   for (const item of rawList) {
-    if (ACCEPTED_SCOPES.includes(item)) {   // was DERIV_OAUTH_SCOPES
+    if (ACCEPTED_SCOPES.includes(item)) {
       validSet.add(item);
     }
   }
@@ -60,7 +68,7 @@ export function parseRawScopes(rawInput?: string | string[] | readonly string[] 
 
 /**
  * Reads process.env.DERIV_OAUTH_SCOPES || process.env.DERIV_OAUTH_SCOPE || process.env.DERIV_SCOPES
- * with fallback to DERIV_OAUTH_SCOPE_STRING ("read trade admin payments").
+ * with fallback to DERIV_OAUTH_SCOPE_STRING ("trade").
  */
 export function getRawConfiguredScope(): string {
   if (typeof process === 'undefined' || !process.env) {
@@ -88,12 +96,18 @@ export function getDerivScopeList(): string[] {
 }
 
 /**
- * Formats scopes into space-separated format ('read trade admin payments')
+ * Formats scopes into space-separated format ('trade')
  * strictly required for Deriv OAuth login redirect URLs.
+ * Filters out legacy scopes (e.g. 'read', 'admin', 'payments') that cause
+ * Deriv OAuth2 authorization endpoint to reject with error=invalid_scope.
  */
 export function getLoginScopeString(customScopes?: string | string[] | readonly string[]): string {
   const list = customScopes ? parseRawScopes(customScopes) : getDerivScopeList();
-  return list.join(' ');
+  const authScopes = list.filter((s) => VALID_OAUTH2_AUTH_SCOPES.includes(s));
+  if (authScopes.length === 0) {
+    return 'trade';
+  }
+  return authScopes.join(' ');
 }
 
 /**
@@ -187,6 +201,7 @@ export function validateDerivScopes(
 export default {
   DERIV_OAUTH_SCOPES,
   DERIV_OAUTH_SCOPE_STRING,
+  VALID_OAUTH2_AUTH_SCOPES,
   getDerivOAuthScope,
   getLoginScopeString,
   getBackendScopeString,

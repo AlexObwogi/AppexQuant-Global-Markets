@@ -132,6 +132,10 @@ import {
 import { initializeDatabaseSystem } from './src/db/initDb.ts';
 import { getDatabasePool, testDatabaseConnection } from './src/db/connection.ts';
 
+const isSafePath = (p?: string): boolean => !!p && /^\/(?![\/\\])/.test(p);
+const escapeHtml = (s: string): string => String(s || '').replace(/[&<>"']/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c));
+
 export async function createApp() {
   const app = express();
   // Trust proxy: Enable accurate client IP resolution behind Vercel / Cloudflare edge proxies
@@ -1002,6 +1006,7 @@ export async function createApp() {
   // --- DERIV OAUTH 2.0 PKCE API ENDPOINTS ---
   // Initiate Deriv OAuth PKCE flow (Connect or Register/Signup)
   const derivAuthInitHandler = (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
     try {
       const isRegisterRoute = req.path.includes('register') || req.path.includes('signup');
       const action = isRegisterRoute ? 'signup' : (((req.query.action || req.body?.action) as 'connect' | 'signup') || 'connect');
@@ -1085,6 +1090,7 @@ export async function createApp() {
   ];
 
   app.all(derivCallbackPaths, oauthCallbackRateLimiterMiddleware, async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
     const isHttps = (req.headers['x-forwarded-proto'] as string) === 'https' || req.secure || process.env.APP_ENV === 'production';
     const secureFlag = isHttps ? '; Secure' : '';
 
@@ -1167,7 +1173,7 @@ export async function createApp() {
     <div style="text-align: center; max-width: 440px; padding: 32px 24px; background: #131d31; border: 1px solid #1e293b; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
       <div style="width: 48px; height: 48px; margin: 0 auto 16px; border-radius: 50%; background: #451a1a; color: #ef4444; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold;">✕</div>
       <h2 style="margin: 0 0 8px; font-size: 18px; font-weight: 600; color: #f87171;">Connection Unsuccessful</h2>
-      <p style="margin: 0 0 20px; color: #94a3b8; font-size: 13px; line-height: 1.5;">${cleanErrMsg}</p>
+      <p style="margin: 0 0 20px; color: #94a3b8; font-size: 13px; line-height: 1.5;">${escapeHtml(cleanErrMsg)}</p>
       <div style="display: flex; gap: 10px; justify-content: center;">
         <button onclick="if(window.opener){window.close();}else{window.location.href='/'}" style="padding: 9px 18px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500;">Return to App</button>
       </div>
@@ -1176,7 +1182,7 @@ export async function createApp() {
       (function() {
         if (window.opener && window.opener !== window) {
           try {
-            window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', source: 'DERIV_OAUTH', error: ${JSON.stringify(cleanErrMsg)} }, '*');
+            window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', source: 'DERIV_OAUTH', error: ${JSON.stringify(cleanErrMsg)} }, window.location.origin);
           } catch(e) {}
         }
       })();
@@ -1223,7 +1229,7 @@ export async function createApp() {
   <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0b111e; color: #f1f5f9;">
     <div style="text-align: center; max-width: 440px; padding: 32px 24px; background: #131d31; border: 1px solid #1e293b; border-radius: 12px;">
       <h2 style="margin: 0 0 8px; font-size: 18px; color: #f87171;">Account Discovery Notice</h2>
-      <p style="margin: 0 0 20px; color: #94a3b8; font-size: 13px;">${errorReason}</p>
+      <p style="margin: 0 0 20px; color: #94a3b8; font-size: 13px;">${escapeHtml(errorReason)}</p>
       <button onclick="if(window.opener){window.close();}else{window.location.href='/'}" style="padding: 9px 18px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer;">Close & Return</button>
     </div>
   </body>
@@ -1239,7 +1245,7 @@ export async function createApp() {
       const fullName = result.rawAccountDetails?.fullName;
       const balance = result.rawAccountDetails?.balance ?? 0;
       const csrfToken = crypto.randomBytes(32).toString('hex');
-      const rawToken = result.rawAccountDetails?.token;
+      const rawToken = result.serverOnly?.accessToken || result.rawAccountDetails?.token;
       const encryptedDerivToken = rawToken ? encryptSensitiveData(rawToken) : undefined;
       const appUserId = (typeof result.userId === 'string' && result.userId.startsWith('usr-'))
         ? result.userId
@@ -1298,13 +1304,13 @@ export async function createApp() {
             role: sessionPayload.role,
           },
           csrfToken,
-          destination: (result.destination && result.destination.startsWith('/') && result.destination !== '/' && result.destination !== '/login') ? result.destination : '/',
+          destination: (isSafePath(result.destination) && result.destination !== '/login' && result.destination !== '/auth') ? result.destination : '/',
           accountList: result.rawAccountDetails?.accountList,
         }));
       }
 
       const rawDest = result.destination;
-      const safeDestination = (rawDest && rawDest.startsWith('/') && rawDest !== '/' && rawDest !== '/login' && rawDest !== '/auth')
+      const safeDestination = (isSafePath(rawDest) && rawDest !== '/login' && rawDest !== '/auth')
         ? rawDest
         : '/';
       console.log('[DERIV_OAUTH_CALLBACK_COMPLETED]', { safeDestination, accountId });
@@ -1344,7 +1350,7 @@ export async function createApp() {
         };
         if (window.opener && window.opener !== window) {
           try {
-            window.opener.postMessage(authData, '*');
+            window.opener.postMessage(authData, window.location.origin);
           } catch (e) {}
           setTimeout(function() {
             window.close();

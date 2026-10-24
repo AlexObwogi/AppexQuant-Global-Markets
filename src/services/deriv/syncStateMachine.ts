@@ -51,31 +51,20 @@ export interface DerivSyncContext {
   timestamp?: string;
 }
 
-const VALID_DERIV_ID_REGEX = /^(CR|VRTC|VR|MF|MLT|MX|GBP|USD|EUR|AUD|BTC|ETH|LTC|UST|eUSDT)\d+$/i;
-
-/**
- * Validates whether a candidate Deriv Account ID is syntactically genuine
- */
 export function isValidDerivAccountId(accountId?: unknown): accountId is string {
   if (typeof accountId !== 'string') return false;
   const trimmed = accountId.trim();
-  if (trimmed.length < 3 || trimmed.length > 32) return false;
+  if (trimmed.length < 4 || trimmed.length > 40) return false;
+  if (!/^[A-Za-z0-9_-]{4,40}$/.test(trimmed)) return false;
   const lower = trimmed.toLowerCase();
   if (
-    lower === 'undefined' ||
-    lower === 'null' ||
-    lower === 'account' ||
     lower.startsWith('usr-') ||
     lower.startsWith('user-') ||
-    lower.startsWith('sys-') ||
-    lower.startsWith('demo-') ||
-    lower.startsWith('test-') ||
-    lower.startsWith('fallback') ||
-    lower.startsWith('placeholder')
+    lower.startsWith('sys-')
   ) {
     return false;
   }
-  return VALID_DERIV_ID_REGEX.test(trimmed) || /^(CR|VRTC|VR|MF|MLT|MX)[0-9]+$/i.test(trimmed);
+  return true;
 }
 
 /**

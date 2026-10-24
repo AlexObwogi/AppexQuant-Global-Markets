@@ -1096,8 +1096,6 @@ export async function createApp() {
     if (req.method !== 'GET') {
       return res.status(405).send('Method Not Allowed');
     }
-    const isHttps = (req.headers['x-forwarded-proto'] as string) === 'https' || req.secure || process.env.APP_ENV === 'production';
-    const secureFlag = isHttps ? '; Secure' : '';
 
     try {
       const code = req.query.code as string | undefined;
@@ -1117,10 +1115,34 @@ export async function createApp() {
         hasCookieState: Boolean(cookieState),
         error: error ? String(error).slice(0, 80) : undefined,
         errorDescription: errorDescription ? String(errorDescription).slice(0, 200) : undefined,
-        referer: req.headers.referer,
         host: requestHost,
         path: req.path,
       });
+
+      // Task 3.2: Verify state before making outbound token exchange calls
+      if (!state || (!cookieState && !error)) {
+        console.warn('[DerivOAuth] Callback state or state cookie missing prior to token exchange.');
+        res.setHeader('Set-Cookie', `deriv_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`);
+        if (req.headers.accept?.includes('application/json') || req.query.json === 'true') {
+          return res.status(400).json(createErrorResponse('Missing or invalid OAuth state parameter.', 'INVALID_STATE'));
+        }
+        return res.status(400).send(`<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Authentication Error</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="3;url=/">
+  </head>
+  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0b111e; color: #f1f5f9;">
+    <div style="text-align: center; max-width: 440px; padding: 32px 24px; background: #131d31; border: 1px solid #1e293b; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+      <h2 style="margin: 0 0 8px; font-size: 18px; color: #f87171;">Session State Mismatch</h2>
+      <p style="margin: 0 0 20px; color: #94a3b8; font-size: 13px;">OAuth state session missing or expired. Please initiate login again.</p>
+      <button onclick="if(window.opener){window.close();}else{window.location.href='/'}" style="padding: 9px 18px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer;">Return to Application</button>
+    </div>
+  </body>
+</html>`);
+      }
 
       const result = await handleDerivOAuthCallback({
         code,
@@ -1146,11 +1168,6 @@ export async function createApp() {
                 errorCode: 'EXCHANGE_FAILED',
                 errorMessage: result.errorMessage,
               },
-              recoveryInstructions: [
-                'Verify your Deriv account has granted all required scopes: trade, admin, and payments.',
-                'Ensure you have at least one active Deriv real or demo trading account (e.g. CR*, VRTC*, MTR*).',
-                'Clear any stale browser authentication cookies and re-authenticate via the "Connect Deriv" portal.',
-              ],
             }
           ));
         }
@@ -1162,6 +1179,7 @@ export async function createApp() {
     <meta charset="utf-8">
     <title>Authentication Error</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="3;url=/">
   </head>
   <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0b111e; color: #f1f5f9;">
     <div style="text-align: center; max-width: 440px; padding: 32px 24px; background: #131d31; border: 1px solid #1e293b; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
@@ -1185,8 +1203,7 @@ export async function createApp() {
 </html>`);
       }
 
-      // Successful exchange: Create authenticated AppExQuant user session
-      // STRICT DISCOVERY ENFORCEMENT: Never fallback to result.userId, usr-*, user-*, sys-*, demo placeholders
+      // Successful exchange
       const verifiedLoginId = result.rawAccountDetails?.derivAccountId || result.connectionRecord?.derivAccountId;
       
       if (!verifiedLoginId || !isValidDerivAccountId(verifiedLoginId)) {
@@ -1199,18 +1216,7 @@ export async function createApp() {
         if (req.headers.accept?.includes('application/json') || req.query.json === 'true') {
           return res.status(400).json(createErrorResponse(
             errorReason,
-            'ACCOUNT_DISCOVERY_FAILED',
-            {
-              rawPayload: {
-                accountDetails: result.rawAccountDetails || null,
-                connectionRecord: result.connectionRecord || null,
-              },
-              recoveryInstructions: [
-                'Verify your Deriv account has granted all required scopes: trade, admin, and payments.',
-                'Ensure you have at least one active Deriv real or demo trading account (e.g. CR*, VRTC*, MTR*).',
-                'Clear any stale browser authentication cookies and re-authenticate via the "Connect Deriv" portal.',
-              ],
-            }
+            'ACCOUNT_DISCOVERY_FAILED'
           ));
         }
 
@@ -1219,6 +1225,7 @@ export async function createApp() {
   <head>
     <meta charset="utf-8">
     <title>Account Discovery Notice</title>
+    <meta http-equiv="refresh" content="3;url=/">
   </head>
   <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0b111e; color: #f1f5f9;">
     <div style="text-align: center; max-width: 440px; padding: 32px 24px; background: #131d31; border: 1px solid #1e293b; border-radius: 12px;">
@@ -1241,10 +1248,8 @@ export async function createApp() {
       const csrfToken = crypto.randomBytes(32).toString('hex');
       const rawToken = result.serverOnly?.accessToken;
       const encryptedDerivToken = rawToken ? encryptSensitiveData(rawToken) : undefined;
-      const rawSeed = String(result.userId ?? accountId);
-      const appUserId = 'usr-' + crypto.createHash('sha256').update(rawSeed).digest('hex').substring(0, 16);
+      const appUserId = result.userId || ('usr-' + crypto.createHash('sha256').update(String(realEmail || accountId)).digest('hex').substring(0, 16));
 
-      // Invariants: accountId strictly matches discovered loginid; accountId never equals appUserId
       const sessionPayload: SessionPayload = {
         userId: appUserId,
         email: realEmail || `${appUserId}@deriv.user`,
@@ -1257,7 +1262,7 @@ export async function createApp() {
         isElevated: false,
         elevatedUntil: null,
         csrfToken,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 Days
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         encryptedDerivToken,
       };
 
@@ -1269,7 +1274,6 @@ export async function createApp() {
         derivTokenEncCookie = `deriv_token_enc=${encodeURIComponent(encryptedDerivToken)}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=86400`;
       }
 
-      // Best-effort upsert in users table
       try {
         await directPrisma.user.upsert({
           where: { id: appUserId },
@@ -1304,8 +1308,8 @@ export async function createApp() {
       }
       res.setHeader('Set-Cookie', cookieList);
 
-      console.log('[DERIV_OAUTH_SESSION_PERSISTED]', { loginid, accountId, accountType, currency, scopes });
-      logSecurityEvent(req, 'DERIV_OAUTH_SUCCESS', 'INFO', { loginid, accountId, accountType, currency });
+      console.log('[DERIV_OAUTH_SESSION_PERSISTED]', { appUserId, loginid, accountId, accountType, currency, scopes });
+      logSecurityEvent(req, 'DERIV_OAUTH_SUCCESS', 'INFO', { appUserId, loginid, accountId, accountType, currency });
 
       if (req.headers.accept?.includes('application/json') || req.query.json === 'true') {
         return res.json(createSuccessResponse({
@@ -1333,21 +1337,20 @@ export async function createApp() {
       const safeDestination = (isSafePath(rawDest) && rawDest !== '/login' && rawDest !== '/auth')
         ? rawDest
         : '/';
-      console.log('[DERIV_OAUTH_CALLBACK_COMPLETED]', { safeDestination, accountId });
 
-      // Return authoritative postMessage HTML page to inform parent iframe/opener window and auto-close popup
       return res.send(`<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
     <title>Connecting to AppeX Quant...</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="3;url=${safeDestination}">
   </head>
   <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0b111e; color: #f1f5f9;">
     <div style="text-align: center; max-width: 440px; padding: 32px 24px; background: #131d31; border: 1px solid #1e293b; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
       <div style="width: 44px; height: 44px; margin: 0 auto 16px; border: 3px solid #3b82f6; border-top-color: transparent; border-radius: 50%; animation: apx-spin 0.8s linear infinite;"></div>
       <h2 style="margin: 0 0 8px; font-size: 18px; font-weight: 600;">Account Connected Successfully</h2>
-      <p style="margin: 0 0 16px; color: #94a3b8; font-size: 13px;">Linking ${accountId} (${accountType.toUpperCase()}) to your session...</p>
+      <p style="margin: 0 0 16px; color: #94a3b8; font-size: 13px;">Linking ${escapeHtml(accountId)} (${escapeHtml(accountType.toUpperCase())}) to your session...</p>
       <a href="${safeDestination}" style="display: inline-block; padding: 9px 20px; background: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 13px; font-weight: 500;">Return to Dashboard</a>
     </div>
     <style>@keyframes apx-spin { to { transform: rotate(360deg); } }</style>
@@ -1396,11 +1399,12 @@ export async function createApp() {
   <head>
     <meta charset="utf-8">
     <title>Authentication Error</title>
+    <meta http-equiv="refresh" content="3;url=/">
   </head>
   <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0b111e; color: #f1f5f9;">
     <div style="text-align: center; max-width: 440px; padding: 32px 24px; background: #131d31; border: 1px solid #1e293b; border-radius: 12px;">
       <h2 style="margin: 0 0 8px; font-size: 18px; color: #f87171;">Authentication Server Error</h2>
-      <p style="margin: 0 0 20px; color: #94a3b8; font-size: 13px;">${errMsg}</p>
+      <p style="margin: 0 0 20px; color: #94a3b8; font-size: 13px;">${escapeHtml(errMsg)}</p>
       <button onclick="if(window.opener){window.close();}else{window.location.href='/'}" style="padding: 9px 18px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer;">Close & Return</button>
     </div>
   </body>
@@ -1408,8 +1412,9 @@ export async function createApp() {
     }
   });
 
-  // Get current user's safe Deriv connection metadata (No secret tokens returned to normal users)
+  // Get current user's safe Deriv connection metadata
   app.get(['/api/auth/status', '/api/auth/deriv/status'], sessionRateLimiterMiddleware, async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
     try {
       const userId = req.sessionUser?.derivAccountId || req.sessionUser?.userId;
 

@@ -1,0 +1,2522 @@
+
+Types:
+Sources:
+cancel
+2
+info
+630
+07:56:28.915
+System
+Build
+ Render Start 
+07:56:32.031
+Backend
+Log
+ Server restarting... 
+07:56:32.031
+Backend
+Log
+ Server stopped. 
+07:56:32.031
+Backend
+Log
+ Server started on port 3000. 
+07:56:32.031
+Backend
+Log
+ Pre-warming 1 paths...
+  
+  > appexquant-markets-global@0.1.0 dev
+  > tsx server.ts --port 3000 --host 0.0.0.0
+   
+07:56:32.031
+Backend
+Log
+ Pre-warming completed. 
+07:56:32.031
+Backend
+Log
+ 2026-10-24T04:56:22.275Z - Initializing direct PostgreSQL database system (singleton)... 
+07:56:32.031
+Backend
+Log
+ 2026-10-24T04:56:22.422Z - Direct PostgreSQL database connection is unavailable. Continuing without DB persistence. 
+07:56:32.031
+Backend
+Log
+ 2026-10-24T04:56:22.427Z - Audit Event [LOGIN] { eventId: 'APX-YSEUBZ', userId: 'SYSTEM', accountId: undefined }
+  WebSocket server error: Port 24678 is already in use
+  [STREAM_CONNECTING] { type: 'public', attempt: 0 }
+  [WARN] 2026-10-24T04:56:23.268Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+  [STREAM_OPEN] { type: 'public' }
+  [WARN] 2026-10-24T04:56:24.271Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+  [WARN] 2026-10-24T04:56:25.272Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+  [WARN] 2026-10-24T04:56:26.275Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+  [WARN] 2026-10-24T04:56:27.276Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+  [WARN] 2026-10-24T04:56:28.277Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+  [WARN] 2026-10-24T04:56:29.279Z - [Server] Port 3000 is busy, retrying in 1000ms...  
+07:56:33.040
+Backend
+Log
+ CONNECTED 
+07:56:33.040
+Backend
+Log
+ [WARN] 2026-10-24T04:56:29.279Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:33.040
+Backend
+Log
+ [WARN] 2026-10-24T04:56:30.281Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:33.040
+Backend
+Log
+ [WARN] 2026-10-24T04:56:31.283Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:33.040
+Backend
+Log
+ [WARN] 2026-10-24T04:56:32.285Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:33.663
+Backend
+Log
+ [WARN] 2026-10-24T04:56:33.286Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:34.459
+Backend
+Log
+ [WARN] 2026-10-24T04:56:34.287Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:35.649
+Backend
+Log
+ [WARN] 2026-10-24T04:56:35.287Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:36.449
+Backend
+Log
+ [WARN] 2026-10-24T04:56:36.289Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:37.465
+Backend
+Log
+ [WARN] 2026-10-24T04:56:37.290Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:38.464
+Backend
+Log
+ [WARN] 2026-10-24T04:56:38.291Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:39.456
+Backend
+Log
+ [WARN] 2026-10-24T04:56:39.292Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:40.455
+Backend
+Log
+ [WARN] 2026-10-24T04:56:40.293Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:41.509
+Backend
+Log
+ [WARN] 2026-10-24T04:56:41.293Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:42.458
+Backend
+Log
+ [WARN] 2026-10-24T04:56:42.295Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:43.456
+Backend
+Log
+ [WARN] 2026-10-24T04:56:43.298Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:44.396
+Backend
+Log
+ [WARN] 2026-10-24T04:56:44.299Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:45.495
+Backend
+Log
+ [WARN] 2026-10-24T04:56:45.300Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:46.587
+Backend
+Log
+ [WARN] 2026-10-24T04:56:46.302Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:47.469
+Backend
+Log
+ [WARN] 2026-10-24T04:56:47.303Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:48.811
+Backend
+Log
+ [WARN] 2026-10-24T04:56:48.303Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:49.466
+Backend
+Log
+ [WARN] 2026-10-24T04:56:49.305Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:50.582
+Backend
+Log
+ [WARN] 2026-10-24T04:56:50.307Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:51.471
+Backend
+Log
+ [WARN] 2026-10-24T04:56:51.308Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:52.474
+Backend
+Log
+ [WARN] 2026-10-24T04:56:52.308Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:54.242
+Backend
+Log
+ [WARN] 2026-10-24T04:56:53.309Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:54.590
+Backend
+Log
+ [WARN] 2026-10-24T04:56:54.311Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:55.599
+Backend
+Log
+ [WARN] 2026-10-24T04:56:55.313Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:56.468
+Backend
+Log
+ [WARN] 2026-10-24T04:56:56.314Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:57.480
+Backend
+Log
+ [WARN] 2026-10-24T04:56:57.314Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:58.812
+Backend
+Log
+ [WARN] 2026-10-24T04:56:58.315Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:56:59.398
+Backend
+Log
+ [WARN] 2026-10-24T04:56:59.316Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:00.475
+Backend
+Log
+ [WARN] 2026-10-24T04:57:00.317Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:01.472
+Backend
+Log
+ [WARN] 2026-10-24T04:57:01.318Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:02.474
+Backend
+Log
+ [WARN] 2026-10-24T04:57:02.320Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:03.475
+Backend
+Log
+ [WARN] 2026-10-24T04:57:03.321Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:04.141
+System
+Build
+ Render End 
+07:57:04.468
+App
+Debug
+ [vite] connecting... 
+07:57:04.471
+App
+Log
+ [DerivWS-Client] Connecting to backend gateway stream: wss://ais-dev-qpjiklxeyqhkvi5epx2cfg-124419270339.europe-west2.run.app/api/deriv/stream 
+07:57:05.417
+Backend
+Log
+ [WARN] 2026-10-24T04:57:04.322Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:05.417
+App
+Log
+ [DerivWS-Client] Connected to backend gateway stream 
+07:57:05.420
+App
+Log
+ [DerivWS-Client] Gateway connection recovered. Restoring active market subscriptions... 
+07:57:05.420
+App
+Log
+ [MarketDataContext] Successfully initialized 88 normalized symbols from Deriv. 
+07:57:05.869
+App
+Log
+ [MarketDataContext] Successfully initialized 88 normalized symbols from Deriv. 
+07:57:05.871
+Backend
+Log
+ [WARN] 2026-10-24T04:57:05.323Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:06.521
+Backend
+Log
+ [WARN] 2026-10-24T04:57:06.324Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:07.480
+Backend
+Log
+ [WARN] 2026-10-24T04:57:07.325Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:08.518
+Backend
+Log
+ [WARN] 2026-10-24T04:57:08.326Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:09.502
+Backend
+Log
+ [WARN] 2026-10-24T04:57:09.328Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:10.520
+Backend
+Log
+ [WARN] 2026-10-24T04:57:10.329Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:11.666
+Backend
+Log
+ [WARN] 2026-10-24T04:57:11.330Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:12.487
+Backend
+Log
+ [WARN] 2026-10-24T04:57:12.331Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:13.684
+Backend
+Log
+ [WARN] 2026-10-24T04:57:13.332Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:14.490
+Backend
+Log
+ [WARN] 2026-10-24T04:57:14.333Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:15.490
+Backend
+Log
+ [WARN] 2026-10-24T04:57:15.335Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:16.540
+Backend
+Log
+ [WARN] 2026-10-24T04:57:16.338Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:17.500
+Backend
+Log
+ [WARN] 2026-10-24T04:57:17.338Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:18.651
+Backend
+Log
+ [WARN] 2026-10-24T04:57:18.340Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:19.554
+Backend
+Log
+ [WARN] 2026-10-24T04:57:19.341Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:20.524
+Backend
+Log
+ [WARN] 2026-10-24T04:57:20.343Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:21.509
+Backend
+Log
+ [WARN] 2026-10-24T04:57:21.345Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:22.533
+Backend
+Log
+ [WARN] 2026-10-24T04:57:22.346Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:23.513
+Backend
+Log
+ [WARN] 2026-10-24T04:57:23.348Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:24.515
+Backend
+Log
+ [WARN] 2026-10-24T04:57:24.350Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:25.889
+Backend
+Log
+ [WARN] 2026-10-24T04:57:25.351Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:26.519
+Backend
+Log
+ [WARN] 2026-10-24T04:57:26.352Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:27.521
+Backend
+Log
+ [WARN] 2026-10-24T04:57:27.352Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:28.519
+Backend
+Log
+ [WARN] 2026-10-24T04:57:28.354Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:29.520
+Backend
+Log
+ [WARN] 2026-10-24T04:57:29.356Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:30.523
+Backend
+Log
+ [WARN] 2026-10-24T04:57:30.357Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:31.525
+Backend
+Log
+ [WARN] 2026-10-24T04:57:31.358Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:32.525
+Backend
+Log
+ [WARN] 2026-10-24T04:57:32.358Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:33.512
+Backend
+Log
+ [WARN] 2026-10-24T04:57:33.360Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:34.513
+Backend
+Log
+ [WARN] 2026-10-24T04:57:34.360Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:35.516
+Backend
+Log
+ [WARN] 2026-10-24T04:57:35.361Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:36.515
+Backend
+Log
+ [WARN] 2026-10-24T04:57:36.362Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:37.642
+Backend
+Log
+ [WARN] 2026-10-24T04:57:37.363Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:38.518
+Backend
+Log
+ [WARN] 2026-10-24T04:57:38.365Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:39.533
+Backend
+Log
+ [WARN] 2026-10-24T04:57:39.366Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:40.530
+Backend
+Log
+ [WARN] 2026-10-24T04:57:40.367Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:41.522
+Backend
+Log
+ [WARN] 2026-10-24T04:57:41.368Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:42.641
+Backend
+Log
+ [WARN] 2026-10-24T04:57:42.370Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:43.537
+Backend
+Log
+ [WARN] 2026-10-24T04:57:43.371Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:44.648
+Backend
+Log
+ [WARN] 2026-10-24T04:57:44.372Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:45.650
+Backend
+Log
+ [WARN] 2026-10-24T04:57:45.375Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:46.653
+Backend
+Log
+ [WARN] 2026-10-24T04:57:46.377Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:47.543
+Backend
+Log
+ [WARN] 2026-10-24T04:57:47.378Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:49.296
+Backend
+Log
+ [WARN] 2026-10-24T04:57:48.380Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:49.542
+Backend
+Log
+ [WARN] 2026-10-24T04:57:49.381Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:50.874
+Backend
+Log
+ [WARN] 2026-10-24T04:57:50.383Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:51.552
+Backend
+Log
+ [WARN] 2026-10-24T04:57:51.385Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:52.547
+Backend
+Log
+ [WARN] 2026-10-24T04:57:52.386Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:53.540
+Backend
+Log
+ [WARN] 2026-10-24T04:57:53.387Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:54.556
+Backend
+Log
+ [WARN] 2026-10-24T04:57:54.388Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:55.556
+Backend
+Log
+ [WARN] 2026-10-24T04:57:55.390Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:56.544
+Backend
+Log
+ [WARN] 2026-10-24T04:57:56.391Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:57.667
+Backend
+Log
+ [WARN] 2026-10-24T04:57:57.392Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:58.546
+Backend
+Log
+ [WARN] 2026-10-24T04:57:58.394Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:57:59.549
+Backend
+Log
+ [WARN] 2026-10-24T04:57:59.396Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:00.675
+Backend
+Log
+ [WARN] 2026-10-24T04:58:00.397Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:01.551
+Backend
+Log
+ [WARN] 2026-10-24T04:58:01.398Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:01.928
+App
+Error
+ [vite] failed to connect to websocket (Error: WebSocket closed without opened.).  
+07:58:01.999
+App
+Unhandled Rejection
+ Error: WebSocket closed without opened.
+    at WebSocket.<anonymous> (https://ais-dev-qpjiklxeyqhkvi5epx2cfg-124419270339.europe-west2.run.app/@vite/client:454:22) 
+07:58:02.554
+Backend
+Log
+ [WARN] 2026-10-24T04:58:02.399Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:03.899
+Backend
+Log
+ [WARN] 2026-10-24T04:58:03.400Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:04.555
+Backend
+Log
+ [WARN] 2026-10-24T04:58:04.401Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:05.554
+Backend
+Log
+ [WARN] 2026-10-24T04:58:05.401Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:06.566
+Backend
+Log
+ [WARN] 2026-10-24T04:58:06.403Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:07.678
+Backend
+Log
+ [WARN] 2026-10-24T04:58:07.404Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:08.568
+Backend
+Log
+ [WARN] 2026-10-24T04:58:08.404Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:09.576
+Backend
+Log
+ [WARN] 2026-10-24T04:58:09.406Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:10.569
+Backend
+Log
+ [WARN] 2026-10-24T04:58:10.407Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:11.575
+Backend
+Log
+ [WARN] 2026-10-24T04:58:11.408Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:12.571
+Backend
+Log
+ [WARN] 2026-10-24T04:58:12.408Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:13.573
+Backend
+Log
+ [WARN] 2026-10-24T04:58:13.410Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:14.572
+Backend
+Log
+ [WARN] 2026-10-24T04:58:14.410Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:15.575
+Backend
+Log
+ [WARN] 2026-10-24T04:58:15.412Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:16.588
+Backend
+Log
+ [WARN] 2026-10-24T04:58:16.412Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:17.576
+Backend
+Log
+ [WARN] 2026-10-24T04:58:17.413Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:18.581
+Backend
+Log
+ [WARN] 2026-10-24T04:58:18.414Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:19.580
+Backend
+Log
+ [WARN] 2026-10-24T04:58:19.416Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:20.576
+Backend
+Log
+ [WARN] 2026-10-24T04:58:20.417Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:21.579
+Backend
+Log
+ [WARN] 2026-10-24T04:58:21.418Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:22.580
+Backend
+Log
+ [WARN] 2026-10-24T04:58:22.419Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:23.581
+Backend
+Log
+ [WARN] 2026-10-24T04:58:23.420Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:24.136
+Backend
+Log
+ [STREAM_CLOSED] { type: 'public' } 
+07:58:24.576
+Backend
+Log
+ [WARN] 2026-10-24T04:58:24.421Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:25.503
+Backend
+Log
+ [STREAM_CONNECTING] { type: 'public', attempt: 1 } 
+07:58:25.503
+Backend
+Log
+ [WARN] 2026-10-24T04:58:25.422Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:26.043
+Backend
+Log
+ [STREAM_OPEN] { type: 'public' } 
+07:58:26.694
+Backend
+Log
+ [WARN] 2026-10-24T04:58:26.425Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:27.588
+Backend
+Log
+ [WARN] 2026-10-24T04:58:27.426Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:28.907
+Backend
+Log
+ [WARN] 2026-10-24T04:58:28.428Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:29.585
+Backend
+Log
+ [WARN] 2026-10-24T04:58:29.429Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:30.593
+Backend
+Log
+ [WARN] 2026-10-24T04:58:30.430Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:31.584
+Backend
+Log
+ [WARN] 2026-10-24T04:58:31.431Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:32.586
+Backend
+Log
+ [WARN] 2026-10-24T04:58:32.432Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:33.585
+Backend
+Log
+ [WARN] 2026-10-24T04:58:33.433Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:34.597
+Backend
+Log
+ [WARN] 2026-10-24T04:58:34.434Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:35.588
+Backend
+Log
+ [WARN] 2026-10-24T04:58:35.435Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:36.591
+Backend
+Log
+ [WARN] 2026-10-24T04:58:36.437Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:37.607
+Backend
+Log
+ [WARN] 2026-10-24T04:58:37.439Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:38.718
+Backend
+Log
+ [WARN] 2026-10-24T04:58:38.440Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:39.596
+Backend
+Log
+ [WARN] 2026-10-24T04:58:39.441Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:40.603
+Backend
+Log
+ [WARN] 2026-10-24T04:58:40.443Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:41.595
+Backend
+Log
+ [WARN] 2026-10-24T04:58:41.444Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:42.608
+Backend
+Log
+ [WARN] 2026-10-24T04:58:42.445Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:43.955
+Backend
+Log
+ [WARN] 2026-10-24T04:58:43.447Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:44.617
+Backend
+Log
+ [WARN] 2026-10-24T04:58:44.448Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:45.614
+Backend
+Log
+ [WARN] 2026-10-24T04:58:45.449Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:46.614
+Backend
+Log
+ [WARN] 2026-10-24T04:58:46.450Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:47.719
+Backend
+Log
+ [WARN] 2026-10-24T04:58:47.450Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:48.614
+Backend
+Log
+ [WARN] 2026-10-24T04:58:48.451Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:49.619
+Backend
+Log
+ [WARN] 2026-10-24T04:58:49.452Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:50.615
+Backend
+Log
+ [WARN] 2026-10-24T04:58:50.453Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:51.608
+Backend
+Log
+ [WARN] 2026-10-24T04:58:51.454Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:52.610
+Backend
+Log
+ [WARN] 2026-10-24T04:58:52.456Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:53.621
+Backend
+Log
+ [WARN] 2026-10-24T04:58:53.457Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:54.618
+Backend
+Log
+ [WARN] 2026-10-24T04:58:54.458Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:55.618
+Backend
+Log
+ [WARN] 2026-10-24T04:58:55.460Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:56.622
+Backend
+Log
+ [WARN] 2026-10-24T04:58:56.460Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:57.616
+Backend
+Log
+ [WARN] 2026-10-24T04:58:57.463Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:58.628
+Backend
+Log
+ [WARN] 2026-10-24T04:58:58.464Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:58:59.617
+Backend
+Log
+ [WARN] 2026-10-24T04:58:59.465Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:00.619
+Backend
+Log
+ [WARN] 2026-10-24T04:59:00.466Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:01.620
+Backend
+Log
+ [WARN] 2026-10-24T04:59:01.467Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:02.620
+Backend
+Log
+ [WARN] 2026-10-24T04:59:02.469Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:03.623
+Backend
+Log
+ [WARN] 2026-10-24T04:59:03.470Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:04.624
+Backend
+Log
+ [WARN] 2026-10-24T04:59:04.471Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:05.625
+Backend
+Log
+ [WARN] 2026-10-24T04:59:05.473Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:06.628
+Backend
+Log
+ [WARN] 2026-10-24T04:59:06.474Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:07.937
+Backend
+Log
+ [WARN] 2026-10-24T04:59:07.475Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:08.636
+Backend
+Log
+ [WARN] 2026-10-24T04:59:08.477Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:09.640
+Backend
+Log
+ [WARN] 2026-10-24T04:59:09.477Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:10.632
+Backend
+Log
+ [WARN] 2026-10-24T04:59:10.479Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:11.633
+Backend
+Log
+ [WARN] 2026-10-24T04:59:11.480Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:12.634
+Backend
+Log
+ [WARN] 2026-10-24T04:59:12.481Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:13.633
+Backend
+Log
+ [WARN] 2026-10-24T04:59:13.482Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:14.640
+Backend
+Log
+ [WARN] 2026-10-24T04:59:14.482Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:15.637
+Backend
+Log
+ [WARN] 2026-10-24T04:59:15.485Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:16.640
+Backend
+Log
+ [WARN] 2026-10-24T04:59:16.486Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:17.646
+Backend
+Log
+ [WARN] 2026-10-24T04:59:17.488Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:18.651
+Backend
+Log
+ [WARN] 2026-10-24T04:59:18.489Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:19.648
+Backend
+Log
+ [WARN] 2026-10-24T04:59:19.491Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:20.644
+Backend
+Log
+ [WARN] 2026-10-24T04:59:20.492Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:21.659
+Backend
+Log
+ [WARN] 2026-10-24T04:59:21.493Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:22.659
+Backend
+Log
+ [WARN] 2026-10-24T04:59:22.494Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:23.659
+Backend
+Log
+ [WARN] 2026-10-24T04:59:23.496Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:24.662
+Backend
+Log
+ [WARN] 2026-10-24T04:59:24.498Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:25.662
+Backend
+Log
+ [WARN] 2026-10-24T04:59:25.499Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:26.772
+Backend
+Log
+ [WARN] 2026-10-24T04:59:26.500Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:27.775
+Backend
+Log
+ [WARN] 2026-10-24T04:59:27.500Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:28.653
+Backend
+Log
+ [WARN] 2026-10-24T04:59:28.502Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:29.778
+Backend
+Log
+ [WARN] 2026-10-24T04:59:29.502Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:30.764
+Backend
+Log
+ [WARN] 2026-10-24T04:59:30.504Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:31.661
+Backend
+Log
+ [WARN] 2026-10-24T04:59:31.505Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:32.781
+Backend
+Log
+ [WARN] 2026-10-24T04:59:32.506Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:33.957
+Backend
+Log
+ [WARN] 2026-10-24T04:59:33.508Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:34.667
+Backend
+Log
+ [WARN] 2026-10-24T04:59:34.509Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:35.794
+Backend
+Log
+ [WARN] 2026-10-24T04:59:35.510Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:36.786
+Backend
+Log
+ [WARN] 2026-10-24T04:59:36.511Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:38.009
+Backend
+Log
+ [WARN] 2026-10-24T04:59:37.511Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:38.672
+Backend
+Log
+ [WARN] 2026-10-24T04:59:38.513Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:39.680
+Backend
+Log
+ [WARN] 2026-10-24T04:59:39.515Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:40.678
+Backend
+Log
+ [WARN] 2026-10-24T04:59:40.517Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:41.673
+Backend
+Log
+ [WARN] 2026-10-24T04:59:41.517Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:43.441
+Backend
+Log
+ [WARN] 2026-10-24T04:59:42.519Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:43.683
+Backend
+Log
+ [WARN] 2026-10-24T04:59:43.520Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:44.792
+Backend
+Log
+ [WARN] 2026-10-24T04:59:44.520Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:45.683
+Backend
+Log
+ [WARN] 2026-10-24T04:59:45.522Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:46.675
+Backend
+Log
+ [WARN] 2026-10-24T04:59:46.523Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:47.688
+Backend
+Log
+ [WARN] 2026-10-24T04:59:47.525Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:48.691
+Backend
+Log
+ [WARN] 2026-10-24T04:59:48.526Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:49.800
+Backend
+Log
+ [WARN] 2026-10-24T04:59:49.527Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:50.691
+Backend
+Log
+ [WARN] 2026-10-24T04:59:50.528Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:51.684
+Backend
+Log
+ [WARN] 2026-10-24T04:59:51.530Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:52.693
+Backend
+Log
+ [WARN] 2026-10-24T04:59:52.531Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:53.692
+Backend
+Log
+ [WARN] 2026-10-24T04:59:53.532Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:54.696
+Backend
+Log
+ [WARN] 2026-10-24T04:59:54.535Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:55.723
+Backend
+Log
+ [WARN] 2026-10-24T04:59:55.536Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:56.690
+Backend
+Log
+ [WARN] 2026-10-24T04:59:56.538Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:58.751
+Backend
+Log
+ [WARN] 2026-10-24T04:59:57.539Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:58.983
+Backend
+Log
+ [WARN] 2026-10-24T04:59:58.540Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+07:59:59.693
+Backend
+Log
+ [WARN] 2026-10-24T04:59:59.542Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:00.697
+Backend
+Log
+ [WARN] 2026-10-24T05:00:00.544Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:01.696
+Backend
+Log
+ [WARN] 2026-10-24T05:00:01.545Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:02.697
+Backend
+Log
+ [WARN] 2026-10-24T05:00:02.546Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:03.707
+Backend
+Log
+ [WARN] 2026-10-24T05:00:03.547Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:04.701
+Backend
+Log
+ [WARN] 2026-10-24T05:00:04.548Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:05.702
+Backend
+Log
+ [WARN] 2026-10-24T05:00:05.550Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:06.731
+Backend
+Log
+ [WARN] 2026-10-24T05:00:06.551Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:07.703
+Backend
+Log
+ [WARN] 2026-10-24T05:00:07.552Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:08.711
+Backend
+Log
+ [WARN] 2026-10-24T05:00:08.553Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:09.715
+Backend
+Log
+ [WARN] 2026-10-24T05:00:09.555Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:10.828
+Backend
+Log
+ [WARN] 2026-10-24T05:00:10.556Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:11.716
+Backend
+Log
+ [WARN] 2026-10-24T05:00:11.556Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:12.728
+Backend
+Log
+ [WARN] 2026-10-24T05:00:12.558Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:13.828
+Backend
+Log
+ [WARN] 2026-10-24T05:00:13.559Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:14.725
+Backend
+Log
+ [WARN] 2026-10-24T05:00:14.561Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:16.033
+Backend
+Log
+ [WARN] 2026-10-24T05:00:15.561Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:16.721
+Backend
+Log
+ [WARN] 2026-10-24T05:00:16.564Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:17.722
+Backend
+Log
+ [WARN] 2026-10-24T05:00:17.567Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:18.732
+Backend
+Log
+ [WARN] 2026-10-24T05:00:18.570Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:19.855
+Backend
+Log
+ [WARN] 2026-10-24T05:00:19.571Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:20.822
+Backend
+Log
+ [WARN] 2026-10-24T05:00:20.573Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:21.742
+Backend
+Log
+ [WARN] 2026-10-24T05:00:21.573Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:22.734
+Backend
+Log
+ [WARN] 2026-10-24T05:00:22.576Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:23.742
+Backend
+Log
+ [WARN] 2026-10-24T05:00:23.577Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:24.747
+Backend
+Log
+ [WARN] 2026-10-24T05:00:24.579Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:25.736
+Backend
+Log
+ [WARN] 2026-10-24T05:00:25.580Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:26.039
+Backend
+Log
+ [STREAM_CLOSED] { type: 'public' } 
+08:00:26.737
+Backend
+Log
+ [WARN] 2026-10-24T05:00:26.581Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:27.470
+Backend
+Log
+ [STREAM_CONNECTING] { type: 'public', attempt: 1 } 
+08:00:27.855
+Backend
+Log
+ [WARN] 2026-10-24T05:00:27.582Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:27.936
+Backend
+Log
+ [STREAM_OPEN] { type: 'public' } 
+08:00:28.861
+Backend
+Log
+ [WARN] 2026-10-24T05:00:28.583Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:29.751
+Backend
+Log
+ [WARN] 2026-10-24T05:00:29.583Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:30.749
+Backend
+Log
+ [WARN] 2026-10-24T05:00:30.585Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:31.741
+Backend
+Log
+ [WARN] 2026-10-24T05:00:31.586Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:32.744
+Backend
+Log
+ [WARN] 2026-10-24T05:00:32.588Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:33.853
+Backend
+Log
+ [WARN] 2026-10-24T05:00:33.589Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:34.750
+Backend
+Log
+ [WARN] 2026-10-24T05:00:34.590Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:35.750
+Backend
+Log
+ [WARN] 2026-10-24T05:00:35.592Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:36.751
+Backend
+Log
+ [WARN] 2026-10-24T05:00:36.594Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:37.752
+Backend
+Log
+ [WARN] 2026-10-24T05:00:37.596Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:38.764
+Backend
+Log
+ [WARN] 2026-10-24T05:00:38.597Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:39.754
+Backend
+Log
+ [WARN] 2026-10-24T05:00:39.598Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:40.755
+Backend
+Log
+ [WARN] 2026-10-24T05:00:40.599Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:41.756
+Backend
+Log
+ [WARN] 2026-10-24T05:00:41.600Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:42.757
+Backend
+Log
+ [WARN] 2026-10-24T05:00:42.601Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:43.758
+Backend
+Log
+ [WARN] 2026-10-24T05:00:43.603Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:44.770
+Backend
+Log
+ [WARN] 2026-10-24T05:00:44.604Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:45.773
+Backend
+Log
+ [WARN] 2026-10-24T05:00:45.605Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:46.879
+Backend
+Log
+ [WARN] 2026-10-24T05:00:46.607Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:47.763
+Backend
+Log
+ [WARN] 2026-10-24T05:00:47.607Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:48.881
+Backend
+Log
+ [WARN] 2026-10-24T05:00:48.609Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:49.773
+Backend
+Log
+ [WARN] 2026-10-24T05:00:49.610Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:50.885
+Backend
+Log
+ [WARN] 2026-10-24T05:00:50.610Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:51.889
+Backend
+Log
+ [WARN] 2026-10-24T05:00:51.612Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:52.777
+Backend
+Log
+ [WARN] 2026-10-24T05:00:52.613Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:53.782
+Backend
+Log
+ [WARN] 2026-10-24T05:00:53.614Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:54.784
+Backend
+Log
+ [WARN] 2026-10-24T05:00:54.617Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:55.786
+Backend
+Log
+ [WARN] 2026-10-24T05:00:55.618Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:56.791
+Backend
+Log
+ [WARN] 2026-10-24T05:00:56.619Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:57.778
+Backend
+Log
+ [WARN] 2026-10-24T05:00:57.622Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:58.780
+Backend
+Log
+ [WARN] 2026-10-24T05:00:58.623Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:00:59.791
+Backend
+Log
+ [WARN] 2026-10-24T05:00:59.624Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:00.784
+Backend
+Log
+ [WARN] 2026-10-24T05:01:00.625Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:01.793
+Backend
+Log
+ [WARN] 2026-10-24T05:01:01.625Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:02.793
+Backend
+Log
+ [WARN] 2026-10-24T05:01:02.627Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:04.122
+Backend
+Log
+ [WARN] 2026-10-24T05:01:03.628Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:04.794
+Backend
+Log
+ [WARN] 2026-10-24T05:01:04.631Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:05.801
+Backend
+Log
+ [WARN] 2026-10-24T05:01:05.632Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:06.914
+Backend
+Log
+ [WARN] 2026-10-24T05:01:06.634Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:07.795
+Backend
+Log
+ [WARN] 2026-10-24T05:01:07.635Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:08.805
+Backend
+Log
+ [WARN] 2026-10-24T05:01:08.635Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:09.803
+Backend
+Log
+ [WARN] 2026-10-24T05:01:09.637Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:10.808
+Backend
+Log
+ [WARN] 2026-10-24T05:01:10.639Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:11.809
+Backend
+Log
+ [WARN] 2026-10-24T05:01:11.640Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:13.136
+Backend
+Log
+ [WARN] 2026-10-24T05:01:12.640Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:13.801
+Backend
+Log
+ [WARN] 2026-10-24T05:01:13.642Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:14.810
+Backend
+Log
+ [WARN] 2026-10-24T05:01:14.644Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:15.916
+Backend
+Log
+ [WARN] 2026-10-24T05:01:15.645Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:16.803
+Backend
+Log
+ [WARN] 2026-10-24T05:01:16.646Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:17.922
+Backend
+Log
+ [WARN] 2026-10-24T05:01:17.647Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:18.923
+Backend
+Log
+ [WARN] 2026-10-24T05:01:18.648Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:19.813
+Backend
+Log
+ [WARN] 2026-10-24T05:01:19.649Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:20.816
+Backend
+Log
+ [WARN] 2026-10-24T05:01:20.650Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:21.811
+Backend
+Log
+ [WARN] 2026-10-24T05:01:21.652Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:22.808
+Backend
+Log
+ [WARN] 2026-10-24T05:01:22.653Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:23.818
+Backend
+Log
+ [WARN] 2026-10-24T05:01:23.654Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:24.811
+Backend
+Log
+ [WARN] 2026-10-24T05:01:24.655Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:25.811
+Backend
+Log
+ [WARN] 2026-10-24T05:01:25.657Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:26.812
+Backend
+Log
+ [WARN] 2026-10-24T05:01:26.658Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:27.925
+Backend
+Log
+ [WARN] 2026-10-24T05:01:27.660Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:28.826
+Backend
+Log
+ [WARN] 2026-10-24T05:01:28.660Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:29.816
+Backend
+Log
+ [WARN] 2026-10-24T05:01:29.661Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:30.817
+Backend
+Log
+ [WARN] 2026-10-24T05:01:30.662Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:31.829
+Backend
+Log
+ [WARN] 2026-10-24T05:01:31.663Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:32.819
+Backend
+Log
+ [WARN] 2026-10-24T05:01:32.664Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:33.830
+Backend
+Log
+ [WARN] 2026-10-24T05:01:33.666Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:34.820
+Backend
+Log
+ [WARN] 2026-10-24T05:01:34.666Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:35.823
+Backend
+Log
+ [WARN] 2026-10-24T05:01:35.668Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:36.823
+Backend
+Log
+ [WARN] 2026-10-24T05:01:36.668Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:37.838
+Backend
+Log
+ [WARN] 2026-10-24T05:01:37.671Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:38.837
+Backend
+Log
+ [WARN] 2026-10-24T05:01:38.672Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:39.840
+Backend
+Log
+ [WARN] 2026-10-24T05:01:39.673Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:40.830
+Backend
+Log
+ [WARN] 2026-10-24T05:01:40.675Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:41.841
+Backend
+Log
+ [WARN] 2026-10-24T05:01:41.675Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:42.831
+Backend
+Log
+ [WARN] 2026-10-24T05:01:42.676Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:43.842
+Backend
+Log
+ [WARN] 2026-10-24T05:01:43.677Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:44.835
+Backend
+Log
+ [WARN] 2026-10-24T05:01:44.679Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:45.835
+Backend
+Log
+ [WARN] 2026-10-24T05:01:45.680Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:46.836
+Backend
+Log
+ [WARN] 2026-10-24T05:01:46.682Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:47.839
+Backend
+Log
+ [WARN] 2026-10-24T05:01:47.683Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:48.844
+Backend
+Log
+ [WARN] 2026-10-24T05:01:48.685Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:49.842
+Backend
+Log
+ [WARN] 2026-10-24T05:01:49.686Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:50.841
+Backend
+Log
+ [WARN] 2026-10-24T05:01:50.687Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:51.844
+Backend
+Log
+ [WARN] 2026-10-24T05:01:51.688Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:52.847
+Backend
+Log
+ [WARN] 2026-10-24T05:01:52.690Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:53.853
+Backend
+Log
+ [WARN] 2026-10-24T05:01:53.692Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:54.847
+Backend
+Log
+ [WARN] 2026-10-24T05:01:54.693Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:55.849
+Backend
+Log
+ [WARN] 2026-10-24T05:01:55.694Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:56.849
+Backend
+Log
+ [WARN] 2026-10-24T05:01:56.696Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:57.850
+Backend
+Log
+ [WARN] 2026-10-24T05:01:57.696Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:58.862
+Backend
+Log
+ [WARN] 2026-10-24T05:01:58.699Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:01:59.855
+Backend
+Log
+ [WARN] 2026-10-24T05:01:59.700Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:00.856
+Backend
+Log
+ [WARN] 2026-10-24T05:02:00.701Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:01.982
+Backend
+Log
+ [WARN] 2026-10-24T05:02:01.701Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:02.869
+Backend
+Log
+ [WARN] 2026-10-24T05:02:02.702Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:03.868
+Backend
+Log
+ [WARN] 2026-10-24T05:02:03.702Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:04.866
+Backend
+Log
+ [WARN] 2026-10-24T05:02:04.702Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:05.858
+Backend
+Log
+ [WARN] 2026-10-24T05:02:05.703Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:06.860
+Backend
+Log
+ [WARN] 2026-10-24T05:02:06.703Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:07.865
+Backend
+Log
+ [WARN] 2026-10-24T05:02:07.705Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:08.861
+Backend
+Log
+ [WARN] 2026-10-24T05:02:08.707Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:09.863
+Backend
+Log
+ [WARN] 2026-10-24T05:02:09.709Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:10.866
+Backend
+Log
+ [WARN] 2026-10-24T05:02:10.710Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:11.872
+Backend
+Log
+ [WARN] 2026-10-24T05:02:11.711Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:12.866
+Backend
+Log
+ [WARN] 2026-10-24T05:02:12.712Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:13.879
+Backend
+Log
+ [WARN] 2026-10-24T05:02:13.715Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:14.870
+Backend
+Log
+ [WARN] 2026-10-24T05:02:14.716Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:15.871
+Backend
+Log
+ [WARN] 2026-10-24T05:02:15.717Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:16.874
+Backend
+Log
+ [WARN] 2026-10-24T05:02:16.719Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:17.983
+Backend
+Log
+ [WARN] 2026-10-24T05:02:17.720Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:18.876
+Backend
+Log
+ [WARN] 2026-10-24T05:02:18.721Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:19.877
+Backend
+Log
+ [WARN] 2026-10-24T05:02:19.723Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:20.887
+Backend
+Log
+ [WARN] 2026-10-24T05:02:20.725Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:21.992
+Backend
+Log
+ [WARN] 2026-10-24T05:02:21.726Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:22.881
+Backend
+Log
+ [WARN] 2026-10-24T05:02:22.727Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:23.883
+Backend
+Log
+ [WARN] 2026-10-24T05:02:23.729Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:24.895
+Backend
+Log
+ [WARN] 2026-10-24T05:02:24.730Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:25.899
+Backend
+Log
+ [WARN] 2026-10-24T05:02:25.731Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:26.899
+Backend
+Log
+ [WARN] 2026-10-24T05:02:26.733Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:27.764
+Backend
+Log
+ [STREAM_CLOSED] { type: 'public' } 
+08:02:27.897
+Backend
+Log
+ [WARN] 2026-10-24T05:02:27.733Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:28.900
+Backend
+Log
+ [WARN] 2026-10-24T05:02:28.734Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:29.340
+Backend
+Log
+ [STREAM_CONNECTING] { type: 'public', attempt: 1 } 
+08:02:29.510
+Backend
+Log
+ [STREAM_OPEN] { type: 'public' } 
+08:02:29.899
+Backend
+Log
+ [WARN] 2026-10-24T05:02:29.736Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:30.891
+Backend
+Log
+ [WARN] 2026-10-24T05:02:30.737Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:32.017
+Backend
+Log
+ [WARN] 2026-10-24T05:02:31.737Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:33.222
+Backend
+Log
+ [WARN] 2026-10-24T05:02:32.738Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:34.070
+Backend
+Log
+ [WARN] 2026-10-24T05:02:33.740Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:35.023
+Backend
+Log
+ [WARN] 2026-10-24T05:02:34.741Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:35.908
+Backend
+Log
+ [WARN] 2026-10-24T05:02:35.742Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:37.034
+Backend
+Log
+ [WARN] 2026-10-24T05:02:36.743Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:38.022
+Backend
+Log
+ [WARN] 2026-10-24T05:02:37.746Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:38.914
+Backend
+Log
+ [WARN] 2026-10-24T05:02:38.748Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:40.235
+Backend
+Log
+ [WARN] 2026-10-24T05:02:39.749Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:40.918
+Backend
+Log
+ [WARN] 2026-10-24T05:02:40.750Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:42.029
+Backend
+Log
+ [WARN] 2026-10-24T05:02:41.752Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:43.042
+Backend
+Log
+ [WARN] 2026-10-24T05:02:42.753Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:44.030
+Backend
+Log
+ [WARN] 2026-10-24T05:02:43.755Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:44.920
+Backend
+Log
+ [WARN] 2026-10-24T05:02:44.756Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:45.925
+Backend
+Log
+ [WARN] 2026-10-24T05:02:45.758Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:46.925
+Backend
+Log
+ [WARN] 2026-10-24T05:02:46.758Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:47.915
+Backend
+Log
+ [WARN] 2026-10-24T05:02:47.760Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:48.930
+Backend
+Log
+ [WARN] 2026-10-24T05:02:48.762Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:49.926
+Backend
+Log
+ [WARN] 2026-10-24T05:02:49.765Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:50.924
+Backend
+Log
+ [WARN] 2026-10-24T05:02:50.767Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:51.932
+Backend
+Log
+ [WARN] 2026-10-24T05:02:51.768Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:52.936
+Backend
+Log
+ [WARN] 2026-10-24T05:02:52.769Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:54.045
+Backend
+Log
+ [WARN] 2026-10-24T05:02:53.771Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:54.927
+Backend
+Log
+ [WARN] 2026-10-24T05:02:54.772Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:55.939
+Backend
+Log
+ [WARN] 2026-10-24T05:02:55.773Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:56.938
+Backend
+Log
+ [WARN] 2026-10-24T05:02:56.775Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:58.052
+Backend
+Log
+ [WARN] 2026-10-24T05:02:57.776Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:58.936
+Backend
+Log
+ [WARN] 2026-10-24T05:02:58.777Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:02:59.951
+Backend
+Log
+ [WARN] 2026-10-24T05:02:59.778Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:00.936
+Backend
+Log
+ [WARN] 2026-10-24T05:03:00.779Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:01.944
+Backend
+Log
+ [WARN] 2026-10-24T05:03:01.780Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:02.945
+Backend
+Log
+ [WARN] 2026-10-24T05:03:02.782Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:03.947
+Backend
+Log
+ [WARN] 2026-10-24T05:03:03.783Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:04.952
+Backend
+Log
+ [WARN] 2026-10-24T05:03:04.784Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:06.060
+Backend
+Log
+ [WARN] 2026-10-24T05:03:05.785Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:06.948
+Backend
+Log
+ [WARN] 2026-10-24T05:03:06.787Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:07.955
+Backend
+Log
+ [WARN] 2026-10-24T05:03:07.789Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:09.274
+Backend
+Log
+ [WARN] 2026-10-24T05:03:08.790Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:09.956
+Backend
+Log
+ [WARN] 2026-10-24T05:03:09.791Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:10.958
+Backend
+Log
+ [WARN] 2026-10-24T05:03:10.792Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:12.067
+Backend
+Log
+ [WARN] 2026-10-24T05:03:11.793Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:12.958
+Backend
+Log
+ [WARN] 2026-10-24T05:03:12.795Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:15.044
+Backend
+Log
+ [WARN] 2026-10-24T05:03:13.796Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:15.044
+Backend
+Log
+ [WARN] 2026-10-24T05:03:14.800Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:15.963
+Backend
+Log
+ [WARN] 2026-10-24T05:03:15.800Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:16.964
+Backend
+Log
+ [WARN] 2026-10-24T05:03:16.802Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:17.970
+Backend
+Log
+ [WARN] 2026-10-24T05:03:17.803Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:18.965
+Backend
+Log
+ [WARN] 2026-10-24T05:03:18.804Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:19.970
+Backend
+Log
+ [WARN] 2026-10-24T05:03:19.805Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:20.966
+Backend
+Log
+ [WARN] 2026-10-24T05:03:20.806Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:21.968
+Backend
+Log
+ [WARN] 2026-10-24T05:03:21.807Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:22.974
+Backend
+Log
+ [WARN] 2026-10-24T05:03:22.809Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:24.302
+Backend
+Log
+ [WARN] 2026-10-24T05:03:23.810Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:24.976
+Backend
+Log
+ [WARN] 2026-10-24T05:03:24.812Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:25.975
+Backend
+Log
+ [WARN] 2026-10-24T05:03:25.813Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:27.087
+Backend
+Log
+ [WARN] 2026-10-24T05:03:26.814Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:27.977
+Backend
+Log
+ [WARN] 2026-10-24T05:03:27.815Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:28.988
+Backend
+Log
+ [WARN] 2026-10-24T05:03:28.818Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:30.099
+Backend
+Log
+ [WARN] 2026-10-24T05:03:29.820Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:30.982
+Backend
+Log
+ [WARN] 2026-10-24T05:03:30.820Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:31.977
+Backend
+Log
+ [WARN] 2026-10-24T05:03:31.822Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:33.006
+Backend
+Log
+ [WARN] 2026-10-24T05:03:32.824Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:33.989
+Backend
+Log
+ [WARN] 2026-10-24T05:03:33.825Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:35.099
+Backend
+Log
+ [WARN] 2026-10-24T05:03:34.827Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:35.988
+Backend
+Log
+ [WARN] 2026-10-24T05:03:35.829Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:36.984
+Backend
+Log
+ [WARN] 2026-10-24T05:03:36.830Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:38.103
+Backend
+Log
+ [WARN] 2026-10-24T05:03:37.831Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:38.987
+Backend
+Log
+ [WARN] 2026-10-24T05:03:38.833Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:40.316
+Backend
+Log
+ [WARN] 2026-10-24T05:03:39.834Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:40.989
+Backend
+Log
+ [WARN] 2026-10-24T05:03:40.836Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:41.992
+Backend
+Log
+ [WARN] 2026-10-24T05:03:41.837Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:42.991
+Backend
+Log
+ [WARN] 2026-10-24T05:03:42.837Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:43.993
+Backend
+Log
+ [WARN] 2026-10-24T05:03:43.838Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:44.994
+Backend
+Log
+ [WARN] 2026-10-24T05:03:44.841Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:45.995
+Backend
+Log
+ [WARN] 2026-10-24T05:03:45.842Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:46.996
+Backend
+Log
+ [WARN] 2026-10-24T05:03:46.843Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:48.001
+Backend
+Log
+ [WARN] 2026-10-24T05:03:47.845Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:49.000
+Backend
+Log
+ [WARN] 2026-10-24T05:03:48.846Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:50.002
+Backend
+Log
+ [WARN] 2026-10-24T05:03:49.848Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:51.003
+Backend
+Log
+ [WARN] 2026-10-24T05:03:50.850Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:52.006
+Backend
+Log
+ [WARN] 2026-10-24T05:03:51.852Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:53.007
+Backend
+Log
+ [WARN] 2026-10-24T05:03:52.854Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:54.007
+Backend
+Log
+ [WARN] 2026-10-24T05:03:53.854Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:55.021
+Backend
+Log
+ [WARN] 2026-10-24T05:03:54.856Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:56.014
+Backend
+Log
+ [WARN] 2026-10-24T05:03:55.859Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:57.016
+Backend
+Log
+ [WARN] 2026-10-24T05:03:56.859Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:58.028
+Backend
+Log
+ [WARN] 2026-10-24T05:03:57.861Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:03:59.016
+Backend
+Log
+ [WARN] 2026-10-24T05:03:58.862Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:00.018
+Backend
+Log
+ [WARN] 2026-10-24T05:03:59.863Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:01.019
+Backend
+Log
+ [WARN] 2026-10-24T05:04:00.865Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:02.026
+Backend
+Log
+ [WARN] 2026-10-24T05:04:01.866Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:03.032
+Backend
+Log
+ [WARN] 2026-10-24T05:04:02.867Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:04.034
+Backend
+Log
+ [WARN] 2026-10-24T05:04:03.868Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:05.024
+Backend
+Log
+ [WARN] 2026-10-24T05:04:04.870Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:06.024
+Backend
+Log
+ [WARN] 2026-10-24T05:04:05.871Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:07.024
+Backend
+Log
+ [WARN] 2026-10-24T05:04:06.872Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:08.025
+Backend
+Log
+ [WARN] 2026-10-24T05:04:07.873Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:09.026
+Backend
+Log
+ [WARN] 2026-10-24T05:04:08.874Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:10.028
+Backend
+Log
+ [WARN] 2026-10-24T05:04:09.875Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:11.030
+Backend
+Log
+ [WARN] 2026-10-24T05:04:10.876Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:12.032
+Backend
+Log
+ [WARN] 2026-10-24T05:04:11.878Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:13.034
+Backend
+Log
+ [WARN] 2026-10-24T05:04:12.881Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:14.046
+Backend
+Log
+ [WARN] 2026-10-24T05:04:13.882Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:15.035
+Backend
+Log
+ [WARN] 2026-10-24T05:04:14.883Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:16.037
+Backend
+Log
+ [WARN] 2026-10-24T05:04:15.885Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:17.039
+Backend
+Log
+ [WARN] 2026-10-24T05:04:16.886Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:18.040
+Backend
+Log
+ [WARN] 2026-10-24T05:04:17.887Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:19.165
+Backend
+Log
+ [WARN] 2026-10-24T05:04:18.889Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:20.045
+Backend
+Log
+ [WARN] 2026-10-24T05:04:19.891Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:21.047
+Backend
+Log
+ [WARN] 2026-10-24T05:04:20.892Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:22.048
+Backend
+Log
+ [WARN] 2026-10-24T05:04:21.894Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:23.048
+Backend
+Log
+ [WARN] 2026-10-24T05:04:22.895Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:24.052
+Backend
+Log
+ [WARN] 2026-10-24T05:04:23.897Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:25.052
+Backend
+Log
+ [WARN] 2026-10-24T05:04:24.899Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:26.053
+Backend
+Log
+ [WARN] 2026-10-24T05:04:25.901Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:27.058
+Backend
+Log
+ [WARN] 2026-10-24T05:04:26.903Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:28.061
+Backend
+Log
+ [WARN] 2026-10-24T05:04:27.904Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:29.073
+Backend
+Log
+ [WARN] 2026-10-24T05:04:28.906Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:29.499
+Backend
+Log
+ [STREAM_CLOSED] { type: 'public' } 
+08:04:30.062
+Backend
+Log
+ [WARN] 2026-10-24T05:04:29.907Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:30.706
+Backend
+Log
+ [STREAM_CONNECTING] { type: 'public', attempt: 1 } 
+08:04:31.066
+Backend
+Log
+ [WARN] 2026-10-24T05:04:30.909Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:31.334
+Backend
+Log
+ [STREAM_OPEN] { type: 'public' } 
+08:04:32.067
+Backend
+Log
+ [WARN] 2026-10-24T05:04:31.909Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:33.080
+Backend
+Log
+ [WARN] 2026-10-24T05:04:32.911Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:34.224
+Backend
+Log
+ [WARN] 2026-10-24T05:04:33.912Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:35.093
+Backend
+Log
+ [WARN] 2026-10-24T05:04:34.914Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:36.067
+Backend
+Log
+ [WARN] 2026-10-24T05:04:35.915Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:37.070
+Backend
+Log
+ [WARN] 2026-10-24T05:04:36.916Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:38.070
+Backend
+Log
+ [WARN] 2026-10-24T05:04:37.917Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:39.071
+Backend
+Log
+ [WARN] 2026-10-24T05:04:38.919Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:40.072
+Backend
+Log
+ [WARN] 2026-10-24T05:04:39.920Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:41.074
+Backend
+Log
+ [WARN] 2026-10-24T05:04:40.922Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:42.075
+Backend
+Log
+ [WARN] 2026-10-24T05:04:41.923Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:43.077
+Backend
+Log
+ [WARN] 2026-10-24T05:04:42.925Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:44.092
+Backend
+Log
+ [WARN] 2026-10-24T05:04:43.927Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:45.092
+Backend
+Log
+ [WARN] 2026-10-24T05:04:44.929Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:46.093
+Backend
+Log
+ [WARN] 2026-10-24T05:04:45.931Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:47.096
+Backend
+Log
+ [WARN] 2026-10-24T05:04:46.932Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:48.089
+Backend
+Log
+ [WARN] 2026-10-24T05:04:47.933Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:49.097
+Backend
+Log
+ [WARN] 2026-10-24T05:04:48.936Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:50.103
+Backend
+Log
+ [WARN] 2026-10-24T05:04:49.938Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:51.093
+Backend
+Log
+ [WARN] 2026-10-24T05:04:50.939Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:52.096
+Backend
+Log
+ [WARN] 2026-10-24T05:04:51.940Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:53.103
+Backend
+Log
+ [WARN] 2026-10-24T05:04:52.941Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:54.097
+Backend
+Log
+ [WARN] 2026-10-24T05:04:53.943Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:55.096
+Backend
+Log
+ [WARN] 2026-10-24T05:04:54.944Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:56.097
+Backend
+Log
+ [WARN] 2026-10-24T05:04:55.944Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:57.109
+Backend
+Log
+ [WARN] 2026-10-24T05:04:56.945Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:58.108
+Backend
+Log
+ [WARN] 2026-10-24T05:04:57.945Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:04:59.113
+Backend
+Log
+ [WARN] 2026-10-24T05:04:58.947Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:00.230
+Backend
+Log
+ [WARN] 2026-10-24T05:04:59.948Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:01.109
+Backend
+Log
+ [WARN] 2026-10-24T05:05:00.949Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:02.114
+Backend
+Log
+ [WARN] 2026-10-24T05:05:01.951Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:03.115
+Backend
+Log
+ [WARN] 2026-10-24T05:05:02.952Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:04.228
+Backend
+Log
+ [WARN] 2026-10-24T05:05:03.953Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:05.120
+Backend
+Log
+ [WARN] 2026-10-24T05:05:04.955Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:06.118
+Backend
+Log
+ [WARN] 2026-10-24T05:05:05.957Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:07.112
+Backend
+Log
+ [WARN] 2026-10-24T05:05:06.960Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:08.123
+Backend
+Log
+ [WARN] 2026-10-24T05:05:07.961Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:09.110
+Backend
+Log
+ [WARN] 2026-10-24T05:05:08.962Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:10.112
+Backend
+Log
+ [WARN] 2026-10-24T05:05:09.963Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:11.112
+Backend
+Log
+ [WARN] 2026-10-24T05:05:10.964Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:12.125
+Backend
+Log
+ [WARN] 2026-10-24T05:05:11.965Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:13.232
+Backend
+Log
+ [WARN] 2026-10-24T05:05:12.966Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:14.115
+Backend
+Log
+ [WARN] 2026-10-24T05:05:13.967Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:15.122
+Backend
+Log
+ [WARN] 2026-10-24T05:05:14.968Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:16.120
+Backend
+Log
+ [WARN] 2026-10-24T05:05:15.969Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:17.120
+Backend
+Log
+ [WARN] 2026-10-24T05:05:16.970Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:18.120
+Backend
+Log
+ [WARN] 2026-10-24T05:05:17.971Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:19.121
+Backend
+Log
+ [WARN] 2026-10-24T05:05:18.972Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:20.123
+Backend
+Log
+ [WARN] 2026-10-24T05:05:19.974Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:21.123
+Backend
+Log
+ [WARN] 2026-10-24T05:05:20.975Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:22.124
+Backend
+Log
+ [WARN] 2026-10-24T05:05:21.976Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:23.124
+Backend
+Log
+ [WARN] 2026-10-24T05:05:22.977Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:24.135
+Backend
+Log
+ [WARN] 2026-10-24T05:05:23.978Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:25.129
+Backend
+Log
+ [WARN] 2026-10-24T05:05:24.981Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:26.131
+Backend
+Log
+ [WARN] 2026-10-24T05:05:25.983Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:27.132
+Backend
+Log
+ [WARN] 2026-10-24T05:05:26.984Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:28.133
+Backend
+Log
+ [WARN] 2026-10-24T05:05:27.985Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:29.168
+Backend
+Log
+ [WARN] 2026-10-24T05:05:28.987Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:30.142
+Backend
+Log
+ [WARN] 2026-10-24T05:05:29.988Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:32.285
+Backend
+Log
+ [WARN] 2026-10-24T05:05:30.988Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:32.423
+Backend
+Log
+ [WARN] 2026-10-24T05:05:31.990Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:33.152
+Backend
+Log
+ [WARN] 2026-10-24T05:05:32.992Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:34.141
+Backend
+Log
+ [WARN] 2026-10-24T05:05:33.993Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:35.141
+Backend
+Log
+ [WARN] 2026-10-24T05:05:34.993Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:36.143
+Backend
+Log
+ [WARN] 2026-10-24T05:05:35.995Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:37.144
+Backend
+Log
+ [WARN] 2026-10-24T05:05:36.995Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:38.148
+Backend
+Log
+ [WARN] 2026-10-24T05:05:37.996Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:39.153
+Backend
+Log
+ [WARN] 2026-10-24T05:05:38.997Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:40.148
+Backend
+Log
+ [WARN] 2026-10-24T05:05:39.999Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:41.147
+Backend
+Log
+ [WARN] 2026-10-24T05:05:41.000Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:42.150
+Backend
+Log
+ [WARN] 2026-10-24T05:05:42.001Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:43.150
+Backend
+Log
+ [WARN] 2026-10-24T05:05:43.002Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:44.151
+Backend
+Log
+ [WARN] 2026-10-24T05:05:44.003Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:45.153
+Backend
+Log
+ [WARN] 2026-10-24T05:05:45.006Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:46.155
+Backend
+Log
+ [WARN] 2026-10-24T05:05:46.007Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:47.158
+Backend
+Log
+ [WARN] 2026-10-24T05:05:47.010Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:48.165
+Backend
+Log
+ [WARN] 2026-10-24T05:05:48.011Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:49.162
+Backend
+Log
+ [WARN] 2026-10-24T05:05:49.014Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:50.166
+Backend
+Log
+ [WARN] 2026-10-24T05:05:50.015Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:51.167
+Backend
+Log
+ [WARN] 2026-10-24T05:05:51.017Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:52.181
+Backend
+Log
+ [WARN] 2026-10-24T05:05:52.018Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:53.487
+Backend
+Log
+ [WARN] 2026-10-24T05:05:53.020Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:54.167
+Backend
+Log
+ [WARN] 2026-10-24T05:05:54.021Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:55.170
+Backend
+Log
+ [WARN] 2026-10-24T05:05:55.022Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:56.172
+Backend
+Log
+ [WARN] 2026-10-24T05:05:56.023Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:57.182
+Backend
+Log
+ [WARN] 2026-10-24T05:05:57.024Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:58.171
+Backend
+Log
+ [WARN] 2026-10-24T05:05:58.025Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:05:59.174
+Backend
+Log
+ [WARN] 2026-10-24T05:05:59.026Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:00.200
+Backend
+Log
+ [WARN] 2026-10-24T05:06:00.027Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:01.237
+Backend
+Log
+ [WARN] 2026-10-24T05:06:01.029Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:02.286
+Backend
+Log
+ [WARN] 2026-10-24T05:06:02.031Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:03.182
+Backend
+Log
+ [WARN] 2026-10-24T05:06:03.032Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:04.834
+Backend
+Log
+ [WARN] 2026-10-24T05:06:04.033Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:05.208
+Backend
+Log
+ [WARN] 2026-10-24T05:06:05.034Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:06.187
+Backend
+Log
+ [WARN] 2026-10-24T05:06:06.036Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:07.207
+Backend
+Log
+ [WARN] 2026-10-24T05:06:07.037Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:07.897
+Backend
+Log
+ Installing node_modules... 
+08:06:07.897
+Backend
+Log
+ bun install v1.4.2 (744846f84) 
+08:06:07.897
+Backend
+Log
+ Checked 502 installs across 620 packages (no changes) [32.00ms] 
+08:06:07.898
+Backend
+Log
+ Dependency installation finished. 
+08:06:08.201
+Backend
+Log
+ [WARN] 2026-10-24T05:06:08.039Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:09.987
+Backend
+Log
+ [WARN] 2026-10-24T05:06:09.040Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:10.466
+Backend
+Log
+ [WARN] 2026-10-24T05:06:10.042Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:11.296
+Backend
+Log
+ [WARN] 2026-10-24T05:06:11.042Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:12.338
+Backend
+Log
+ [WARN] 2026-10-24T05:06:12.045Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:13.250
+Backend
+Log
+ [WARN] 2026-10-24T05:06:13.045Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:14.402
+Backend
+Log
+ [WARN] 2026-10-24T05:06:14.047Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:15.468
+Backend
+Log
+ [WARN] 2026-10-24T05:06:15.049Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:16.476
+Backend
+Log
+ [WARN] 2026-10-24T05:06:16.050Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:17.400
+Backend
+Log
+ [WARN] 2026-10-24T05:06:17.051Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:18.268
+Backend
+Log
+ [WARN] 2026-10-24T05:06:18.052Z - [Server] Port 3000 is busy, retrying in 1000ms... 
+08:06:19.284
+Backend
+Log
+ [WARN] 2026-10-24T05:06:19.058Z - [Server] Port 3000 is busy, retrying in 1000ms... 

@@ -30,6 +30,7 @@ import {
   parseRawScopes,
   DERIV_OAUTH_SCOPE_STRING,
 } from '../lib/auth/derivScope.ts';
+import { isValidDerivAccountId } from './deriv/syncStateMachine.ts';
 
 export const DERIV_OAUTH_SCOPE = getLoginScopeString();
 
@@ -1017,11 +1018,205 @@ export function isDerivDemoAccount(
   );
 }
 
+export interface FetchOptionsAccountsResult {
+  status: number;
+  ok: boolean;
+  accounts: Array<{
+    id: string;
+    loginid: string;
+    account_type: 'demo' | 'real';
+    currency: string;
+    balance: number;
+    is_virtual: boolean;
+    email?: string;
+    fullname?: string;
+    scopes?: unknown;
+    raw: unknown;
+  }>;
+  reason: 'OK' | 'EMPTY' | 'ID_REJECTED' | 'PARSE' | 'NETWORK' | 'HTTP_401' | 'HTTP_403' | string;
+}
+
+export async function fetchOptionsAccounts(
+  accessToken: string,
+  appId?: string,
+): Promise<FetchOptionsAccountsResult> {
+  const token = clean(accessToken);
+  const resolvedAppId = clean(appId) || getDerivOAuthClientId() || '1089';
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  let responseStatus = 0;
+  let responseOk = false;
+  let rawText = '';
+  let payload: unknown = null;
+  let rootKeys: string[] = [];
+  let reason: string = 'NETWORK';
+
+  try {
+    const res = await fetch('https://api.derivws.com/trading/v1/options/accounts', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Deriv-App-ID': resolvedAppId,
+        Accept: 'application/json',
+      },
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    clearTimeout(timeoutId);
+    responseStatus = res.status;
+    responseOk = res.ok;
+
+    rawText = await res.text();
+    try {
+      payload = rawText ? JSON.parse(rawText) : {};
+    } catch {
+      reason = 'PARSE';
+      const result: FetchOptionsAccountsResult = {
+        status: responseStatus,
+        ok: false,
+        accounts: [],
+        reason: 'PARSE',
+      };
+      console.log('[DERIV_DISCOVERY]', JSON.stringify({
+        status: responseStatus,
+        ok: false,
+        rootKeys: [],
+        accountCount: 0,
+        reason: 'PARSE',
+        sample: null,
+      }));
+      return result;
+    }
+
+    if (!responseOk) {
+      reason = responseStatus === 401 ? 'HTTP_401' : responseStatus === 403 ? 'HTTP_403' : `HTTP_${responseStatus}`;
+      const result: FetchOptionsAccountsResult = {
+        status: responseStatus,
+        ok: false,
+        accounts: [],
+        reason,
+      };
+      console.log('[DERIV_DISCOVERY]', JSON.stringify({
+        status: responseStatus,
+        ok: false,
+        rootKeys: payload && typeof payload === 'object' ? Object.keys(payload as object) : [],
+        accountCount: 0,
+        reason,
+        sample: null,
+      }));
+      return result;
+    }
+  } catch {
+    clearTimeout(timeoutId);
+    reason = 'NETWORK';
+    const result: FetchOptionsAccountsResult = {
+      status: responseStatus || 0,
+      ok: false,
+      accounts: [],
+      reason: 'NETWORK',
+    };
+    console.log('[DERIV_DISCOVERY]', JSON.stringify({
+      status: responseStatus || 0,
+      ok: false,
+      rootKeys: [],
+      accountCount: 0,
+      reason: 'NETWORK',
+      sample: null,
+    }));
+    return result;
+  }
+
+  rootKeys = payload && typeof payload === 'object' ? Object.keys(payload as object) : [];
+  const rawAccounts = extractAccounts(payload);
+
+  let hasRejectedId = false;
+  const parsedAccounts: FetchOptionsAccountsResult['accounts'] = [];
+
+  for (const item of rawAccounts) {
+    const rawId = item.account_id || item.loginid || item.id;
+    const id = clean(rawId);
+
+    if (!id || !isValidDerivAccountId(id)) {
+      if (id) hasRejectedId = true;
+      continue;
+    }
+
+    const isVirt =
+      item.is_virtual === true ||
+      item.is_virtual === 1 ||
+      String(item.account_type).toLowerCase() === 'demo' ||
+      id.toLowerCase().startsWith('vr');
+
+    const accountType: 'demo' | 'real' =
+      item.account_type === 'demo' || item.account_type === 'real'
+        ? item.account_type
+        : (isVirt ? 'demo' : 'real');
+
+    const numBalance =
+      typeof item.balance === 'number'
+        ? item.balance
+        : Number.parseFloat(String(item.balance ?? '0')) || 0;
+
+    const curr = clean(item.currency) || 'USD';
+    const email = clean(item.email) || undefined;
+    const fullname = clean(item.fullname || item.full_name) || undefined;
+
+    parsedAccounts.push({
+      id,
+      loginid: id,
+      account_type: accountType,
+      currency: curr,
+      balance: Number.isFinite(numBalance) ? numBalance : 0,
+      is_virtual: isVirt,
+      email,
+      fullname,
+      scopes: item.scopes,
+      raw: item,
+    });
+  }
+
+  if (parsedAccounts.length > 0) {
+    reason = 'OK';
+  } else if (hasRejectedId) {
+    reason = 'ID_REJECTED';
+  } else {
+    reason = 'EMPTY';
+  }
+
+  const firstRaw = rawAccounts[0] && typeof rawAccounts[0] === 'object' ? (rawAccounts[0] as Record<string, unknown>) : null;
+  const sample = parsedAccounts.length > 0
+    ? {
+        keys: firstRaw ? Object.keys(firstRaw) : [],
+        idPrefix: parsedAccounts[0].id.slice(0, 3),
+        accountType: parsedAccounts[0].account_type,
+      }
+    : null;
+
+  console.log('[DERIV_DISCOVERY]', JSON.stringify({
+    status: responseStatus,
+    ok: responseStatus === 200 && parsedAccounts.length > 0,
+    rootKeys,
+    accountCount: parsedAccounts.length,
+    reason,
+    sample,
+  }));
+
+  return {
+    status: responseStatus,
+    ok: responseStatus === 200 && parsedAccounts.length > 0,
+    accounts: parsedAccounts,
+    reason,
+  };
+}
+
 export const oauthService = {
   buildAuthUrl,
   buildLoginGatewayUrl,
   exchangeCodeForToken,
   fetchDerivAccounts,
+  fetchOptionsAccounts,
   fetchUserProfile,
   findDerivAccount,
   getDerivAccountId,

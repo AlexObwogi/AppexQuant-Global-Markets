@@ -41,6 +41,7 @@ import {
   buildAuthUrl,
   DERIV_OAUTH_SCOPE,
   exchangeCodeForToken,
+  fetchOptionsAccounts,
   getDerivOAuthClientId,
   getDerivAppId,
 } from '../oauthService.ts';
@@ -229,6 +230,7 @@ export interface HydrateDerivAccountResult {
   profile?: DerivAccountProfileData;
 
   error?: string;
+  errorCode?: string;
 
   /**
    * Server-side compatibility information.
@@ -529,13 +531,21 @@ export function generateState(): string {
 
 function requireSecret(...names: string[]): string {
   for (const n of names) {
-    const v = process.env[n]?.trim();
-    if (v && v.length >= 32) return v;
+    const raw = process.env[n];
+    if (raw !== undefined && raw !== null && raw !== '') {
+      const v = raw.trim();
+      if (v.length >= 32 || process.env.NODE_ENV !== 'production') {
+        if (v.length < 32 && process.env.NODE_ENV === 'production') {
+          throw new Error(`MISSING_SESSION_SECRET: ${n} must be at least 32 characters long (received ${v.length})`);
+        }
+        return v;
+      }
+    }
   }
   if (process.env.NODE_ENV !== 'production') {
     return 'dev-fallback-secret-key-32chars-minimum-length-for-local-dev-mode!!';
   }
-  throw new Error(`Missing secret: set ${names.join(' or ')} (32+ characters)`);
+  throw new Error(`MISSING_SESSION_SECRET: set ${names.join(' or ')} (32+ characters)`);
 }
 
 function getStateSecret(): string {
@@ -1210,18 +1220,104 @@ export async function discoverDerivAccountsViaWebSocket(
   });
 }
 
-/**
- * Unified Multi-Tiered Account Discovery:
- * Authoritative WebSocket authorize (primary) + Options REST API fallback.
- */
 export async function discoverDerivAccounts(
   token: string,
   appId?: string,
+  scopes?: string[],
 ): Promise<{
   accounts: DerivAccountProfileData[];
   primaryAccount: DerivAccountProfileData | null;
+  errorCode?: string;
+  errorMessage?: string;
 }> {
-  return discoverDerivAccountsREST(token, appId);
+  const cleanToken = cleanString(token);
+  if (!isUsableToken(cleanToken)) {
+    return {
+      accounts: [],
+      primaryAccount: null,
+      errorCode: 'DISCOVERY_HTTP_401',
+      errorMessage: 'Deriv session expired or invalid token.',
+    };
+  }
+
+  const cleanAppId =
+    cleanString(appId) ||
+    getDerivOAuthConfig().appId ||
+    getDerivOAuthConfig().clientId;
+
+  let discovery = await fetchOptionsAccounts(cleanToken, cleanAppId);
+
+  // Task 1.5: DERIV_AUTO_CREATE_DEMO support
+  if (
+    discovery.reason === 'EMPTY' &&
+    scopes?.includes('account_manage') &&
+    process.env.DERIV_AUTO_CREATE_DEMO !== 'false'
+  ) {
+    try {
+      console.log('[DERIV_DISCOVERY] Attempting auto-creation of demo Options account...');
+      const createRes = await fetch('https://api.derivws.com/trading/v1/options/accounts', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${cleanToken}`,
+          'Deriv-App-ID': cleanAppId,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          currency: 'USD',
+          group: 'row',
+          account_type: 'demo',
+        }),
+      });
+
+      if (createRes.ok) {
+        console.log('[DERIV_DISCOVERY] Demo account creation succeeded, re-fetching options accounts...');
+        discovery = await fetchOptionsAccounts(cleanToken, cleanAppId);
+      }
+    } catch (err) {
+      console.warn('[DERIV_DISCOVERY] Auto-create demo account failed:', err);
+    }
+  }
+
+  if (!discovery.ok || discovery.accounts.length === 0) {
+    const reason = discovery.reason || 'EMPTY';
+    const errorCode = `DISCOVERY_${reason}`;
+    let errorMessage = 'Deriv returned an unexpected response format.';
+
+    if (reason === 'EMPTY') {
+      errorMessage = 'Your Deriv account has no Options trading accounts. Enable Options in your Deriv settings or create a demo account.';
+    } else if (reason === 'HTTP_401') {
+      errorMessage = 'Deriv session expired or invalid token.';
+    } else if (reason === 'ID_REJECTED') {
+      errorMessage = 'Deriv account ID format not recognized.';
+    } else if (reason === 'NETWORK') {
+      errorMessage = 'Unable to reach Deriv trading services. Check connection.';
+    }
+
+    return {
+      accounts: [],
+      primaryAccount: null,
+      errorCode,
+      errorMessage,
+    };
+  }
+
+  const accounts: DerivAccountProfileData[] = discovery.accounts.map((acc) => ({
+    loginid: acc.loginid,
+    currency: acc.currency,
+    balance: acc.balance,
+    is_virtual: acc.is_virtual ? 1 : 0,
+    email: acc.email,
+    fullname: acc.fullname,
+    scopes: normalizeScopes(acc.scopes, DERIV_OAUTH_SCOPES),
+  }));
+
+  const primaryAccount = accounts.find((acc) => !acc.is_virtual) || accounts[0] || null;
+
+  return {
+    accounts,
+    primaryAccount,
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1726,18 +1822,16 @@ export async function hydrateDerivAccount(
     oauthConfig.appId ||
     oauthConfig.clientId;
 
-  const profile =
-    await fetchDerivAccountProfile(
+  const discovery =
+    await discoverDerivAccounts(
       cleanToken,
       effectiveAppId,
+      params.scopes,
     );
 
   if (
-    !profile ||
-    !profile.loginid ||
-    !isValidDerivAccountId(
-      profile.loginid,
-    )
+    !discovery.primaryAccount ||
+    !isValidDerivAccountId(discovery.primaryAccount.loginid)
   ) {
     const failedAt =
       new Date().toISOString();
@@ -1793,9 +1887,21 @@ export async function hydrateDerivAccount(
       },
 
       error:
-        'Deriv authenticated account discovery failed.',
+        discovery.errorMessage || 'Deriv authenticated account discovery failed.',
+      errorCode: discovery.errorCode || 'DISCOVERY_FAILED',
     };
   }
+
+  const profile = {
+    ...discovery.primaryAccount,
+    account_list: discovery.accounts.map((item) => ({
+      loginid: item.loginid,
+      account_type: item.is_virtual ? 'demo' : 'real',
+      currency: item.currency,
+      is_virtual: item.is_virtual,
+      landing_company_name: item.landing_company_name || '',
+    })),
+  };
 
   const derivAccountId =
     profile.loginid;
@@ -3009,21 +3115,24 @@ export async function handleDerivOAuthCallback(
         success: false,
 
         destination:
-          `/?auth_error=discovery_failed&message=${encodeURIComponent(message)}`,
+          `/?auth_error=${hydration.errorCode || 'discovery_failed'}&message=${encodeURIComponent(message)}`,
 
         errorMessage:
           message,
       };
     }
 
+    const verifiedAccountId = hydration.metadata.derivAccountId;
+    const ownerKey = hydration.metadata.email || verifiedAccountId;
+    const stableUserId = 'usr-' + crypto.createHash('sha256').update(ownerKey).digest('hex').substring(0, 16);
+
     /*
-     * Never return the OAuth access token.
+     * Never return the OAuth access token to non-server consumers.
      */
     return {
       success: true,
 
-      userId:
-        transaction.userId,
+      userId: stableUserId,
 
       destination:
         transaction.destination ||

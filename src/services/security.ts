@@ -6,13 +6,21 @@ import { hasPermission } from '../utils/auth.ts';
 // 1. SECRET MANAGEMENT
 function requireSecret(...names: string[]): string {
   for (const n of names) {
-    const v = process.env[n]?.trim();
-    if (v && v.length >= 32) return v;
+    const raw = process.env[n];
+    if (raw !== undefined && raw !== null && raw !== '') {
+      const v = raw.trim();
+      if (v.length >= 32 || process.env.NODE_ENV !== 'production') {
+        if (v.length < 32 && process.env.NODE_ENV === 'production') {
+          throw new Error(`MISSING_SESSION_SECRET: ${n} must be at least 32 characters long (received ${v.length})`);
+        }
+        return v;
+      }
+    }
   }
   if (process.env.NODE_ENV !== 'production') {
     return 'dev-fallback-secret-key-32chars-minimum-length-for-local-dev-mode!!';
   }
-  throw new Error(`Missing secret: set ${names.join(' or ')} (32+ characters)`);
+  throw new Error(`MISSING_SESSION_SECRET: set ${names.join(' or ')} (32+ characters)`);
 }
 
 export function getJwtSecret(): string {

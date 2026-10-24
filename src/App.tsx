@@ -125,6 +125,39 @@ function ActiveViewRenderer() {
   }
 }
 
+function AuthUrlErrorConsumer() {
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const authError = params.get('auth_error');
+    const msg = params.get('message');
+    if (authError || msg) {
+      const bannerText = msg || `Authentication notice: ${authError}`;
+      setErrorMessage(bannerText);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  if (!errorMessage) return null;
+
+  return (
+    <div className="bg-rose-500/10 border border-rose-500/30 text-rose-300 px-4 py-3 rounded-lg flex items-center justify-between m-4 text-xs font-medium">
+      <div className="flex items-center space-x-2">
+        <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+        <span>{errorMessage}</span>
+      </div>
+      <button
+        onClick={() => setErrorMessage(null)}
+        className="text-text-muted hover:text-text-primary ml-4"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -132,6 +165,7 @@ export default function App() {
         <MarketDataProvider>
           <AuthGate>
             <AppShell>
+              <AuthUrlErrorConsumer />
               <ActiveViewRenderer />
             </AppShell>
           </AuthGate>

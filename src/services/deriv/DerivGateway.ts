@@ -108,6 +108,7 @@ interface TickSubscription {
   isSubscribing?: boolean;
   isMarketClosed?: boolean;
   reopenTime?: number;
+  rateLimitBackoffUntil?: number;
 }
 
 interface RestErrorPayload {
@@ -988,7 +989,8 @@ export class DerivGateway {
       !subscription ||
       subscription.subscriptionId ||
       subscription.isSubscribing ||
-      subscription.isMarketClosed
+      subscription.isMarketClosed ||
+      (subscription.rateLimitBackoffUntil && Date.now() < subscription.rateLimitBackoffUntil)
     ) {
       return;
     }
@@ -1113,13 +1115,11 @@ export class DerivGateway {
                 }
               } catch {}
             }
-          } else if (errMsg.toLowerCase().includes('rate limit')) {
+          } else if (errMsg.toLowerCase().includes('rate limit') || (error as any)?.status === 429) {
             logger.warn(
-              `[DerivGateway] Tick subscription rate-limited for ${symbol}. Retrying in 3s...`,
+              `[DerivGateway] Tick subscription rate-limited for ${symbol}. Setting 60s backoff...`,
             );
-
-            this.tickSubQueue.unshift(symbol);
-            await new Promise((r) => setTimeout(r, 3000));
+            subscription.rateLimitBackoffUntil = Date.now() + 60000;
           } else if (errMsg.toLowerCase().includes('already subscribed')) {
             // Already subscribed is a benign state, treat as success
             subscription.subscriptionId = `subscribed-${symbol}`;

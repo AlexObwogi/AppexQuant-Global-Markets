@@ -24,7 +24,7 @@ let alertsStore: Alert[] = [
     message: 'Leverage threshold warning: requested position size exceeds default policy limits (Requested: 1:500, Allowed: 1:100).',
     timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2h ago
     status: 'ACKNOWLEDGED',
-    acknowledgedBy: 'trader@appexquant.global',
+    acknowledgedBy: 'system',
     acknowledgedAt: new Date(Date.now() - 1.8 * 60 * 60 * 1000).toISOString(),
   },
   {

@@ -69,7 +69,7 @@ export const NewsView: React.FC = () => {
   const [simulationMessage, setSimulationMessage] = useState<string | null>(null);
 
   // Email Config State
-  const [tempEmail, setTempEmail] = useState('trader@appexquant.global');
+  const [tempEmail, setTempEmail] = useState('');
   const [emailConfigured, setEmailConfigured] = useState(true);
   
   // Push Config State
@@ -380,7 +380,7 @@ export const NewsView: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id,
-          userEmail: state.user?.email || 'trader@appexquant.global',
+          userEmail: state.user?.email || 'anonymous',
         }),
       });
       const result = await response.json();
@@ -392,7 +392,7 @@ export const NewsView: React.FC = () => {
               ? {
                   ...a,
                   status: 'ACKNOWLEDGED',
-                  acknowledgedBy: state.user?.email || 'trader@appexquant.global',
+                  acknowledgedBy: state.user?.email || 'anonymous',
                   acknowledgedAt: new Date().toISOString(),
                 }
               : a
@@ -421,7 +421,7 @@ export const NewsView: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: 'all',
-          userEmail: state.user?.email || 'trader@appexquant.global',
+          userEmail: state.user?.email || 'anonymous',
         }),
       });
       const result = await response.json();

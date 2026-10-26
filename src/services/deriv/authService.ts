@@ -4,4 +4,5 @@
  */
 
 export * from './DerivAuthService.ts';
+export * from './accountService.ts';
 export { default } from './DerivAuthService.ts';

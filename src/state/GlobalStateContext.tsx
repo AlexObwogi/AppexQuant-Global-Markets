@@ -12,7 +12,7 @@ import { RiskState } from '../types/risk.ts';
 import { FeatureFlags, defaultFeatureFlags } from '../types/featureFlags.ts';
 import { ThemeMode, applyThemeToDocument } from '../design/theme.ts';
 import { logAuditEvent } from '../observability/audit.ts';
-import { derivAuthService } from '../services/deriv/authService.ts';
+import { derivAuthService, handleActiveAccountChange } from '../services/deriv/authService.ts';
 import { derivWs } from '../services/deriv/DerivWebSocketManager.ts';
 
 export type AppViewRoute =
@@ -467,6 +467,11 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
     });
     return unsubscribe;
   }, []);
+
+  // Cleanup effect: clear cached balance state whenever selectedAccountId changes to prevent leakage
+  useEffect(() => {
+    handleActiveAccountChange(state.selectedAccountId);
+  }, [state.selectedAccountId]);
 
   const selectedAccount =
     state.accounts.find((acc) => acc.id === state.selectedAccountId) || state.accounts[0] || null;

@@ -1503,17 +1503,18 @@ export async function createApp() {
   app.get(['/api/auth/balance', '/api/auth/deriv/balance'], async (req: Request, res: Response) => {
     try {
       const s = req.sessionUser;
-      if (!s || !s.derivAccountId) {
+      if (!s || (!s.derivAccountId && !s.userId)) {
         return res.status(401).json(createErrorResponse('Authentication required for balance query', 'UNAUTHENTICATED'));
       }
-      const userId = s.derivAccountId;
+      const requestedLoginid = (req.query.loginid as string) || (req.query.accountId as string);
+      const userId = requestedLoginid || s.derivAccountId || s.userId;
 
       const balanceResult = await fetchUserDerivBalanceAsync(userId);
       if (balanceResult.success) {
         return res.json(createSuccessResponse({
           balance: balanceResult.balance,
           currency: balanceResult.currency,
-          loginid: balanceResult.loginid,
+          loginid: balanceResult.loginid || userId,
         }));
       }
 
@@ -1523,7 +1524,7 @@ export async function createApp() {
         return res.json(createSuccessResponse({
           balance: meta.balance,
           currency: meta.currency || 'USD',
-          loginid: meta.derivAccountId,
+          loginid: meta.derivAccountId || userId,
         }));
       }
 

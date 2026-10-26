@@ -133,10 +133,12 @@ export class DerivIntegrationService {
    * Fetch authoritative balance through backend gateway (/api/auth/deriv/balance).
    */
   static async getBalance(
-    apiFetch: (url: string, init?: RequestInit) => Promise<Response>
+    apiFetch: (url: string, init?: RequestInit) => Promise<Response>,
+    loginid?: string
   ): Promise<{ success: boolean; data?: { balance: number; currency: string; loginid: string }; error?: string }> {
     try {
-      const res = await apiFetch('/api/auth/deriv/balance');
+      const query = loginid ? `?loginid=${encodeURIComponent(loginid)}` : '';
+      const res = await apiFetch(`/api/auth/deriv/balance${query}`);
       const json = await res.json();
       if (res.ok && json.success) {
         return { success: true, data: json.data };

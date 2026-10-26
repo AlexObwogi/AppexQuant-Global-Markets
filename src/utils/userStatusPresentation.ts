@@ -81,9 +81,10 @@ export function formatUserFailSafeStatus(failSafe: FailSafeState): UserFacingSta
   };
 }
 
-export function formatCurrencyValue(amount: number, isHidden: boolean = false, currency: string = '$'): string {
+export function formatCurrencyValue(amount: number, isHidden: boolean = false, currency: string = 'USD'): string {
   if (isHidden) {
     return '••••••••';
   }
-  return `${currency}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const symbol = currency === '$' || currency === 'USD' ? '$' : `${currency} `;
+  return `${symbol}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }

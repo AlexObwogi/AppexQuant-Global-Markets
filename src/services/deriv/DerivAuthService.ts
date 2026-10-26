@@ -201,10 +201,26 @@ export class DerivAuthService {
   }
 
   /**
+   * Clear cached profile and balance state when switching account or execution environment.
+   */
+  public clearCache(): void {
+    if (this.profile) {
+      this.profile = {
+        ...this.profile,
+        balance: 0,
+      };
+    }
+  }
+
+  /**
    * Update balance sourced via backend gateway.
    */
   public updateBalance(balanceData: { balance: number; currency?: string; loginid?: string }): void {
     if (this.profile) {
+      // Ignore balance updates meant for a different loginid
+      if (balanceData.loginid && this.profile.loginid && balanceData.loginid !== this.profile.loginid) {
+        return;
+      }
       this.profile.balance = balanceData.balance;
       if (balanceData.currency) this.profile.currency = balanceData.currency;
       if (balanceData.loginid) this.profile.loginid = balanceData.loginid;

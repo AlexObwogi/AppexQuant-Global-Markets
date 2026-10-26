@@ -213,7 +213,7 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
       const currency = p.currency || p.preferences?.currency || 'USD';
       const balanceNum = typeof p.balance === 'number' ? p.balance : 0;
 
-      const rawList = p.accountList || p.account_list || [];
+      const rawList = (p as any).accountList || (p as any).account_list || [];
       const accountItems = Array.isArray(rawList) && rawList.length > 0
         ? rawList
         : [{ loginid: primaryAccountId, account_type: isDemo ? 'demo' : 'real', currency, is_virtual: isDemo ? 1 : 0 }];

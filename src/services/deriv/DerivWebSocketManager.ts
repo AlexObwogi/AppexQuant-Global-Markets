@@ -401,6 +401,7 @@ export class DerivWebSocketManager {
 
       // 4b. Handle Direct Deriv WebSocket Tick Stream
       if (data.msg_type === 'tick' && data.tick) {
+        const raw = data.tick;
         const quoteNum = typeof raw.quote === 'number' ? raw.quote : Number(raw.quote);
         const normalized: NormalizedTick = {
           symbol: raw.symbol,

@@ -163,17 +163,17 @@ export const DerivRateLimitTracker: React.FC<DerivRateLimitTrackerProps> = ({
 
   if (compact) {
     return (
-      <div className={`p-3 bg-bg-surface border border-border-color rounded-lg text-xs space-y-2 ${className}`}>
+      <Card variant="surface" padding="sm" className={`dashboard-card text-xs space-y-2 ${className}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-text-secondary font-medium">
-            <Activity className="w-3.5 h-3.5 text-cyan-500" />
+            <Activity className="w-3.5 h-3.5 text-accent-primary" />
             <span>Deriv API Rate</span>
           </div>
           <span className="font-mono font-bold text-text-primary">
             {requestsInLastMinute} / {limitPerMinute} req/min
           </span>
         </div>
-        <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+        <div className="w-full bg-bg-secondary rounded-full h-1.5 overflow-hidden">
           <div
             className={`h-full transition-all duration-500 ${barColor}`}
             style={{ width: `${Math.min(100, Math.max(4, usagePercentage))}%` }}
@@ -183,17 +183,17 @@ export const DerivRateLimitTracker: React.FC<DerivRateLimitTrackerProps> = ({
           <span>{remaining} remaining</span>
           <span>Resets in {countdown}s</span>
         </div>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <Card variant="surface" className={`relative overflow-hidden flex flex-col justify-between ${className}`}>
+    <Card variant="surface" className={`dashboard-card relative overflow-hidden flex flex-col justify-between ${className}`}>
       {/* Top Header */}
       <div>
         <div className="flex items-center justify-between pb-2 border-b border-border-color">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-cyan-500/10 rounded-md text-cyan-400">
+            <div className="p-1.5 bg-accent-primary/10 rounded-md text-accent-primary">
               <Activity className="w-4 h-4" />
             </div>
             <div>
@@ -216,10 +216,10 @@ export const DerivRateLimitTracker: React.FC<DerivRateLimitTrackerProps> = ({
             <button
               onClick={() => fetchMetrics(true)}
               disabled={isRefreshing}
-              className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-bg-main rounded transition-colors cursor-pointer"
+              className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded transition-colors cursor-pointer"
               title="Refresh rate limit metrics"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-cyan-400' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-accent-primary' : ''}`} />
             </button>
           </div>
         </div>
@@ -250,7 +250,7 @@ export const DerivRateLimitTracker: React.FC<DerivRateLimitTrackerProps> = ({
               Available Headroom
             </span>
             <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className={`text-2xl font-mono font-bold ${isHighRisk ? 'text-rose-400' : 'text-emerald-400'}`}>
+              <span className={`text-2xl font-mono font-bold ${isHighRisk ? 'text-rose-400' : 'text-color-success'}`}>
                 {remaining}
               </span>
               <span className="text-xs text-text-secondary">
@@ -265,11 +265,11 @@ export const DerivRateLimitTracker: React.FC<DerivRateLimitTrackerProps> = ({
           {/* Rolling Window Reset */}
           <div className="flex flex-col justify-center sm:pl-2">
             <span className="text-[11px] uppercase tracking-wider text-text-secondary font-medium flex items-center gap-1">
-              <Clock className="w-3 h-3 text-cyan-500" />
+              <Clock className="w-3 h-3 text-accent-primary" />
               <span>Window Reset</span>
             </span>
             <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className="text-2xl font-mono font-bold text-cyan-400">
+              <span className="text-2xl font-mono font-bold text-accent-primary">
                 {countdown}s
               </span>
               <span className="text-xs text-text-secondary">
@@ -291,7 +291,7 @@ export const DerivRateLimitTracker: React.FC<DerivRateLimitTrackerProps> = ({
             </span>
           </div>
           
-          <div className="relative w-full bg-slate-900 dark:bg-[#131b2c] rounded-full h-2.5 overflow-hidden border border-slate-800">
+          <div className="relative w-full bg-bg-secondary rounded-full h-2.5 overflow-hidden border border-border-color">
             {/* Danger Zone marker at 80% (96 req/min) */}
             <div
               className="absolute top-0 bottom-0 w-0.5 bg-rose-500/70 z-10"
@@ -313,36 +313,36 @@ export const DerivRateLimitTracker: React.FC<DerivRateLimitTrackerProps> = ({
 
         {/* Traffic Breakdown Sub-Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
-          <div className="p-2 bg-bg-main border border-border-color rounded text-xs flex flex-col">
+          <div className="p-2 bg-bg-surface border border-border-color rounded text-xs flex flex-col">
             <span className="text-text-secondary text-[10px] font-medium flex items-center gap-1">
-              <Zap className="w-3 h-3 text-cyan-400" /> REST Syncs
+              <Zap className="w-3 h-3 text-accent-primary" /> REST Syncs
             </span>
             <span className="font-mono font-bold text-text-primary mt-0.5 text-sm">
               {breakdown.rest} req
             </span>
           </div>
 
-          <div className="p-2 bg-bg-main border border-border-color rounded text-xs flex flex-col">
+          <div className="p-2 bg-bg-surface border border-border-color rounded text-xs flex flex-col">
             <span className="text-text-secondary text-[10px] font-medium flex items-center gap-1">
-              <Radio className="w-3 h-3 text-purple-400" /> WS Frames
+              <Radio className="w-3 h-3 text-accent-primary" /> WS Frames
             </span>
             <span className="font-mono font-bold text-text-primary mt-0.5 text-sm">
               {breakdown.ws} req
             </span>
           </div>
 
-          <div className="p-2 bg-bg-main border border-border-color rounded text-xs flex flex-col">
+          <div className="p-2 bg-bg-surface border border-border-color rounded text-xs flex flex-col">
             <span className="text-text-secondary text-[10px] font-medium flex items-center gap-1">
-              <Activity className="w-3 h-3 text-emerald-400" /> Active Feeds
+              <Activity className="w-3 h-3 text-color-success" /> Active Feeds
             </span>
             <span className="font-mono font-bold text-text-primary mt-0.5 text-sm">
               {breakdown.subscription} feeds
             </span>
           </div>
 
-          <div className="p-2 bg-bg-main border border-border-color rounded text-xs flex flex-col">
+          <div className="p-2 bg-bg-surface border border-border-color rounded text-xs flex flex-col">
             <span className="text-text-secondary text-[10px] font-medium flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3 text-blue-400" /> Auth/Token
+              <ShieldCheck className="w-3 h-3 text-color-info" /> Auth/Token
             </span>
             <span className="font-mono font-bold text-text-primary mt-0.5 text-sm">
               {breakdown.auth} req
@@ -363,8 +363,8 @@ export const DerivRateLimitTracker: React.FC<DerivRateLimitTrackerProps> = ({
           </div>
         ) : (
           <div className="flex items-center justify-between text-[11px] text-text-secondary">
-            <span className="flex items-center gap-1 text-slate-400">
-              <Info className="w-3 h-3 text-cyan-400" />
+            <span className="flex items-center gap-1 text-text-secondary">
+              <Info className="w-3 h-3 text-accent-primary" />
               <span>Deriv WebSocket multiplexer active · Sockets are pooled to conserve API quotas</span>
             </span>
             <span className="font-mono text-[10px]">

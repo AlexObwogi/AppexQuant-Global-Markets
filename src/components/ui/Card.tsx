@@ -37,7 +37,7 @@ export const Card: React.FC<CardProps> = ({
   return (
     <div
       id={cardId}
-      className={`rounded-xl transition-all ${variants[variant]} ${paddings[padding]} ${className}`}
+      className={`dashboard-card rounded-xl transition-all ${variants[variant]} ${paddings[padding]} ${className}`}
       {...props}
     >
       {children}

@@ -7,6 +7,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useMarketData } from '../../state/MarketDataContext.tsx';
 import { InstrumentCategory } from '../../types/market.ts';
+import { Card } from '../ui/Card.tsx';
 import { Flame } from 'lucide-react';
 
 interface MarketHeatmapProps {
@@ -217,7 +218,7 @@ export const MarketHeatmap: React.FC<MarketHeatmapProps> = ({ onSelectSymbol }) 
   const categoryFilters: (InstrumentCategory | 'ALL')[] = ['ALL', 'FOREX', 'SYNTHETICS', 'CRYPTO', 'INDICES', 'COMMODITIES'];
 
   return (
-    <div className="bg-bg-surface border border-border-color rounded-2xl p-4 shadow-sm flex flex-col space-y-3">
+    <Card variant="surface" className="dashboard-card shadow-sm flex flex-col space-y-3 p-4">
       {/* Heatmap Header Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border-color pb-3">
         <div className="flex items-center space-x-2">
@@ -302,6 +303,6 @@ export const MarketHeatmap: React.FC<MarketHeatmapProps> = ({ onSelectSymbol }) 
           <span>Bullish (+3%)</span>
         </div>
       </div>
-    </div>
+    </Card>
   );
 };

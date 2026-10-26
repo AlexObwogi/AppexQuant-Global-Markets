@@ -1,6 +1,6 @@
 /**
  * AppexQuant Markets Global - Surface Card Component
- * Adheres to financial One UI / iOS anti-slop principles.
+ * Strictly utilizes CSS variables --bg-elevated, --border-color, and --text-primary.
  */
 
 import React, { HTMLAttributes, ReactNode } from 'react';
@@ -23,21 +23,21 @@ export const Card: React.FC<CardProps> = ({
 
   const paddings = {
     none: 'p-0',
-    sm: 'p-2 sm:p-3',
-    md: 'p-4 sm:p-4',
-    lg: 'p-5 sm:p-6',
+    sm: 'p-2',
+    md: 'p-3',
+    lg: 'p-4',
   };
 
   const variants = {
-    surface: 'bg-bg-surface border border-border-color text-text-primary shadow-xs',
-    glass: 'bg-bg-surface/95 backdrop-blur-xs border border-border-color text-text-primary shadow-sm',
-    outline: 'bg-transparent border border-border-color text-text-primary',
+    surface: 'bg-[var(--bg-elevated)] border-[1px] border-[var(--border-color)] text-[var(--text-primary)] shadow-xs',
+    glass: 'bg-[var(--bg-elevated)]/95 backdrop-blur-xs border-[1px] border-[var(--border-color)] text-[var(--text-primary)] shadow-sm',
+    outline: 'bg-transparent border-[1px] border-[var(--border-color)] text-[var(--text-primary)]',
   };
 
   return (
     <div
       id={cardId}
-      className={`dashboard-card rounded-xl transition-all ${variants[variant]} ${paddings[padding]} ${className}`}
+      className={`dashboard-card rounded-lg transition-all ${variants[variant]} ${paddings[padding]} ${className}`}
       {...props}
     >
       {children}

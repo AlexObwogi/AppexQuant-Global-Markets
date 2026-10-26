@@ -42,76 +42,39 @@
   --radius-xl: 16px;
 }
 
-:root {
-  /* LIGHT MODE - CRISP OFF-WHITE & PURE WHITE HIGH CONTRAST */
-  --bg-main: #F4F5F7;        /* Crisp off-white background canvas */
-  --bg-surface: #FFFFFF;     /* Pure white surfaces */
-  --bg-secondary: #E9EBEF;   /* Deep crisp secondary surfaces */
-  --bg-elevated: #FFFFFF;    /* Clean elevated cards */
-  --border-color: #D2D6DC;   /* High contrast borders */
-  --border-strong: #B0B5C0;  /* Strong accent borders */
-  --text-primary: #111827;   /* High-contrast deep charcoal */
-  --text-secondary: #374151; /* Clearly legible secondary text */
-  --text-muted: #4B5563;     /* Highly readable muted text */
-  --accent-primary: #FF444F; /* Deriv brand red primary accent */
-  --accent-hover: #E03E47;   /* Deriv brand red hover */
-  --color-success: #0ECB81;  /* Standardized Binance Green */
-  --color-danger: #F6465D;   /* Standardized Binance Red */
-  --color-warning: #D97706;  /* High contrast warning amber */
-  --color-info: #2563EB;     /* High contrast info blue */
+:root, html.dark {
+  --bg-main: #15171e;        /* Core App Backdrop Canvas */
+  --bg-surface: #1c1f26;     /* Main Component Widget Panels */
+  --bg-secondary: #222630;   /* Secondary surface contrast */
+  --bg-elevated: #1c1f26;    /* Elevated card panels */
+  --border-color: #2a2e39;   /* Hairline Grid Panel Dividers */
+  --border-strong: #363b4b;  /* Strong structural borders */
+  --text-primary: #ffffff;   /* Primary high-contrast text */
+  --text-secondary: #9699a0; /* Muted secondary text */
+  --text-muted: #6b6f7b;     /* Subdued metadata text */
+  --accent-primary: #ff444f; /* Deriv Coral Red (Rise / Primary Brand Accent) */
+  --accent-hover: #e03b44;
+  --color-success: #00a86b;  /* Teal (Fall / Success) */
+  --color-danger: #ff444f;
+  --color-warning: #ffad33;
+  --color-info: #3770ff;
 
-  --bg-nav: #FFFFFF;         /* Pure white top header and navigation */
-  --bg-chart: #FFFFFF;       /* Pure white charts */
-  --bg-modal: #FFFFFF;       /* Pure white modal overlays */
-  --bg-dropdown: #FFFFFF;    /* Pure white dropdown elements */
-  --bg-input: #F3F4F6;       /* Clean subtle input fills */
-  --bg-hover: #E5E7EB;       /* Active list hover backgrounds */
-  --bg-active: #D1D5DB;      /* Strong active selectors */
-  --bg-disabled: #E5E7EB;    /* Light gray disabled */
-  --color-selected: #FF444F;
-  --bg-tooltip: #111827;     /* High-contrast tooltip background */
-  --color-overlay: rgba(17, 24, 39, 0.65);
-  --color-divider: #D2D6DC;
-  --color-focus: #FF444F;
-  --pl-positive: #0ECB81;    /* Standardized Binance Green */
-  --pl-negative: #F6465D;    /* Standardized Binance Red */
-  --pl-neutral: #374151;
-}
-
-html.dark {
-  /* DARK MODE - INSTITUTIONAL CHARCOAL & SOLID HIGH-CONTRAST NEUTRALS */
-  --bg-main: #0C0E12;        /* Dark institutional canvas */
-  --bg-surface: #1E2329;     /* Deep solid surface fills */
-  --bg-secondary: #131722;   /* Secondary deep solid contrast */
-  --bg-elevated: #2B3139;    /* Solid elevated card surfaces */
-  --border-color: #2F3643;   /* High-contrast borders */
-  --border-strong: #3F4756;  /* Solid strong borders */
-  --text-primary: #F9FAFB;   /* Bright white primary text */
-  --text-secondary: #D1D5DB; /* Bright readable secondary text */
-  --text-muted: #9CA3AF;     /* Clearly legible muted text */
-  --accent-primary: #FF444F; /* Deriv brand red accent */
-  --accent-hover: #E03E47;
-  --color-success: #0ECB81;
-  --color-danger: #F6465D;
-  --color-warning: #F0B90B;
-  --color-info: #3B82F6;
-
-  --bg-nav: #1E2329;         /* Consistent dark navigation bar */
-  --bg-chart: #0C0E12;       /* Institutional dark charts */
-  --bg-modal: #1E2329;
-  --bg-dropdown: #1E2329;
-  --bg-input: #131722;
-  --bg-hover: #2B3139;
-  --bg-active: #3F4756;
-  --bg-disabled: #2B3139;
-  --color-selected: #FF444F;
-  --bg-tooltip: #2B3139;
-  --color-overlay: rgba(0, 0, 0, 0.75);
-  --color-divider: #2F3643;
-  --color-focus: #FF444F;
-  --pl-positive: #0ECB81;
-  --pl-negative: #F6465D;
-  --pl-neutral: #D1D5DB;
+  --bg-nav: #15171e;
+  --bg-chart: #1c1f26;
+  --bg-modal: #1c1f26;
+  --bg-dropdown: #1c1f26;
+  --bg-input: #15171e;
+  --bg-hover: #252a35;
+  --bg-active: #2f3442;
+  --bg-disabled: #1c1f26;
+  --color-selected: #ff444f;
+  --bg-tooltip: #222630;
+  --color-overlay: rgba(21, 23, 30, 0.85);
+  --color-divider: #2a2e39;
+  --color-focus: #ff444f;
+  --pl-positive: #00a86b;
+  --pl-negative: #ff444f;
+  --pl-neutral: #9699a0;
 }
 
 @layer base {

@@ -47,26 +47,26 @@ export const navItems: NavItem[] = [
   { id: 'analytics', label: 'Portfolio & Analytics', icon: <PieChart className="w-4 h-4" />, group: 'core' },
 
   // Group 2: Intelligence & Strategy Hub
-  { id: 'audit', label: 'Trade Audit Ledger (SHA-256)', icon: <ShieldCheck className="w-4 h-4 text-emerald-400" />, group: 'resources', badge: 'Ledger' },
-  { id: 'risk-calculator', label: 'Prop Risk-Mirroring Calc', icon: <LineChart className="w-4 h-4 text-primary" />, group: 'resources' },
-  { id: 'creator-portal', label: 'Creator Revenue Portal', icon: <DollarSign className="w-4 h-4 text-amber-400" />, group: 'resources', badge: 'Earn' },
-  { id: 'developer', label: 'Developer API & Gateway', icon: <Code2 className="w-4 h-4 text-cyan-400" />, group: 'resources', badge: 'v1' },
-  { id: 'education', label: 'Education Hub (Academy)', icon: <GraduationCap className="w-4 h-4 text-color-info" />, group: 'resources', badge: 'New' },
-  { id: 'ai-analysis', label: 'AI Intelligence & Strategy Lab', icon: <Brain className="w-4 h-4 text-accent-primary" />, group: 'resources', badge: 'Pro' },
+  { id: 'audit', label: 'Trade Audit Ledger (SHA-256)', icon: <ShieldCheck className="w-4 h-4" />, group: 'resources' },
+  { id: 'risk-calculator', label: 'Prop Risk-Mirroring Calc', icon: <LineChart className="w-4 h-4" />, group: 'resources' },
+  { id: 'creator-portal', label: 'Creator Revenue Portal', icon: <DollarSign className="w-4 h-4" />, group: 'resources' },
+  { id: 'developer', label: 'Developer API & Gateway', icon: <Code2 className="w-4 h-4" />, group: 'resources' },
+  { id: 'education', label: 'Education Hub (Academy)', icon: <GraduationCap className="w-4 h-4" />, group: 'resources' },
+  { id: 'ai-analysis', label: 'AI Intelligence & Strategy Lab', icon: <Brain className="w-4 h-4" />, group: 'resources' },
   { id: 'backtest', label: 'Backtesting Engine & EA Hub', icon: <LineChart className="w-4 h-4" />, group: 'resources' },
-  { id: 'signals', label: 'Signals & Alerts', icon: <Zap className="w-4 h-4 text-accent-primary" />, group: 'resources' },
+  { id: 'signals', label: 'Signals & Alerts', icon: <Zap className="w-4 h-4" />, group: 'resources' },
 
   // Group 3: Community & Account Settings
-  { id: 'leaderboard', label: 'Leaderboard & Hall of Fame', icon: <Trophy className="w-4 h-4 text-amber-400" />, group: 'system', badge: 'Live' },
-  { id: 'p2p', label: 'P2P Marketplace', icon: <DollarSign className="w-4 h-4 text-color-success" />, group: 'system', badge: 'Escrow' },
-  { id: 'community', label: 'Trader Community & Directory', icon: <Users className="w-4 h-4 text-color-info" />, group: 'system' },
+  { id: 'leaderboard', label: 'Leaderboard & Hall of Fame', icon: <Trophy className="w-4 h-4" />, group: 'system' },
+  { id: 'p2p', label: 'P2P Marketplace', icon: <DollarSign className="w-4 h-4" />, group: 'system' },
+  { id: 'community', label: 'Trader Community & Directory', icon: <Users className="w-4 h-4" />, group: 'system' },
   { id: 'account', label: 'Profile & OAuth Broker Connection', icon: <User className="w-4 h-4" />, group: 'system' },
   { id: 'legal', label: 'Platform Settings & Security', icon: <ShieldCheck className="w-4 h-4" />, group: 'system' },
 
   // Group 4: Administration Controls
-  { id: 'automation', label: 'Automation Control', icon: <Cpu className="w-4 h-4 text-color-info" />, group: 'system', badge: 'Ops', adminOnly: true },
-  { id: 'health', label: 'System Operations', icon: <Activity className="w-4 h-4 text-color-info" />, group: 'system', badge: 'Live', adminOnly: true },
-  { id: 'admin', label: 'Admin Portal', icon: <Lock className="w-4 h-4 text-color-danger" />, group: 'system', badge: 'Secure', adminOnly: true },
+  { id: 'automation', label: 'Automation Control', icon: <Cpu className="w-4 h-4" />, group: 'system', adminOnly: true },
+  { id: 'health', label: 'System Operations', icon: <Activity className="w-4 h-4" />, group: 'system', adminOnly: true },
+  { id: 'admin', label: 'Admin Portal', icon: <Lock className="w-4 h-4" />, group: 'system', adminOnly: true },
 ];
 
 export const Sidebar: React.FC = () => {
@@ -86,7 +86,7 @@ export const Sidebar: React.FC = () => {
 
   const renderNavGroup = (title: string, items: NavItem[]) => (
     <div className="mb-6">
-      <div className="text-xs font-semibold text-text-secondary mb-2 px-3">
+      <div className="text-xs font-semibold text-text-secondary mb-2 px-3 tracking-wider uppercase">
         {title}
       </div>
       <div className="space-y-1">
@@ -96,15 +96,15 @@ export const Sidebar: React.FC = () => {
             <button
               key={item.id}
               onClick={() => dispatch({ type: 'SET_ROUTE', payload: item.id })}
-              className={`w-full flex items-center justify-between p-3 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
                 isActive
-                  ? 'bg-accent-primary/10 text-accent-primary border border-accent-primary/20 font-bold shadow-xs'
+                  ? 'bg-accent-primary/10 text-accent-primary border-l-2 border-accent-primary font-bold shadow-2xs'
                   : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
               }`}
             >
               <div className="flex items-center space-x-3">
                 <span className={isActive ? 'text-accent-primary' : 'text-text-secondary'}>{item.icon}</span>
-                <span>{item.label}</span>
+                <span className="truncate">{item.label}</span>
               </div>
               {item.isFuture && (
                 <span className="text-[9px] px-1.5 py-0.5 rounded bg-bg-surface text-text-secondary uppercase font-mono border border-border-color">

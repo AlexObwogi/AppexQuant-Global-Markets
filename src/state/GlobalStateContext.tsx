@@ -162,7 +162,11 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
     case 'UPDATE_ACCOUNT_BALANCE': {
       const { balance, currency, loginid } = action.payload;
       const updatedAccounts = state.accounts.map((acc) => {
-        if (!loginid || acc.accountNumber === loginid || acc.id === state.selectedAccountId) {
+        const isMatch = loginid
+          ? (acc.accountNumber === loginid || acc.id === loginid || acc.id === `acc-${loginid}`)
+          : (acc.id === state.selectedAccountId);
+
+        if (isMatch) {
           const cur = currency || acc.currency;
           const unrealizedPl = acc.balance.unrealizedPl || 0;
           const equity = balance + unrealizedPl;
@@ -170,13 +174,14 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
           const marginLevel = margin > 0 ? (equity / margin) * 100 : 0;
           return {
             ...acc,
+            currency: cur,
             balance: {
               ...acc.balance,
               balance,
               equity,
               freeMargin: Math.max(0, equity - margin),
               marginLevel,
-              ...(currency ? { currency } : {}),
+              currency: cur,
             },
           };
         }
@@ -192,6 +197,8 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
         return {
           ...state,
           user: null,
+          accounts: [],
+          selectedAccountId: null,
           session: {
             ...state.session,
             userId: '',
@@ -201,44 +208,60 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
       }
 
       const p = action.payload;
-      const accountId = p.loginid || p.id;
-      const isDemo = p.accountType === 'demo' || accountId.startsWith('VR');
+      const primaryAccountId = p.loginid || p.id;
+      const isDemo = p.accountType === 'demo' || primaryAccountId.startsWith('VR');
       const currency = p.currency || p.preferences?.currency || 'USD';
       const balanceNum = typeof p.balance === 'number' ? p.balance : 0;
 
-      const updatedAccount: TradingAccount = {
-        id: `acc-${accountId}`,
-        userId: accountId,
-        brokerId: 'deriv-01',
-        accountNumber: accountId,
-        accountName: p.displayName || `Deriv ${isDemo ? 'Demo' : 'Real'} Account`,
-        type: isDemo ? 'DEMO' : 'REAL',
-        currency,
-        server: isDemo ? 'Deriv-Demo' : 'Deriv-Server',
-        isPrimary: true,
-        isConnected: true,
-        balance: {
-          currency,
-          balance: balanceNum,
-          equity: balanceNum,
-          margin: 0,
-          freeMargin: balanceNum,
-          marginLevel: 0,
-          unrealizedPl: 0,
-        },
-        createdAt: p.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      const rawList = p.accountList || p.account_list || [];
+      const accountItems = Array.isArray(rawList) && rawList.length > 0
+        ? rawList
+        : [{ loginid: primaryAccountId, account_type: isDemo ? 'demo' : 'real', currency, is_virtual: isDemo ? 1 : 0 }];
+
+      const updatedAccounts: TradingAccount[] = accountItems.map((item: any) => {
+        const itemLoginid = item.loginid || primaryAccountId;
+        const itemIsDemo = item.is_virtual === 1 || item.account_type === 'demo' || itemLoginid.startsWith('VR');
+        const itemCurrency = item.currency || currency;
+        const isPrimary = itemLoginid === primaryAccountId;
+        const itemBalance = isPrimary ? balanceNum : 0;
+
+        return {
+          id: `acc-${itemLoginid}`,
+          userId: itemLoginid,
+          brokerId: 'deriv-01',
+          accountNumber: itemLoginid,
+          accountName: `Deriv ${itemIsDemo ? 'Demo' : 'Real'} (${itemLoginid})`,
+          type: itemIsDemo ? 'DEMO' : 'REAL',
+          currency: itemCurrency,
+          server: itemIsDemo ? 'Deriv-Demo' : 'Deriv-Server',
+          isPrimary,
+          isConnected: true,
+          balance: {
+            currency: itemCurrency,
+            balance: itemBalance,
+            equity: itemBalance,
+            margin: 0,
+            freeMargin: itemBalance,
+            marginLevel: 0,
+            unrealizedPl: 0,
+          },
+          createdAt: p.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      });
+
+      const currentTargetType = state.executionEnvironment === 'LIVE' ? 'REAL' : 'DEMO';
+      const matchedAcc = updatedAccounts.find((a) => a.type === currentTargetType) || updatedAccounts.find((a) => a.id === `acc-${primaryAccountId}`) || updatedAccounts[0];
 
       return {
         ...state,
         user: p,
-        accounts: [updatedAccount],
-        selectedAccountId: updatedAccount.id,
-        executionEnvironment: isDemo ? 'DEMO' : 'LIVE',
+        accounts: updatedAccounts,
+        selectedAccountId: matchedAcc ? matchedAcc.id : null,
+        executionEnvironment: matchedAcc?.type === 'REAL' ? 'LIVE' : 'DEMO',
         session: {
           ...state.session,
-          userId: accountId,
+          userId: matchedAcc ? matchedAcc.accountNumber : primaryAccountId,
           isAuthenticated: true,
         },
       };
@@ -303,15 +326,30 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
     case 'SET_CONNECTION_STATUS':
       return { ...state, connectionStatus: action.payload };
 
-    case 'SET_EXECUTION_ENVIRONMENT':
+    case 'SET_EXECUTION_ENVIRONMENT': {
       logAuditEvent('EXECUTION_ENVIRONMENT_CHANGED', state.user?.id || 'usr-default', {
         previousEnv: state.executionEnvironment,
         newEnv: action.payload,
       });
-      return { ...state, executionEnvironment: action.payload };
 
-    case 'SELECT_ACCOUNT':
-      return { ...state, selectedAccountId: action.payload };
+      const targetType = action.payload === 'LIVE' ? 'REAL' : 'DEMO';
+      const matchingAccount = state.accounts.find((acc) => acc.type === targetType);
+
+      return {
+        ...state,
+        executionEnvironment: action.payload,
+        ...(matchingAccount ? { selectedAccountId: matchingAccount.id } : {}),
+      };
+    }
+
+    case 'SELECT_ACCOUNT': {
+      const selectedAcc = state.accounts.find((a) => a.id === action.payload || a.accountNumber === action.payload);
+      return {
+        ...state,
+        selectedAccountId: selectedAcc ? selectedAcc.id : action.payload,
+        ...(selectedAcc ? { executionEnvironment: selectedAcc.type === 'REAL' ? 'LIVE' : 'DEMO' } : {}),
+      };
+    }
 
     case 'SELECT_BROKER':
       return { ...state, selectedBroker: action.payload };

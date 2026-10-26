@@ -226,9 +226,6 @@ export function seedExecutionOrders(): void {
 
 // Get all orders
 export function getExecutionOrders(): ExecutionOrder[] {
-  if (executionOrders.length === 0) {
-    seedExecutionOrders();
-  }
   return executionOrders;
 }
 

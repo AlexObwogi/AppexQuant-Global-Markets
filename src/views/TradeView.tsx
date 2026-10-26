@@ -33,11 +33,13 @@ import { OrderRequest, RiskPolicy, RiskDecision, MarketEnvironmentState, default
 import { ExecutionCommandDesk } from '../components/eas/ExecutionCommandDesk.tsx';
 import { useApiFetch } from '../utils/apiFetch.ts';
 import { useMarketData } from '../state/MarketDataContext.tsx';
+import { useGlobalState } from '../state/GlobalStateContext.tsx';
 import { ArrowRightLeft } from 'lucide-react';
 
 export const TradeView: React.FC = () => {
   const apiFetch = useApiFetch();
   const { selectedInstrument, ticks } = useMarketData();
+  const { state, selectedAccount } = useGlobalState();
   // App States
   const [activePolicy, setActivePolicy] = useState<RiskPolicy | null>(null);
   const [marketEnv, setMarketEnv] = useState<MarketEnvironmentState>(defaultMarketEnvironment);
@@ -144,7 +146,7 @@ export const TradeView: React.FC = () => {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                accountId: 'acc-demo-001',
+                accountId: selectedAccount?.id || selectedAccount?.accountNumber || state.user?.derivAccountId || 'UNCONNECTED',
                 strategyId: orderForm.strategyId,
                 symbol: orderForm.symbol,
                 side: orderForm.direction === 'BUY' ? 'BUY' : 'SHORT',

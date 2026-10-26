@@ -29,9 +29,9 @@ export const Card: React.FC<CardProps> = ({
   };
 
   const variants = {
-    surface: 'bg-white border border-[#EAECEF] text-[#1E2329] dark:bg-[#181A20] dark:border-[#2B3139] dark:text-[#EAECEF]',
-    glass: 'bg-[#FFFFFF]/95 dark:bg-[#181A20]/95 border border-[#EAECEF] dark:border-[#2B3139] text-[#1E2329] dark:text-[#EAECEF] shadow-sm',
-    outline: 'bg-transparent border border-[#EAECEF] dark:border-[#2B3139] text-[#1E2329] dark:text-[#EAECEF]',
+    surface: 'bg-bg-surface border border-border-color text-text-primary shadow-xs',
+    glass: 'bg-bg-surface/95 backdrop-blur-xs border border-border-color text-text-primary shadow-sm',
+    outline: 'bg-transparent border border-border-color text-text-primary',
   };
 
   return (

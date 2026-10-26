@@ -243,8 +243,12 @@ export const InteractiveCandleChart: React.FC<InteractiveCandleChartProps> = ({
     const getY = (price: number) =>
       mainHeight - ((price - scaledMinPrice) / scaledPriceRange) * mainHeight;
 
+    const isDark = typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : true;
+    const gridStroke = isDark ? '#1E293B' : '#E2E8F0';
+    const textFill = isDark ? '#94A3B8' : '#64748B';
+
     // 1. Draw Background Grid
-    ctx.strokeStyle = '#1E293B';
+    ctx.strokeStyle = gridStroke;
     ctx.lineWidth = 1;
 
     // Horizontal Price Lines
@@ -258,7 +262,7 @@ export const InteractiveCandleChart: React.FC<InteractiveCandleChartProps> = ({
       ctx.stroke();
 
       // Price Label
-      ctx.fillStyle = '#94A3B8';
+      ctx.fillStyle = textFill;
       ctx.font = '10px monospace';
       ctx.textAlign = 'left';
       ctx.fillText(p.toFixed(p > 100 ? 2 : 5), chartWidth + 6, y + 3);
@@ -276,7 +280,7 @@ export const InteractiveCandleChart: React.FC<InteractiveCandleChartProps> = ({
       // Time Label
       const dt = new Date(visibleCandles[i].timestamp);
       const timeStr = `${dt.getUTCHours().toString().padStart(2, '0')}:${dt.getUTCMinutes().toString().padStart(2, '0')}`;
-      ctx.fillStyle = '#94A3B8';
+      ctx.fillStyle = textFill;
       ctx.font = '10px monospace';
       ctx.textAlign = 'center';
       ctx.fillText(timeStr, x, mainHeight + 14);
@@ -429,11 +433,11 @@ export const InteractiveCandleChart: React.FC<InteractiveCandleChartProps> = ({
 
     // 6. Draw RSI Oscillator Panel
     if (showRSI) {
-      ctx.fillStyle = '#0F172A';
+      ctx.fillStyle = isDark ? '#0F172A' : '#F8FAFC';
       ctx.fillRect(0, rsiTop, chartWidth, rsiHeight);
 
       // RSI Boundaries (70 Overbought, 30 Oversold)
-      ctx.strokeStyle = '#1E293B';
+      ctx.strokeStyle = gridStroke;
       ctx.lineWidth = 1;
       const y70 = rsiTop + rsiHeight * 0.3;
       const y30 = rsiTop + rsiHeight * 0.7;
@@ -445,13 +449,13 @@ export const InteractiveCandleChart: React.FC<InteractiveCandleChartProps> = ({
       ctx.lineTo(chartWidth, y30);
       ctx.stroke();
 
-      ctx.fillStyle = '#94A3B8';
+      ctx.fillStyle = textFill;
       ctx.font = '9px monospace';
       ctx.fillText('70', chartWidth + 6, y70 + 3);
       ctx.fillText('30', chartWidth + 6, y30 + 3);
 
       // RSI Title
-      ctx.fillStyle = '#94A3B8';
+      ctx.fillStyle = textFill;
       ctx.font = 'bold 9px sans-serif';
       ctx.fillText('RSI (14)', 8, rsiTop + 12);
 
@@ -566,6 +570,22 @@ export const InteractiveCandleChart: React.FC<InteractiveCandleChartProps> = ({
 
   useEffect(() => {
     renderCanvas();
+  }, [renderCanvas]);
+
+  // Synchronous theme change redraw without touching candles, zoom, or subscriptions
+  useEffect(() => {
+    const handleThemeChange = () => {
+      renderCanvas();
+    };
+    window.addEventListener('appex:theme-changed', handleThemeChange);
+    const observer = new MutationObserver(() => {
+      renderCanvas();
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+    return () => {
+      window.removeEventListener('appex:theme-changed', handleThemeChange);
+      observer.disconnect();
+    };
   }, [renderCanvas]);
 
   // Wheel Zoom & Drag Handlers

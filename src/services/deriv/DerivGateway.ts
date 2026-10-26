@@ -199,29 +199,30 @@ function toNumber(value: unknown): number | null {
 export class DerivGateway {
   private static _instance: DerivGateway | null = null;
 
-  private publicWs: WebSocket | null = null;
-  private accountWs: WebSocket | null = null;
-
-  private accountId: string | null = null;
-  private accessToken: string | null = null;
+  private userAccessTokens = new Map<string, string>();
+  private userAccountIds = new Map<string, string>();
+  private userAccountSockets = new Map<string, WebSocket>();
+  private userBalances = new Map<string, any>();
+  private userProfiles = new Map<string, any>();
 
   private connectionState: DerivConnectionState = 'DISCONNECTED';
 
+  private publicWs: WebSocket | null = null;
   private publicConnectPromise: Promise<void> | null = null;
-  private accountConnectPromise: Promise<void> | null = null;
+  private userAccountConnectPromises = new Map<string, Promise<void>>();
 
   private publicReconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private accountReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private userAccountReconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   private publicReconnectAttempts = 0;
-  private accountReconnectAttempts = 0;
+  private userAccountReconnectAttempts = new Map<string, number>();
 
   private explicitShutdown = false;
 
   private requestId = 1;
 
   private pendingPublicRequests = new Map<number, PendingRequest>();
-  private pendingAccountRequests = new Map<number, PendingRequest>();
+  private userPendingAccountRequests = new Map<string, Map<number, PendingRequest>>();
 
   private tickSubscriptions = new Map<string, TickSubscription>();
   private tickHistory = new Map<string, NormalizedTick>();
@@ -233,17 +234,9 @@ export class DerivGateway {
   private tickSubQueue: string[] = [];
   private isProcessingTickSubQueue = false;
 
-  private balance: {
-    balance: number;
-    currency: string;
-    loginid: string;
-  } | null = null;
-
-  private profile: DerivAccountProfile | null = null;
-
   private statusListeners = new Set<StatusCallback>();
-  private balanceListeners = new Set<BalanceCallback>();
-  private profileListeners = new Set<ProfileCallback>();
+  private userBalanceListeners = new Map<string, Set<BalanceCallback>>();
+  private userProfileListeners = new Map<string, Set<ProfileCallback>>();
 
   private clients = new Set<WebSocket>();
   private clientSubscriptions = new Map<WebSocket, Set<() => void>>();
@@ -283,41 +276,59 @@ export class DerivGateway {
   }
 
   /**
-   * Configure the authenticated OAuth session.
+   * Configure the authenticated OAuth session for a specific user.
    *
    * Ownership of the OAuth token remains server-side.
    */
-  public setAuthToken(token: string, accountId?: string): void {
+  public setUserAuthToken(userId: string, token: string, accountId?: string): void {
+    const normalizedUserId = userId?.trim();
     const normalizedToken = token?.trim();
 
-    if (!normalizedToken) {
-      throw new Error('A valid OAuth access token is required.');
+    if (!normalizedUserId || !normalizedToken) {
+      throw new Error('A valid User ID and OAuth access token are required.');
     }
 
-    this.accessToken = normalizedToken;
+    this.userAccessTokens.set(normalizedUserId, normalizedToken);
 
     if (accountId) {
-      this.setAccountId(accountId);
+      this.setUserAccountId(normalizedUserId, accountId);
     }
   }
 
   /**
-   * Set the Options account associated with the current OAuth session.
+   * Set the Options account associated with the current OAuth session for a user.
+   */
+  public setUserAccountId(userId: string, accountId: string): void {
+    const normalizedUserId = userId?.trim();
+    const normalizedAccountId = accountId?.trim();
+
+    if (!normalizedUserId || !normalizedAccountId || !isValidAccountId(normalizedAccountId)) {
+      throw new Error('Invalid User ID or Options account ID.');
+    }
+
+    if (this.userAccountIds.get(normalizedUserId) !== normalizedAccountId) {
+      this.closeUserAccountSocket(normalizedUserId);
+
+      this.userAccountIds.set(normalizedUserId, normalizedAccountId);
+      this.userBalances.delete(normalizedUserId);
+      this.userProfiles.delete(normalizedUserId);
+    }
+  }
+
+  /**
+   * Backward compatibility for setAuthToken.
+   * DEPRECATED: Use setUserAuthToken instead.
+   */
+  public setAuthToken(token: string, accountId?: string): void {
+    this.setUserAuthToken('SYSTEM', token, accountId);
+  }
+
+  /**
+   * Backward compatibility for setAccountId.
+   * DEPRECATED: Use setUserAccountId instead.
    */
   public setAccountId(accountId: string): void {
-    const normalized = accountId?.trim();
-
-    if (!normalized || !isValidAccountId(normalized)) {
-      throw new Error('Invalid Options account ID.');
-    }
-
-    if (this.accountId !== normalized) {
-      this.closeAccountSocket();
-
-      this.accountId = normalized;
-      this.balance = null;
-      this.profile = null;
-    }
+    this.setUserAccountId('SYSTEM', accountId);
   }
 
   /**
@@ -341,20 +352,33 @@ export class DerivGateway {
 
     await this.connectPublic();
 
-    if (this.accessToken && this.accountId) {
-      await this.connectAccount().catch((error) => {
-        logger.warn('[DerivGateway] Authenticated Options connection unavailable.', {
-          error: cleanErrorMessage(error),
+    // Reconnect existing user sessions if any
+    for (const userId of this.userAccessTokens.keys()) {
+      const accountId = this.userAccountIds.get(userId);
+      if (accountId) {
+        await this.connectUserAccount(userId).catch((error) => {
+          logger.warn(`[DerivGateway] Authenticated Options connection unavailable for user ${userId}.`, {
+            error: cleanErrorMessage(error),
+          });
         });
-      });
+      }
     }
   }
 
   /**
-   * Connect to the public Options market-data WebSocket.
+   * Connect a specific user's authenticated account channel.
+   */
+  public async connectUser(userId: string): Promise<void> {
+    this.explicitShutdown = false;
+    await this.connectPublic();
+    await this.connectUserAccount(userId);
+  }
+
+  /**
+   * Connect to the public Options WebSocket stream (no auth required).
    */
   private async connectPublic(): Promise<void> {
-    if (this.publicWs?.readyState === WS_OPEN) {
+    if (this.publicWs && this.publicWs.readyState === WS_OPEN) {
       return;
     }
 
@@ -362,57 +386,45 @@ export class DerivGateway {
       return this.publicConnectPromise;
     }
 
-    this.setConnectionState(
-      this.publicReconnectAttempts > 0 ? 'RECONNECTING' : 'CONNECTING',
-    );
+    this.publicConnectPromise = this.openPublicSocket().finally(() => {
+      this.publicConnectPromise = null;
+    });
 
-    console.log('[STREAM_CONNECTING]', { type: 'public', attempt: this.publicReconnectAttempts });
+    return this.publicConnectPromise;
+  }
 
-    this.publicConnectPromise = new Promise<void>((resolve, reject) => {
+  /**
+   * Open the public Options WebSocket connection.
+   */
+  private async openPublicSocket(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
       let settled = false;
-
-      if (this.publicWs) {
-        try {
-          this.publicWs.removeAllListeners();
-          this.publicWs.close();
-        } catch {}
-        this.publicWs = null;
-      }
+      this.closePublicSocket();
 
       const ws = new WebSocket(OPTIONS_PUBLIC_WS);
-
       this.publicWs = ws;
 
       const finishResolve = () => {
         if (settled) return;
-
         settled = true;
-        this.publicConnectPromise = null;
         resolve();
       };
 
       const finishReject = (error: Error) => {
         if (settled) return;
-
         settled = true;
-        this.publicConnectPromise = null;
         reject(error);
       };
 
       ws.once('open', () => {
         this.publicReconnectAttempts = 0;
-        this.connectedAt ??= Date.now();
-
-        console.log('[STREAM_OPEN]', { type: 'public' });
-
-        this.setConnectionState(
-          this.accountWs?.readyState === WS_OPEN
-            ? 'CONNECTED'
-            : 'CONNECTED',
-        );
-
+        this.connectedAt = Date.now();
+        this.setConnectionState('CONNECTED');
         this.startHeartbeat();
 
+        this.fetchActiveSymbols().catch((err) => {
+          logger.warn('[DerivGateway] Failed to fetch active symbols on connect:', { error: cleanErrorMessage(err) });
+        });
         this.restoreTickSubscriptions();
 
         finishResolve();
@@ -422,24 +434,12 @@ export class DerivGateway {
         this.handlePublicMessage(raw);
       });
 
-      ws.on('pong', () => {
-        this.lastLatencyMs = Date.now() - Number(ws['__appexPingAt'] ?? Date.now());
-      });
-
       ws.on('error', (error) => {
-        console.error('[STREAM_ERROR]', {
-          type: 'public',
-          error: cleanErrorMessage(error),
-        });
-        logger.warn('[DerivGateway] Public Options WebSocket error.', {
-          error: cleanErrorMessage(error),
-        });
-
+        logger.warn('[DerivGateway] Public Options WebSocket error:', { error: cleanErrorMessage(error) });
         finishReject(error instanceof Error ? error : new Error(String(error)));
       });
 
       ws.once('close', () => {
-        console.log('[STREAM_CLOSED]', { type: 'public' });
         if (this.publicWs === ws) {
           this.publicWs = null;
         }
@@ -453,69 +453,74 @@ export class DerivGateway {
           this.schedulePublicReconnect();
         }
 
-        if (this.accountWs?.readyState !== WS_OPEN) {
+        if (this.userAccountSockets.size === 0) {
           this.setConnectionState('DISCONNECTED');
         }
       });
     });
-
-    return this.publicConnectPromise;
   }
 
   /**
-   * Connect the authenticated Options account channel.
-   *
-   * Authentication is performed by:
-   *
-   * OAuth Bearer token
-   *      ↓
-   * OTP REST endpoint
-   *      ↓
-   * ready-to-use authenticated WebSocket URL
+   * Connect the authenticated Options account channel for a user.
    */
-  private async connectAccount(): Promise<void> {
-    if (!this.accessToken || !this.accountId) {
+  private async connectUserAccount(userId: string): Promise<void> {
+    const accessToken = this.userAccessTokens.get(userId);
+    const accountId = this.userAccountIds.get(userId);
+
+    if (!accessToken || !accountId) {
       throw new Error(
-        'Authenticated Options connection requires both access token and account ID.',
+        `Authenticated Options connection for user ${userId} requires both access token and account ID.`,
       );
     }
 
-    if (this.accountWs?.readyState === WS_OPEN) {
+    const socket = this.userAccountSockets.get(userId);
+    if (socket?.readyState === WS_OPEN) {
       return;
     }
 
-    if (this.accountConnectPromise) {
-      return this.accountConnectPromise;
+    if (this.userAccountConnectPromises.has(userId)) {
+      return this.userAccountConnectPromises.get(userId);
     }
 
-    this.accountConnectPromise = this.openAuthenticatedAccountSocket()
+    const promise = this.openAuthenticatedAccountSocket(userId)
       .finally(() => {
-        this.accountConnectPromise = null;
+        this.userAccountConnectPromises.delete(userId);
       });
 
-    return this.accountConnectPromise;
+    this.userAccountConnectPromises.set(userId, promise);
+    return promise;
   }
 
   /**
-   * Obtain a fresh one-time WebSocket URL.
+   * DEPRECATED: Use connectUserAccount instead.
    */
-  private async requestOtpUrl(): Promise<string> {
-    if (!this.accessToken) {
-      throw new Error('OAuth access token is not configured.');
+  private async connectAccount(): Promise<void> {
+    return this.connectUserAccount('SYSTEM');
+  }
+
+  /**
+   * Obtain a fresh one-time WebSocket URL for a user.
+   */
+  private async requestOtpUrl(userId: string): Promise<string> {
+    const accessToken = this.userAccessTokens.get(userId);
+    const accountId = this.userAccountIds.get(userId);
+
+    if (!accessToken) {
+      throw new Error(`OAuth access token is not configured for user ${userId}.`);
     }
 
-    if (!this.accountId) {
-      throw new Error('Options account ID is not configured.');
+    if (!accountId) {
+      throw new Error(`Options account ID is not configured for user ${userId}.`);
     }
 
     const endpoint =
       `${OPTIONS_REST_BASE}/trading/v1/options/accounts/` +
-      `${encodeURIComponent(this.accountId)}/otp`;
+      `${encodeURIComponent(accountId)}/otp`;
 
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${this.accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
         'Deriv-App-ID': this.getApplicationId(),
         Accept: 'application/json',
         'Content-Type': 'application/json',
@@ -532,7 +537,7 @@ export class DerivGateway {
       throw new Error(
         this.extractRestError(
           body,
-          `Options OTP request failed with HTTP ${response.status}.`,
+          `Options OTP request for user ${userId} failed with HTTP ${response.status}.`,
         ),
       );
     }
@@ -541,7 +546,7 @@ export class DerivGateway {
 
     if (!url || !url.startsWith('wss://api.derivws.com/')) {
       throw new Error(
-        'Deriv returned an invalid authenticated Options WebSocket URL.',
+        `Deriv returned an invalid authenticated Options WebSocket URL for user ${userId}.`,
       );
     }
 
@@ -566,27 +571,21 @@ export class DerivGateway {
   }
 
   /**
-   * Open the authenticated Options WebSocket using a fresh OTP URL.
+   * Open the authenticated Options WebSocket using a fresh OTP URL for a user.
    */
-  private async openAuthenticatedAccountSocket(): Promise<void> {
-    const wsUrl = await this.requestOtpUrl();
+  private async openAuthenticatedAccountSocket(userId: string): Promise<void> {
+    const accountId = this.userAccountIds.get(userId);
+    const wsUrl = await this.requestOtpUrl(userId);
 
-    console.log('[ACCOUNT_WS_CONNECTING]', { accountId: this.accountId });
+    console.log('[ACCOUNT_WS_CONNECTING]', { userId, accountId });
 
     await new Promise<void>((resolve, reject) => {
       let settled = false;
 
-      if (this.accountWs) {
-        try {
-          this.accountWs.removeAllListeners();
-          this.accountWs.close();
-        } catch {}
-        this.accountWs = null;
-      }
+      this.closeUserAccountSocket(userId);
 
       const ws = new WebSocket(wsUrl);
-
-      this.accountWs = ws;
+      this.userAccountSockets.set(userId, ws);
 
       const finishResolve = () => {
         if (settled) return;
@@ -603,14 +602,14 @@ export class DerivGateway {
       };
 
       ws.once('open', () => {
-        this.accountReconnectAttempts = 0;
+        this.userAccountReconnectAttempts.set(userId, 0);
 
-        console.log('[ACCOUNT_WS_OPEN]', { accountId: this.accountId });
+        console.log('[ACCOUNT_WS_OPEN]', { userId, accountId });
         this.setConnectionState('CONNECTED');
 
-        this.requestInitialAccountState().catch((error) => {
+        this.requestInitialAccountState(userId).catch((error) => {
           logger.warn(
-            '[DerivGateway] Initial account-state request failed.',
+            `[DerivGateway] Initial account-state request failed for user ${userId}.`,
             {
               error: cleanErrorMessage(error),
             },
@@ -621,16 +620,17 @@ export class DerivGateway {
       });
 
       ws.on('message', (raw: WebSocket.RawData) => {
-        this.handleAccountMessage(raw);
+        this.handleUserAccountMessage(userId, raw);
       });
 
       ws.on('error', (error) => {
         console.error('[ACCOUNT_WS_ERROR]', {
-          accountId: this.accountId,
+          userId,
+          accountId,
           error: cleanErrorMessage(error),
         });
         logger.warn(
-          '[DerivGateway] Authenticated Options WebSocket error.',
+          `[DerivGateway] Authenticated Options WebSocket error for user ${userId}.`,
           {
             error: cleanErrorMessage(error),
           },
@@ -644,21 +644,24 @@ export class DerivGateway {
       });
 
       ws.once('close', () => {
-        console.log('[ACCOUNT_WS_CLOSED]', { accountId: this.accountId });
-        if (this.accountWs === ws) {
-          this.accountWs = null;
+        console.log('[ACCOUNT_WS_CLOSED]', { userId, accountId });
+        if (this.userAccountSockets.get(userId) === ws) {
+          this.userAccountSockets.delete(userId);
         }
 
-        this.rejectPendingRequests(
-          this.pendingAccountRequests,
-          new Error('Authenticated Options WebSocket disconnected.'),
-        );
-
-        if (!this.explicitShutdown && this.accessToken && this.accountId) {
-          this.scheduleAccountReconnect();
+        const pending = this.userPendingAccountRequests.get(userId);
+        if (pending) {
+          this.rejectPendingRequests(
+            pending,
+            new Error(`Authenticated Options WebSocket for user ${userId} disconnected.`),
+          );
         }
 
-        if (this.publicWs?.readyState !== WS_OPEN) {
+        if (!this.explicitShutdown && this.userAccessTokens.has(userId) && this.userAccountIds.has(userId)) {
+          this.scheduleUserAccountReconnect(userId);
+        }
+
+        if (this.publicWs?.readyState !== WS_OPEN && this.userAccountSockets.size === 0) {
           this.setConnectionState('DISCONNECTED');
         }
       });
@@ -666,22 +669,23 @@ export class DerivGateway {
   }
 
   /**
-   * Request initial account data after authenticated connection.
+   * Request initial account data after authenticated connection for a user.
    */
-  private async requestInitialAccountState(): Promise<void> {
-    if (!this.accountWs || this.accountWs.readyState !== WS_OPEN) {
+  private async requestInitialAccountState(userId: string): Promise<void> {
+    const ws = this.userAccountSockets.get(userId);
+    if (!ws || ws.readyState !== WS_OPEN) {
       return;
     }
 
     try {
-      const response = await this.sendAccountRequest({
+      const response = await this.sendUserAccountRequest(userId, {
         balance: 1,
         subscribe: 1,
       });
 
-      this.processBalance(response);
+      this.processUserBalance(userId, response);
     } catch (error) {
-      logger.warn('[DerivGateway] Balance initialization failed.', {
+      logger.warn(`[DerivGateway] Balance initialization failed for user ${userId}.`, {
         error: cleanErrorMessage(error),
       });
     }
@@ -703,29 +707,45 @@ export class DerivGateway {
   }
 
   /**
-   * Send a request through the authenticated Options WebSocket.
+   * Send a request through the authenticated Options WebSocket for a user.
    */
-  private sendAccountRequest(
+  private sendUserAccountRequest(
+    userId: string,
     payload: Record<string, unknown>,
     timeoutMs = DEFAULT_REQUEST_TIMEOUT,
   ): Promise<any> {
+    const ws = this.userAccountSockets.get(userId);
+    let pending = this.userPendingAccountRequests.get(userId);
+    if (!pending) {
+      pending = new Map<number, PendingRequest>();
+      this.userPendingAccountRequests.set(userId, pending);
+    }
+
     return this.sendRequestOnSocket(
-      this.accountWs,
-      this.pendingAccountRequests,
+      ws,
+      pending,
       payload,
       timeoutMs,
     );
   }
 
   /**
+   * DEPRECATED: Use sendUserAccountRequest instead.
+   */
+  private sendAccountRequest(
+    payload: Record<string, unknown>,
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT,
+  ): Promise<any> {
+    return this.sendUserAccountRequest('SYSTEM', payload, timeoutMs);
+  }
+
+  /**
    * Generic gateway request.
-   *
-   * Routing is deliberately restricted to the new Options WebSocket
-   * channels rather than exposing legacy protocol behavior.
    */
   public async sendRequest(
     payload: Record<string, unknown>,
     timeoutMs = DEFAULT_REQUEST_TIMEOUT,
+    userId = 'SYSTEM'
   ): Promise<any> {
     const requiresAccountChannel =
       Boolean(
@@ -738,17 +758,21 @@ export class DerivGateway {
       );
 
     if (requiresAccountChannel) {
-      if (!this.accessToken || !this.accountId) {
+      const accessToken = this.userAccessTokens.get(userId);
+      const accountId = this.userAccountIds.get(userId);
+
+      if (!accessToken || !accountId) {
         throw new Error(
-          'Authenticated Options session is required for this request.',
+          `Authenticated Options session is required for this request (user ${userId}).`,
         );
       }
 
-      if (this.accountWs?.readyState !== WS_OPEN) {
-        await this.connectAccount();
+      const ws = this.userAccountSockets.get(userId);
+      if (ws?.readyState !== WS_OPEN) {
+        await this.connectUserAccount(userId);
       }
 
-      return this.sendAccountRequest(payload, timeoutMs);
+      return this.sendUserAccountRequest(userId, payload, timeoutMs);
     }
 
     if (this.publicWs?.readyState !== WS_OPEN) {
@@ -839,17 +863,17 @@ export class DerivGateway {
   }
 
   /**
-   * Authenticated account message handler.
+   * Authenticated account message handler for a specific user.
    */
-  private handleAccountMessage(raw: WebSocket.RawData): void {
+  private handleUserAccountMessage(userId: string, raw: WebSocket.RawData): void {
     const data = this.parseMessage(raw);
 
     if (!data) return;
 
-    this.resolvePendingRequest(
-      this.pendingAccountRequests,
-      data,
-    );
+    const pending = this.userPendingAccountRequests.get(userId);
+    if (pending) {
+      this.resolvePendingRequest(pending, data);
+    }
 
     if (data.error) {
       return;
@@ -860,15 +884,22 @@ export class DerivGateway {
     }
 
     if (data.msg_type === 'balance' && data.balance) {
-      this.processBalance(data);
+      this.processUserBalance(userId, data);
     }
 
     if (
       data.msg_type === 'authorize' &&
       data.authorize
     ) {
-      this.processProfile(data.authorize);
+      this.processUserProfile(userId, data.authorize);
     }
+  }
+
+  /**
+   * DEPRECATED: Use handleUserAccountMessage instead.
+   */
+  private handleAccountMessage(raw: WebSocket.RawData): void {
+    this.handleUserAccountMessage('SYSTEM', raw);
   }
 
   private parseMessage(
@@ -1387,65 +1418,77 @@ export class DerivGateway {
   }
 
   /**
-   * Return current account profile.
+   * Return current account profile for a user.
    */
-  public getProfile(): DerivAccountProfile | null {
-    return this.profile
-      ? { ...this.profile }
-      : null;
+  public getProfile(userId = 'SYSTEM'): DerivAccountProfile | null {
+    const profile = this.userProfiles.get(userId);
+    return profile ? { ...profile } : null;
   }
 
   /**
-   * Return current account balance.
+   * Return current account balance for a user.
    */
-  public getBalance(): {
+  public getBalance(userId = 'SYSTEM'): {
     balance: number;
     currency: string;
     loginid: string;
   } | null {
-    return this.balance
-      ? { ...this.balance }
-      : null;
+    const balance = this.userBalances.get(userId);
+    return balance ? { ...balance } : null;
   }
 
   /**
-   * Return current account ID.
+   * Return current account ID for a user.
    */
-  public getAccountId(): string | null {
-    return this.accountId;
+  public getAccountId(userId = 'SYSTEM'): string | null {
+    return this.userAccountIds.get(userId) || null;
   }
 
   /**
-   * Register balance listener.
+   * Register balance listener for a specific user.
    */
   public onBalanceChange(
     callback: BalanceCallback,
+    userId = 'SYSTEM'
   ): () => void {
-    this.balanceListeners.add(callback);
+    let listeners = this.userBalanceListeners.get(userId);
+    if (!listeners) {
+      listeners = new Set<BalanceCallback>();
+      this.userBalanceListeners.set(userId, listeners);
+    }
+    listeners.add(callback);
 
-    if (this.balance) {
-      callback({ ...this.balance });
+    const balance = this.userBalances.get(userId);
+    if (balance) {
+      callback({ ...balance });
     }
 
     return () => {
-      this.balanceListeners.delete(callback);
+      listeners?.delete(callback);
     };
   }
 
   /**
-   * Register profile listener.
+   * Register profile listener for a specific user.
    */
   public onProfileChange(
     callback: ProfileCallback,
+    userId = 'SYSTEM'
   ): () => void {
-    this.profileListeners.add(callback);
+    let listeners = this.userProfileListeners.get(userId);
+    if (!listeners) {
+      listeners = new Set<ProfileCallback>();
+      this.userProfileListeners.set(userId, listeners);
+    }
+    listeners.add(callback);
 
-    if (this.profile) {
-      callback({ ...this.profile });
+    const profile = this.userProfiles.get(userId);
+    if (profile) {
+      callback({ ...profile });
     }
 
     return () => {
-      this.profileListeners.delete(callback);
+      listeners?.delete(callback);
     };
   }
 
@@ -1465,9 +1508,9 @@ export class DerivGateway {
   }
 
   /**
-   * Update account balance from an Options WS response.
+   * Update account balance from an Options WS response for a user.
    */
-  private processBalance(data: any): void {
+  private processUserBalance(userId: string, data: any): void {
     const raw = data?.balance ?? data;
 
     const balanceValue =
@@ -1480,44 +1523,56 @@ export class DerivGateway {
     const currency =
       typeof raw?.currency === 'string'
         ? raw.currency
-        : this.balance?.currency || 'USD';
+        : this.userBalances.get(userId)?.currency || 'USD';
 
     const loginid =
       typeof raw?.loginid === 'string'
         ? raw.loginid
-        : this.accountId || '';
+        : this.userAccountIds.get(userId) || '';
 
-    this.balance = {
+    const balance = {
       balance: balanceValue,
       currency,
       loginid,
     };
 
-    if (this.profile) {
-      this.profile.balance = balanceValue;
-      this.profile.currency = currency;
-      this.profile.loginid =
-        loginid || this.profile.loginid;
+    this.userBalances.set(userId, balance);
+
+    const profile = this.userProfiles.get(userId);
+    if (profile) {
+      profile.balance = balanceValue;
+      profile.currency = currency;
+      profile.loginid = loginid || profile.loginid;
     }
 
-    for (const listener of this.balanceListeners) {
-      try {
-        listener({ ...this.balance });
-      } catch (error) {
-        logger.warn(
-          '[DerivGateway] Balance listener failed.',
-          {
-            error: cleanErrorMessage(error),
-          },
-        );
+    const listeners = this.userBalanceListeners.get(userId);
+    if (listeners) {
+      for (const listener of listeners) {
+        try {
+          listener({ ...balance });
+        } catch (error) {
+          logger.warn(
+            `[DerivGateway] Balance listener failed for user ${userId}.`,
+            {
+              error: cleanErrorMessage(error),
+            },
+          );
+        }
       }
     }
   }
 
   /**
-   * Process account profile data if supplied by the API.
+   * DEPRECATED: Use processUserBalance instead.
    */
-  private processProfile(raw: any): void {
+  private processBalance(data: any): void {
+    this.processUserBalance('SYSTEM', data);
+  }
+
+  /**
+   * Process account profile data if supplied by the API for a user.
+   */
+  private processUserProfile(userId: string, raw: any): void {
     if (!raw || typeof raw !== 'object') {
       return;
     }
@@ -1525,36 +1580,48 @@ export class DerivGateway {
     const loginid =
       typeof raw.loginid === 'string'
         ? raw.loginid
-        : this.accountId;
+        : this.userAccountIds.get(userId);
 
     if (!loginid) {
       return;
     }
 
-    this.profile = {
+    const profile = {
       ...raw,
       loginid,
       balance:
         toNumber(raw.balance) ??
-        this.balance?.balance,
+        this.userBalances.get(userId)?.balance,
       currency:
         typeof raw.currency === 'string'
           ? raw.currency
-          : this.balance?.currency,
+          : this.userBalances.get(userId)?.currency,
     };
 
-    for (const listener of this.profileListeners) {
-      try {
-        listener({ ...this.profile });
-      } catch (error) {
-        logger.warn(
-          '[DerivGateway] Profile listener failed.',
-          {
-            error: cleanErrorMessage(error),
-          },
-        );
+    this.userProfiles.set(userId, profile);
+
+    const listeners = this.userProfileListeners.get(userId);
+    if (listeners) {
+      for (const listener of listeners) {
+        try {
+          listener({ ...profile });
+        } catch (error) {
+          logger.warn(
+            `[DerivGateway] Profile listener failed for user ${userId}.`,
+            {
+              error: cleanErrorMessage(error),
+            },
+          );
+        }
       }
     }
+  }
+
+  /**
+   * DEPRECATED: Use processUserProfile instead.
+   */
+  private processProfile(raw: any): void {
+    this.processUserProfile('SYSTEM', raw);
   }
 
   /**
@@ -1675,9 +1742,10 @@ export class DerivGateway {
    * This method is intentionally useful for server-side session
    * synchronization without exposing credentials to clients.
    */
-  public async fetchAccounts(): Promise<OptionsAccount[]> {
-    if (!this.accessToken) {
-      throw new Error('OAuth access token is not configured.');
+  public async fetchAccounts(userId = 'SYSTEM'): Promise<OptionsAccount[]> {
+    const token = this.userAccessTokens.get(userId);
+    if (!token) {
+      throw new Error(`OAuth access token is not configured for user ${userId}.`);
     }
 
     const response = await fetch(
@@ -1685,7 +1753,7 @@ export class DerivGateway {
       {
         method: 'GET',
         headers: {
-          Authorization: `Bearer ${this.accessToken}`,
+          Authorization: `Bearer ${token}`,
           'Deriv-App-ID': this.getApplicationId(),
           Accept: 'application/json',
         },
@@ -1729,6 +1797,7 @@ export class DerivGateway {
    */
   public async findAccount(
     accountId: string,
+    userId = 'SYSTEM',
   ): Promise<OptionsAccount | null> {
     const cleanAccountId =
       accountId?.trim();
@@ -1741,7 +1810,7 @@ export class DerivGateway {
     }
 
     const accounts =
-      await this.fetchAccounts();
+      await this.fetchAccounts(userId);
 
     return (
       accounts.find(
@@ -1820,23 +1889,30 @@ export class DerivGateway {
    *
    * A fresh OTP is requested on every reconnect.
    */
-  private scheduleAccountReconnect(): void {
+  /**
+   * Schedule authenticated account reconnect for a user.
+   */
+  private scheduleUserAccountReconnect(userId: string): void {
+    const accessToken = this.userAccessTokens.get(userId);
+    const accountId = this.userAccountIds.get(userId);
+
     if (
       this.explicitShutdown ||
-      this.accountReconnectTimer ||
-      !this.accessToken ||
-      !this.accountId
+      this.userAccountReconnectTimers.has(userId) ||
+      !accessToken ||
+      !accountId
     ) {
       return;
     }
 
-    this.accountReconnectAttempts += 1;
+    const attempts = (this.userAccountReconnectAttempts.get(userId) || 0) + 1;
+    this.userAccountReconnectAttempts.set(userId, attempts);
 
     const delay =
       Math.min(
         DEFAULT_RECONNECT_DELAY *
           2 ** Math.min(
-            this.accountReconnectAttempts - 1,
+            attempts - 1,
             5,
           ),
         MAX_RECONNECT_DELAY,
@@ -1844,21 +1920,29 @@ export class DerivGateway {
 
     this.setConnectionState('RECONNECTING');
 
-    this.accountReconnectTimer =
-      setTimeout(() => {
-        this.accountReconnectTimer = null;
+    const timer = setTimeout(() => {
+      this.userAccountReconnectTimers.delete(userId);
 
-        this.connectAccount().catch((error) => {
-          logger.warn(
-            '[DerivGateway] Authenticated Options reconnect failed.',
-            {
-              error: cleanErrorMessage(error),
-            },
-          );
+      this.connectUserAccount(userId).catch((error) => {
+        logger.warn(
+          `[DerivGateway] Authenticated Options reconnect failed for user ${userId}.`,
+          {
+            error: cleanErrorMessage(error),
+          },
+        );
 
-          this.scheduleAccountReconnect();
-        });
-      }, delay);
+        this.scheduleUserAccountReconnect(userId);
+      });
+    }, delay);
+
+    this.userAccountReconnectTimers.set(userId, timer);
+  }
+
+  /**
+   * DEPRECATED: Use scheduleUserAccountReconnect instead.
+   */
+  private scheduleAccountReconnect(): void {
+    this.scheduleUserAccountReconnect('SYSTEM');
   }
 
   /**
@@ -1885,15 +1969,12 @@ export class DerivGateway {
 
     this.pingTimer =
       setInterval(() => {
-        const sockets = [
-          this.publicWs,
-          this.accountWs,
-        ];
+        const sockets = [this.publicWs, ...Array.from(this.userAccountSockets.values())];
 
         for (const socket of sockets) {
           if (socket?.readyState === WS_OPEN) {
             try {
-              socket['__appexPingAt'] =
+              (socket as any)['__appexPingAt'] =
                 Date.now();
 
               socket.ping();
@@ -1956,12 +2037,7 @@ export class DerivGateway {
 
     return {
       state: this.connectionState,
-      isAuthorized:
-        Boolean(
-          this.accessToken &&
-          this.accountId &&
-          this.accountWs?.readyState === WS_OPEN,
-        ),
+      isAuthorized: this.userAccountSockets.size > 0,
       activeSymbolsCount:
         this.availableSymbols.size,
       subscribedSymbolsCount:
@@ -2319,13 +2395,10 @@ export class DerivGateway {
       this.publicReconnectTimer = null;
     }
 
-    if (this.accountReconnectTimer) {
-      clearTimeout(
-        this.accountReconnectTimer,
-      );
-
-      this.accountReconnectTimer = null;
+    for (const timer of this.userAccountReconnectTimers.values()) {
+      clearTimeout(timer);
     }
+    this.userAccountReconnectTimers.clear();
 
     this.stopHeartbeat();
 
@@ -2334,13 +2407,16 @@ export class DerivGateway {
       new Error('Gateway shutting down.'),
     );
 
-    this.rejectPendingRequests(
-      this.pendingAccountRequests,
-      new Error('Gateway shutting down.'),
-    );
+    for (const pending of this.userPendingAccountRequests.values()) {
+      this.rejectPendingRequests(pending, new Error('Gateway shutting down.'));
+    }
+    this.userPendingAccountRequests.clear();
 
     this.closePublicSocket();
-    this.closeAccountSocket();
+    
+    for (const userId of Array.from(this.userAccountSockets.keys())) {
+      this.closeUserAccountSocket(userId);
+    }
 
     for (const client of this.clients) {
       try {
@@ -2362,10 +2438,10 @@ export class DerivGateway {
       this.webSocketServer = null;
     }
 
-    this.accessToken = null;
-    this.accountId = null;
-    this.balance = null;
-    this.profile = null;
+    this.userAccessTokens.clear();
+    this.userAccountIds.clear();
+    this.userBalances.clear();
+    this.userProfiles.clear();
 
     this.setConnectionState('DISCONNECTED');
   }
@@ -2387,10 +2463,10 @@ export class DerivGateway {
     }
   }
 
-  private closeAccountSocket(): void {
-    const socket = this.accountWs;
+  private closeUserAccountSocket(userId: string): void {
+    const socket = this.userAccountSockets.get(userId);
 
-    this.accountWs = null;
+    this.userAccountSockets.delete(userId);
 
     if (!socket) {
       return;
@@ -2402,6 +2478,13 @@ export class DerivGateway {
     } catch {
       // Safe cleanup.
     }
+  }
+
+  /**
+   * DEPRECATED: Use closeUserAccountSocket instead.
+   */
+  private closeAccountSocket(): void {
+    this.closeUserAccountSocket('SYSTEM');
   }
 }
 

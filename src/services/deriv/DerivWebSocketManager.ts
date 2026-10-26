@@ -157,11 +157,18 @@ export class DerivWebSocketManager {
     }
   }
 
+  private isUsingDirectPublicWs = false;
+
   public getConnectionState(): DerivConnectionState {
     return this.connectionState;
   }
 
   private getGatewayStreamUrl(): string {
+    // If running on Vercel serverless or if gateway stream had repeated failures, connect directly to Deriv public Options WS
+    if (this.reconnectAttempts >= 2 || this.isUsingDirectPublicWs) {
+      this.isUsingDirectPublicWs = true;
+      return 'wss://api.derivws.com/trading/v1/options/ws/public';
+    }
     if (typeof window === 'undefined') {
       return 'ws://localhost:3000/api/deriv/stream';
     }
@@ -187,13 +194,13 @@ export class DerivWebSocketManager {
     this.connectPromise = new Promise((resolve, reject) => {
       try {
         const streamUrl = this.getGatewayStreamUrl();
-        console.log(`[DerivWS-Client] Connecting to backend gateway stream: ${streamUrl}`);
+        console.log(`[DerivWS-Client] Connecting to market data stream: ${streamUrl}`);
 
         this.ws = new WebSocket(streamUrl);
 
         const openTimeout = setTimeout(() => {
           if (this.ws?.readyState !== WebSocket.OPEN) {
-            console.warn('[DerivWS-Client] Backend gateway connection timeout.');
+            console.warn('[DerivWS-Client] Market data connection timeout.');
             this.ws?.close();
             this.connectPromise = null;
             this.setConnectionState('ERROR');
@@ -206,7 +213,7 @@ export class DerivWebSocketManager {
           this.reconnectAttempts = 0;
           this.connectPromise = null;
           this.setConnectionState('CONNECTED');
-          console.log('[DerivWS-Client] Connected to backend gateway stream');
+          console.log('[DerivWS-Client] Market data stream connected successfully');
           this.startPing();
           this.resubscribeAll();
           resolve();
@@ -387,9 +394,32 @@ export class DerivWebSocketManager {
         }
       }
 
-      // 4. Handle Multiplexed Tick Stream
+      // 4. Handle Multiplexed Tick Stream (Backend Gateway format)
       if (data.type === 'tick' && data.data) {
         this.processIncomingNormalizedTick(data.data);
+      }
+
+      // 4b. Handle Direct Deriv WebSocket Tick Stream
+      if (data.msg_type === 'tick' && data.tick) {
+        const quoteNum = typeof raw.quote === 'number' ? raw.quote : Number(raw.quote);
+        const normalized: NormalizedTick = {
+          symbol: raw.symbol,
+          quote: quoteNum,
+          bid: typeof raw.bid === 'number' ? raw.bid : Number(raw.bid || quoteNum),
+          ask: typeof raw.ask === 'number' ? raw.ask : Number(raw.ask || quoteNum),
+          epoch: raw.epoch,
+          change: 0,
+          changePct: 0,
+          prevQuote: quoteNum,
+          lastUpdated: raw.epoch ? new Date(raw.epoch * 1000) : new Date(),
+        };
+        this.processIncomingNormalizedTick(normalized);
+      }
+
+      // 4c. Handle Direct Deriv Active Symbols Stream
+      if (data.msg_type === 'active_symbols' && Array.isArray(data.active_symbols)) {
+        const available = extractAvailableSymbols(normalizeDerivActiveSymbols(data.active_symbols));
+        this.setAvailableSymbols(available);
       }
 
       // 5. Handle Correlated Responses
@@ -551,7 +581,11 @@ export class DerivWebSocketManager {
     if (this.connectionState === 'CONNECTED' && this.ws?.readyState === WebSocket.OPEN) {
       if (isFirst) {
         try {
-          this.ws.send(JSON.stringify({ action: 'subscribe_tick', symbol: cleanSymbol }));
+          if (this.isUsingDirectPublicWs) {
+            this.ws.send(JSON.stringify({ ticks: cleanSymbol, subscribe: 1 }));
+          } else {
+            this.ws.send(JSON.stringify({ action: 'subscribe_tick', symbol: cleanSymbol }));
+          }
         } catch (err) {
           console.warn(`[DerivWS-Client] Failed to send subscribe_tick for ${cleanSymbol}:`, err);
         }
@@ -572,7 +606,11 @@ export class DerivWebSocketManager {
     const isLast = subscriptionQueue.dequeue(cleanSymbol, callback);
     if (isLast && this.ws?.readyState === WebSocket.OPEN) {
       try {
-        this.ws.send(JSON.stringify({ action: 'unsubscribe_tick', symbol: cleanSymbol }));
+        if (this.isUsingDirectPublicWs) {
+          this.ws.send(JSON.stringify({ forget: cleanSymbol }));
+        } else {
+          this.ws.send(JSON.stringify({ action: 'unsubscribe_tick', symbol: cleanSymbol }));
+        }
       } catch (err) {
         console.warn(`[DerivWS-Client] Failed to send unsubscribe_tick for ${cleanSymbol}:`, err);
       }
@@ -580,12 +618,16 @@ export class DerivWebSocketManager {
   }
 
   private resubscribeAll(): void {
-    console.log('[DerivWS-Client] Gateway connection recovered. Restoring active market subscriptions...');
+    console.log('[DerivWS-Client] Market stream recovered. Restoring active market subscriptions...');
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       // Re-send subscription messages for all symbols currently having active callbacks
       subscriptionQueue.flush((req) => {
         if (req.ticks) {
-          this.ws?.send(JSON.stringify({ action: 'subscribe_tick', symbol: req.ticks }));
+          if (this.isUsingDirectPublicWs) {
+            this.ws?.send(JSON.stringify({ ticks: req.ticks, subscribe: 1 }));
+          } else {
+            this.ws?.send(JSON.stringify({ action: 'subscribe_tick', symbol: req.ticks }));
+          }
         }
         return Promise.resolve({ req_id: 0, msg_type: 'tick' });
       });

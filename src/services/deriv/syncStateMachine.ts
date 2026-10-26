@@ -58,6 +58,9 @@ export function isValidDerivAccountId(accountId?: unknown): accountId is string 
   if (!/^[A-Za-z0-9_-]{4,40}$/.test(trimmed)) return false;
   const lower = trimmed.toLowerCase();
   if (
+    lower === 'undefined' ||
+    lower === 'null' ||
+    lower === 'nan' ||
     lower.startsWith('usr-') ||
     lower.startsWith('user-') ||
     lower.startsWith('sys-')

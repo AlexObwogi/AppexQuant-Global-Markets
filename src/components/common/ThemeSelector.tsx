@@ -1,6 +1,6 @@
 import React from 'react';
 import { useGlobalState } from '../../state/GlobalStateContext.tsx';
-import { getEffectiveTheme } from '../../design/theme.ts';
+import { getEffectiveTheme, applyThemeToDocument } from '../../design/theme.ts';
 import { Sun, Moon } from 'lucide-react';
 
 export const ThemeSelector: React.FC = () => {
@@ -8,7 +8,9 @@ export const ThemeSelector: React.FC = () => {
   const effectiveTheme = getEffectiveTheme(state.theme);
 
   const handleToggle = () => {
-    dispatch({ type: 'SET_THEME', payload: effectiveTheme === 'light' ? 'dark' : 'light' });
+    const nextTheme = effectiveTheme === 'light' ? 'dark' : 'light';
+    applyThemeToDocument(nextTheme);
+    dispatch({ type: 'SET_THEME', payload: nextTheme });
   };
 
   return (

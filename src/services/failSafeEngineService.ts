@@ -84,7 +84,7 @@ const INITIAL_SUBSYSTEMS: Record<string, SubsystemHealth> = {
     status: 'OPERATIONAL',
     latencyMs: 1.0,
     lastHeartbeatIso: new Date().toISOString(),
-    details: 'Daily loss -0.42% / 3.00% max threshold',
+    details: 'Account equity guard active',
   },
   frequency_limiter: {
     id: 'sub-freq-07',

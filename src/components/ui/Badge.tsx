@@ -22,12 +22,12 @@ export const Badge: React.FC<BadgeProps> = ({
   const badgeId = id || `badge-${Math.random().toString(36).substring(2, 8)}`;
 
   const variants = {
-    success: 'bg-[#0ECB81]/10 text-[#03A66D] border border-[#0ECB81]/20 dark:bg-[#0ECB81]/15 dark:text-[#0ECB81] dark:border-[#0ECB81]/25',
-    danger: 'bg-[#F6465D]/10 text-[#CF304A] border border-[#F6465D]/20 dark:bg-[#F6465D]/15 dark:text-[#F6465D] dark:border-[#F6465D]/25',
-    warning: 'bg-[#F0B90B]/10 text-[#C99400] border border-[#F0B90B]/20 dark:bg-[#F0B90B]/15 dark:text-[#F0B90B] dark:border-[#F0B90B]/25',
-    info: 'bg-[#38BDF8]/10 text-[#0284C7] border border-[#38BDF8]/20 dark:bg-[#38BDF8]/15 dark:text-[#38BDF8] dark:border-[#38BDF8]/25',
-    accent: 'bg-[#FCD535]/10 text-[#C99400] border border-[#FCD535]/20 dark:bg-[#FCD535]/15 dark:text-[#FCD535] dark:border-[#FCD535]/25',
-    neutral: 'bg-[#F5F5F5] text-[#707A8A] border border-[#EAECEF] dark:bg-[#2B3139] dark:text-[#848E9C] dark:border-[#2B3139]',
+    success: 'bg-color-success/15 text-color-success border border-color-success/25',
+    danger: 'bg-color-danger/15 text-color-danger border border-color-danger/25',
+    warning: 'bg-color-warning/15 text-color-warning border border-color-warning/25',
+    info: 'bg-color-info/15 text-color-info border border-color-info/25',
+    accent: 'bg-accent-primary/15 text-accent-primary border border-accent-primary/25',
+    neutral: 'bg-bg-secondary text-text-secondary border border-border-color',
   };
 
   const sizes = {

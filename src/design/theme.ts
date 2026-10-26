@@ -22,4 +22,15 @@ export function applyThemeToDocument(mode: ThemeMode) {
   root.classList.remove('dark', 'light');
   root.classList.add(effective);
   root.setAttribute('data-theme', effective);
+
+  try {
+    localStorage.setItem('appex_theme_mode_v1', mode);
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) {
+      metaTheme.setAttribute('content', effective === 'dark' ? '#0C0E12' : '#F4F5F7');
+    }
+    window.dispatchEvent(new CustomEvent('appex:theme-changed', { detail: { mode, effective } }));
+  } catch {
+    // Ignore storage errors in restricted contexts
+  }
 }

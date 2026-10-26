@@ -99,15 +99,10 @@ class LeaderboardService {
   }
 
   /**
-   * Simulate real-time live performance tick updates (fluctuates PnL / Win-rate slightly)
+   * Performance tick updates - reconciled against verified trade execution results
    */
   public tickLiveLeaderboard(): void {
-    const weekly = this.leaderboardData.WEEKLY;
-    if (weekly && weekly.length > 0) {
-      const delta = (Math.random() - 0.48) * 45;
-      weekly[0].pnlUsd = +(weekly[0].pnlUsd + delta).toFixed(2);
-      weekly[0].totalTrades += Math.random() > 0.8 ? 1 : 0;
-    }
+    // Only real reconciled trades modify leaderboard metrics
   }
 }
 

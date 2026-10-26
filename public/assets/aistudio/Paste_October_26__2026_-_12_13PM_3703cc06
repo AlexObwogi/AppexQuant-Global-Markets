@@ -1,0 +1,993 @@
+# APPEXQUANT MARKETS GLOBAL — PRODUCTION RE-ENGINEERING MASTER PROMPT
+## Unified Professional Trading UI, Instant Theme Switching, Reliable Deriv Market Data, and Real Account Trade Execution
+
+### ROLE AND MISSION
+
+Act as a principal full-stack engineer, senior trading-platform architect, market-data infrastructure specialist, security engineer, and professional financial-product UI/UX designer.
+
+You are working on the existing **AppexQuant Markets Global** application, deployed on Vercel:
+
+`appex-quant-global-markets.vercel.app`
+
+Your mission is to inspect, correct, optimize, and production-harden the existing application so it behaves like a professional third-party Deriv trading platform.
+
+This is an implementation task, not a design proposal.
+
+You must inspect the actual repository, understand its current architecture, identify the real causes of the problems, modify the existing implementation, and run the available build, tests, and verification checks.
+
+**Do not stop after producing a plan. Do not replace real functionality with mock responses, hardcoded data, placeholder account identities, or simulated success states.**
+
+Do not rebuild working modules unnecessarily. Preserve the existing architecture, branding, business logic, authentication, security controls, permissions, and useful features wherever possible.
+
+If the existing implementation is incorrect, refactor the affected components and services properly instead of adding another layer of competing state or duplicate integrations.
+
+---
+
+# PHASE 1 — AUDIT THE EXISTING APPLICATION BEFORE MODIFYING IT
+
+Inspect the repository, package scripts, deployment configuration, frontend entry points, backend entry points, authentication flow, database schema, environment configuration, and existing tests.
+
+Identify the actual files responsible for:
+
+1. Application-wide light and dark themes.
+2. Theme persistence and theme initialization.
+3. Global navigation, headers, sidebars, cards, panels, buttons, badges, and modals.
+4. Deriv OAuth authorization and callback handling.
+5. Deriv account discovery and active-account selection.
+6. Secure account-session persistence and token encryption.
+7. Deriv market-data connections, symbol discovery, ticks, candles, subscriptions, and reconnect logic.
+8. Chart rendering and live indicator calculations.
+9. Trade ticket, contract selection, order submission, execution confirmation, and open-contract monitoring.
+10. Balance, equity, portfolio, transaction history, and trade history.
+11. Dashboard status indicators and account synchronization.
+12. Market-analysis and signal services.
+13. Audit records, trade logs, and error reporting.
+14. Any mock services, fixture data, hardcoded values, fallback generators, demo accounts, fake email generation, and fabricated connection states.
+
+Search for patterns such as:
+
+- Hardcoded account IDs and account emails.
+- `Math.random()` in market prices, candles, balances, trade outcomes, or signals.
+- Static arrays masquerading as discovered markets.
+- Fake successful API responses.
+- Mock WebSocket messages.
+- Timers that generate artificial ticks or update prices.
+- Hardcoded `$0.24`, `$10,000.00`, or other sample account balances.
+- Hardcoded `LIVE`, `CONNECTED`, `SYNCED`, or `ACTIVE` states.
+- Placeholder `userId`, `loginid`, `email`, or `accountId` values.
+- Fallback market prices used after failed network requests.
+- Repeated calls to initialize the same market-data connection.
+- Multiple independent services connecting to Deriv.
+- Inconsistent theme classes or hardcoded background and text colors.
+- Event handlers that report success without receiving a verified backend result.
+
+Do not remove legitimate fixtures used exclusively by isolated automated tests. Clearly separate test fixtures from production runtime behavior.
+
+### Required audit deliverable
+
+Create a concise internal implementation map identifying:
+
+- The existing architecture.
+- The actual data source for each major market-data component.
+- The source of account identity and balances.
+- The source of connection-status indicators.
+- Every fallback or mock affecting production behavior.
+- The cause of market-feed disconnections.
+- The cause of theme-switching delays.
+- The cause of inconsistent cards and colors.
+- The trade-execution path from the UI to Deriv and back.
+- The files that need to change.
+
+Then continue implementation without waiting for approval unless a genuinely blocking external credential, permission, or destructive decision is required.
+
+Do not claim that an issue has been fixed until it has been verified.
+
+---
+
+# PHASE 2 — ESTABLISH A SINGLE SOURCE OF TRUTH FOR DERIV INTEGRATION
+
+Implement or consolidate a canonical backend Deriv integration service that owns authenticated account operations and coordinates market-data connections.
+
+Reuse the existing architecture if an equivalent service already exists. Do not introduce duplicate gateways.
+
+All relevant frontend components must consume a consistent, typed backend contract instead of independently inventing their own connection states.
+
+The integration must distinguish between:
+
+- No Deriv account connected.
+- OAuth authorization in progress.
+- Authentication failed.
+- Account discovery in progress.
+- Authenticated but no eligible account selected.
+- Account connected and verified.
+- Market-data connection connecting.
+- Market-data connection streaming.
+- Market-data connection stale.
+- Market-data connection disconnected.
+- Trade submission pending.
+- Trade accepted by Deriv.
+- Trade rejected by Deriv.
+- Trade outcome confirmed.
+- Unknown outcome requiring reconciliation.
+
+These states are different. Do not combine them into one universal `CONNECTED` or `LIVE` flag.
+
+### Account identity rules
+
+The authenticated Deriv account and authenticated application user must come from verified server-side authentication and actual Deriv responses.
+
+Use the actual returned account identifiers, account type, currency, account permissions, and profile information wherever Deriv provides them.
+
+Never derive a user's email from their account ID. Never generate a fake email to fill a missing profile field. Never use a random identifier as a substitute for an authenticated user.
+
+If Deriv does not provide a verified email, display an appropriate unavailable state instead of inventing one.
+
+Keep the internal application user ID distinct from the Deriv login ID.
+
+Do not use an untrusted client-supplied account ID, user ID, email, or account type as authorization evidence.
+
+### Real and demo account handling
+
+Real and demo accounts must be obtained from authenticated account discovery or another verified, supported Deriv account API.
+
+Do not invent accounts, automatically select a fabricated account, silently change a real account into a demo account, or treat the presence of a stored login ID as proof of authentication.
+
+Display the verified account type and currency returned by the provider.
+
+Demo mode must remain explicitly identifiable. Demo accounts must never be presented as real accounts.
+
+Do not automatically place live trades during account connection, synchronization, page initialization, or reconnect.
+
+### Secure credentials
+
+Keep Deriv access tokens and other sensitive credentials on the server.
+
+Use the existing secure encrypted persistence mechanism where available. Protect sessions using appropriate secure, HTTP-only cookies, state verification, CSRF protection where applicable, and server-side authorization.
+
+Never place long-lived access tokens in local storage, session storage, URL query parameters, browser logs, or publicly accessible client bundles.
+
+Do not weaken authentication or remove authorization checks to make account connection easier.
+
+If the database is unavailable or session persistence fails, fail safely and display the actual problem. Do not fabricate a connected account.
+
+---
+
+# PHASE 3 — RE-ENGINEER THE DERIV MARKET-DATA PIPELINE
+
+This is one of the highest-priority parts of the project.
+
+The Markets page, charts, watchlist, quote panels, candles, market summaries, and other market-dependent features must consume genuine provider data whenever they claim to show live Deriv prices.
+
+### 3.1 One managed market-data gateway
+
+Implement or repair a single managed market-data gateway that handles:
+
+- Provider connection initialization.
+- Supported market and symbol discovery.
+- Tick subscriptions.
+- Candle or historical OHLC retrieval.
+- Subscription lifecycle management.
+- Request correlation.
+- Error handling.
+- Reconnection.
+- Heartbeats or equivalent connection-health checks.
+- Subscription recovery after reconnection.
+- Connection cleanup.
+- Data timestamps and freshness.
+- Market availability and unsupported-symbol responses.
+
+Follow the current supported Deriv API and the actual capabilities of the application's registered application.
+
+Inspect the existing API implementation and official Deriv documentation before changing endpoint formats, authorization scopes, WebSocket message shapes, or trading request fields.
+
+Do not assume that every Deriv market uses the same contract types or data endpoints.
+
+### 3.2 Genuine data only
+
+Never generate artificial prices, ticks, candles, balances, volume, spreads, market movements, or trade results in production.
+
+Do not silently substitute a hardcoded quote when the provider fails.
+
+If a real market-data request fails:
+
+1. Preserve the last verified value only as historical/stale data.
+2. Record its last successful update time.
+3. Mark it stale when the configured freshness threshold is exceeded.
+4. Attempt controlled recovery.
+5. Show a clear, unobtrusive unavailable or reconnecting state.
+6. Prevent stale prices from being treated as current execution quotes.
+
+The application must distinguish:
+
+- Live provider data.
+- Historical provider data.
+- Cached but stale provider data.
+- Data unavailable.
+
+If a feature depends on an external feed other than Deriv, identify its source explicitly. Do not imply that a feed comes from Deriv when it comes from another provider.
+
+### 3.3 Correct market discovery
+
+Discover available symbols through the supported provider interface.
+
+Map provider symbol codes to display labels, asset categories, precision, trading availability, and supported contract types using real returned metadata.
+
+Do not fabricate an 88-market inventory or any other number to fill the interface.
+
+A displayed market count must be computed from the currently discovered and eligible market records.
+
+If a market is unavailable, display that state honestly rather than making the market appear tradable.
+
+### 3.4 Robust connection management
+
+Prevent connection storms and duplicate subscriptions.
+
+Use:
+
+- A managed connection lifecycle.
+- One shared upstream subscription per required symbol and subscription type where practical.
+- Reference-counted subscription ownership when multiple components use the same feed.
+- Exponential backoff with jitter for reconnects.
+- A bounded retry policy and clear recovery behavior.
+- Proper disposal when subscriptions are no longer needed.
+- Protection against stale asynchronous callbacks updating a replaced connection.
+- Request IDs and subscription IDs where supported.
+- Bounded queues and sensible message processing.
+- Cleanup of event listeners and timers.
+- Visibility-aware or demand-aware processing when appropriate.
+
+Do not create a new upstream connection every time a React component renders, a tab changes, a modal opens, or a chart refreshes.
+
+Do not use a short fixed interval to repeatedly fetch all market prices if the provider supports subscriptions.
+
+### 3.5 Serverless deployment compatibility
+
+Inspect the actual deployment environment before deciding where persistent WebSocket connections should run.
+
+If Vercel functions cannot reliably own a long-lived upstream WebSocket lifecycle, use a deployment-compatible architecture:
+
+- A persistent market-data gateway on an appropriate long-running service, if the project has or can use one.
+- A supported provider connection from the client for genuinely public market data, where permitted by the current API and security design.
+- A secure server-issued short-lived authorization or connection mechanism for authenticated user-specific operations.
+- A suitable push mechanism to distribute updates to active clients.
+
+Do not assume that a normal request-response serverless function can maintain a permanent stream.
+
+Do not introduce an external infrastructure dependency that has not been configured. If another service is required, document the exact environment variables, deployment steps, and health checks.
+
+Never expose a user's long-lived Deriv token just to work around deployment limitations.
+
+### 3.6 Stream reliability and observability
+
+Create useful structured diagnostics for:
+
+- Connection opened.
+- Authentication succeeded or failed.
+- Symbol discovery completed.
+- Subscription created or removed.
+- First valid tick received.
+- Last successful update.
+- Reconnection attempted.
+- Subscription restored.
+- Provider rate limit reached.
+- Provider error received.
+- Connection closed.
+- Data became stale.
+- Feed recovered.
+
+Do not log access tokens, authorization headers, complete secrets, or sensitive personal data.
+
+Use actual timestamps and measured connection state. Do not display `Streaming` just because a WebSocket object exists.
+
+A market is live only when recent valid data is arriving within the configured freshness policy.
+
+### 3.7 Chart integrity
+
+Charts must render from actual provider ticks and candles.
+
+- Use actual historical candle retrieval where supported.
+- Build candle updates from real tick data only when appropriate.
+- Respect provider timestamp units and market precision.
+- Avoid duplicate candles and out-of-order updates.
+- Handle gaps, reconnects, and symbol changes.
+- Recalculate indicators from actual chart data.
+- Prevent previous-symbol data from leaking into the selected symbol.
+- Keep chart rendering responsive during high message rates.
+- Avoid re-rendering the entire dashboard for every tick.
+- Show a loading state until genuine data arrives.
+- Show stale or unavailable data clearly.
+
+Never draw plausible-looking candles from random or fixed sample arrays in production.
+
+---
+
+# PHASE 4 — ENABLE SAFE, DIRECT TRADING THROUGH THE CONNECTED DERIV ACCOUNT
+
+The purpose of the platform is to let an authorized user analyze and place trades through their connected Deriv account from within AppexQuant.
+
+Repair the actual execution path rather than implementing a decorative trading ticket.
+
+### 4.1 Real execution lifecycle
+
+Trace and verify the complete flow:
+
+1. User connects a Deriv account.
+2. The backend verifies the authenticated session and selected account.
+3. The UI displays the actual account type and balance.
+4. The user selects an available market and supported contract.
+5. The trade ticket loads the appropriate real contract options and current provider data.
+6. The user enters the stake and any supported parameters.
+7. The backend validates permissions, parameters, limits, and account ownership.
+8. The application requests a current quote or proposal through the supported Deriv API.
+9. The UI displays the relevant terms and requests explicit confirmation.
+10. The backend submits the actual authorized purchase request.
+11. The application records the provider's actual response and trade identifier.
+12. The UI reports success only after receiving a valid provider acceptance response.
+13. The platform monitors the contract using the supported API.
+14. The final outcome and transaction history are reconciled against actual provider responses.
+15. The balance is refreshed from verified account data.
+
+Adapt this lifecycle to the actual Deriv product and supported contract model. Do not assume that every market supports every contract type or that all contracts use the same proposal fields.
+
+### 4.2 Authorization and execution safety
+
+Every trade request must be bound to the authenticated user and the account they are authorized to operate.
+
+Never accept a client-provided account ID as sufficient proof of ownership.
+
+Validate the market symbol, contract type, stake, currency, duration, multiplier or barrier where applicable, and all provider-required parameters.
+
+Use server-side validation and supported Deriv authorization.
+
+Prevent duplicate submissions with idempotency or equivalent duplicate-order protection where supported.
+
+Handle timeouts carefully: a timeout does not necessarily mean a trade failed. Reconcile uncertain submissions before allowing an unsafe retry.
+
+Keep explicit user confirmation for live trade purchases. Do not automatically execute AI signals, background strategies, or reconnect recovery actions.
+
+Use clear labels for real versus demo accounts. Require an additional explicit confirmation when necessary to avoid accidental real-money execution.
+
+### 4.3 Real account balance and history
+
+The displayed balance, currency, open contracts, transaction history, and trade outcomes must be sourced from verified provider responses or properly reconciled provider events.
+
+Do not update the balance optimistically as if a trade were accepted before the provider confirms it.
+
+Do not fabricate a successful trade record when the provider rejects the order or returns an ambiguous result.
+
+If the provider is unavailable, disable only the operations that require it and explain why.
+
+### 4.4 Trading UI
+
+Create a compact professional trade ticket with:
+
+- Selected market and market status.
+- Current quote or proposal.
+- Supported contract type.
+- Stake and applicable parameters.
+- Potential payout or other provider-returned terms, where applicable.
+- Real/demo account indicator.
+- Risk disclosure appropriate to the contract.
+- Clear confirmation action.
+- Submission progress.
+- Confirmed provider response.
+- Open-contract status and settlement outcome.
+
+Use real provider values. Never promise profit or imply that a displayed potential payout is guaranteed.
+
+Do not invent extra contract features unsupported by the selected market or account.
+
+---
+
+# PHASE 5 — REBUILD THE UI AROUND A CONSISTENT PROFESSIONAL DESIGN SYSTEM
+
+The existing screenshots show inconsistent card sizes, competing visual treatments, dark text on dark backgrounds, changing light-mode behavior, repeated status labels, and panels that appear to belong to different applications.
+
+Correct these problems through a shared design system rather than individually patching each screen.
+
+The target is a professional trading terminal: restrained, information-dense, legible, predictable, and fast.
+
+### 5.1 Brand direction
+
+Preserve the AppexQuant Markets Global identity and yellow/gold brand accent.
+
+Use a restrained palette:
+
+- Primary accent: consistent brand gold/yellow.
+- Backgrounds: a small, deliberate set of page and elevated-surface colors.
+- Text: clearly defined primary, secondary, muted, and disabled colors.
+- Borders: subtle, consistent separators.
+- Positive values: a single consistent green.
+- Negative values and destructive actions: a single consistent red.
+- Informational states: a controlled neutral or blue accent.
+- Warnings: a consistent amber tone.
+
+Do not use different arbitrary colors for the same meaning across pages.
+
+Do not rely on color alone to communicate trade status, market status, risk, or errors.
+
+### 5.2 Shared semantic design tokens
+
+Create or consolidate a single design-token system for both themes.
+
+Define semantic tokens such as:
+
+- `background`
+- `surface`
+- `surface-elevated`
+- `surface-muted`
+- `foreground`
+- `foreground-secondary`
+- `foreground-muted`
+- `border`
+- `border-strong`
+- `accent`
+- `accent-foreground`
+- `positive`
+- `negative`
+- `warning`
+- `info`
+- `focus-ring`
+- `disabled`
+- `chart-grid`
+- `chart-crosshair`
+- `overlay`
+
+Map every token explicitly to the light and dark theme.
+
+Use the project's existing styling architecture and component library where possible. Do not install another UI framework merely to solve styling inconsistencies.
+
+Remove conflicting hardcoded colors and contradictory theme classes from shared components.
+
+Use semantic tokens for charts, menus, dropdowns, modals, tooltips, tables, form fields, cards, navigation, and status indicators.
+
+### 5.3 Dark theme
+
+Build a deliberate professional dark theme using layered charcoal or near-black surfaces, readable off-white text, muted secondary labels, subtle borders, and restrained gold accents.
+
+Avoid:
+
+- Pure black surfaces everywhere with no hierarchy.
+- Low-contrast dark text on dark cards.
+- Bright decorative glows on every component.
+- Excessive neon green and cyan.
+- Oversized badges.
+- Inconsistent card backgrounds.
+- Borders so bright that they compete with the data.
+
+Charts must remain legible and use colors that communicate price movement consistently.
+
+### 5.4 Light theme
+
+Treat light mode as a first-class design system, not a reversed dark theme.
+
+Use:
+
+- A light neutral page background.
+- White or near-white content surfaces.
+- Dark, readable primary text.
+- Muted but accessible secondary text.
+- Subtle gray borders.
+- Consistent gold highlights.
+- Professional chart colors with readable gridlines.
+- Clearly visible hover, focus, disabled, and selected states.
+
+Fix the current contrast problems where dark text appears on dark backgrounds or white text becomes invisible on light cards.
+
+Audit every route, including the dashboard, account, markets, trading workspace, signals, analytics, education, audit ledger, settings, and modal dialogs.
+
+Do not assume that fixing the main dashboard fixes every route.
+
+### 5.5 Shared component architecture
+
+Build on or refactor existing shared components to standardize:
+
+- Page headers.
+- Section headers.
+- Metric cards.
+- Market quote cards.
+- Tables.
+- Status indicators.
+- Form controls.
+- Buttons.
+- Tabs.
+- Dropdowns.
+- Modals.
+- Alerts.
+- Empty states.
+- Loading states.
+- Error states.
+- Chart containers.
+- Responsive navigation.
+
+Cards should share a consistent design language:
+
+- Standardized padding.
+- Standardized border radius.
+- Consistent title and value hierarchy.
+- Predictable spacing.
+- Aligned icon placement.
+- Consistent border and elevation.
+- Consistent minimum heights for comparable cards.
+- Responsive layouts that adapt to available width.
+
+Do not force every card to have the same height if its content genuinely differs. Prioritize consistent structure and alignment without wasting space.
+
+Eliminate nested cards when they add no meaningful hierarchy.
+
+Do not wrap every small metric or sentence in a separate bordered box.
+
+### 5.6 Professional trading workspace
+
+Prioritize the information traders need:
+
+- Selected account and account type.
+- Current balance and currency.
+- Market selector.
+- Live quote and data freshness.
+- Interactive chart.
+- Timeframe and chart controls.
+- Relevant technical indicators.
+- Trade ticket.
+- Open positions or contracts.
+- Recent executions.
+- Clear order status and risk information.
+
+Use the screen efficiently. Avoid oversized banners, decorative empty panels, redundant headings, unnecessary marketing messages, and repeated cards.
+
+The trading workspace should feel like one coherent terminal rather than a collection of unrelated dashboard widgets.
+
+---
+
+# PHASE 6 — REMOVE REDUNDANT STATUS WORDS AND TECHNICAL NOISE
+
+The screenshots show repeated `LIVE`, `SYNCED`, `CONNECTED`, and similar labels across the header, dashboard, account area, and modals.
+
+These indicators compete for attention and can contradict one another.
+
+Create a centralized status presentation policy.
+
+### Rules
+
+1. Show the selected account and real/demo classification in one clear, persistent location.
+2. Show market-feed status where it matters, especially near the market workspace and chart.
+3. Show execution status inside the trade ticket or order panel.
+4. Show account connection controls in the account area.
+5. Do not repeat the same status in every card and navigation element.
+6. Do not display `SYNCED` continuously when the UI has no meaningful user action associated with it.
+7. Do not display `LIVE` merely because the account is real.
+8. Do not use `CONNECTED` as a substitute for market-data freshness.
+9. Do not show an account as connected when the session has expired or account verification has failed.
+10. Do not display technical implementation details to ordinary traders.
+
+Replace redundant technical wording with concise, contextual language.
+
+Examples:
+
+- Instead of several `CONNECTED` badges, display the selected account once and the relevant market status near the chart.
+- Instead of a generic `SYNCED` badge, show `Balance updated 10:42:18` where that information is useful.
+- Instead of `Deriv Market Feed: Offline` on the dashboard while another widget claims streaming, use a single authoritative feed state.
+- Instead of raw technical error messages, show a concise explanation and an appropriate recovery action.
+- Instead of `88 active markets` when that figure is hardcoded, show the actual number of discovered eligible markets.
+- Instead of `LIVE` as a decorative badge, show whether the data is current, stale, or unavailable.
+
+Do not remove necessary risk disclosures, account security information, legal requirements, or trade confirmations merely to simplify the interface.
+
+Remove redundant promotional text from professional trading screens while preserving useful information and mandatory disclosures.
+
+Do not expose internal implementation terms such as request IDs, raw WebSocket messages, database errors, stack traces, or token scopes in the ordinary trader UI.
+
+Detailed diagnostics may remain available in appropriately protected administrative or developer tools.
+
+---
+
+# PHASE 7 — MAKE THEME SWITCHING IMMEDIATE
+
+The current theme switch sometimes causes an unacceptable delay before the interface finishes changing appearance.
+
+Investigate the actual cause. Do not merely shorten a timer or conceal a loading spinner.
+
+### Required behavior
+
+Switching between light and dark mode must update the interface immediately without:
+
+- Reloading the page.
+- Reinitializing the application.
+- Reconnecting to Deriv.
+- Refetching markets.
+- Refetching balances.
+- Recreating the trading session.
+- Remounting the entire React application.
+- Rebuilding chart data.
+- Reinitializing every component.
+- Blocking on local storage or network requests.
+
+### Implementation requirements
+
+1. Identify the existing theme state, provider, persistence mechanism, and root element.
+2. Use one authoritative theme state.
+3. Update the root theme attribute or class synchronously when the user selects a theme.
+4. Persist the preference without blocking the visual update.
+5. Initialize the theme before first paint where practical to prevent flashing.
+6. Use CSS variables and semantic tokens for theme-dependent colors.
+7. Avoid expensive JavaScript loops that modify individual elements during theme changes.
+8. Avoid unnecessary transitions on large backgrounds, shadows, and every descendant element.
+9. Restrict transitions to small, intentional visual properties.
+10. Do not remount the market feed, chart, trading workspace, or account provider when only the theme changes.
+11. Keep the current connection and subscription state intact during theme changes.
+12. Avoid a global state update that rerenders every tick-dependent component.
+13. Ensure chart themes update without unnecessarily resetting historical data, zoom, indicators, or subscriptions.
+14. Ensure keyboard and touch controls remain responsive.
+
+Theme switching must feel immediate. Use performance profiling to identify expensive work triggered by the toggle.
+
+Test rapid repeated toggling, route navigation, page reload, browser preference changes if supported, and theme persistence.
+
+---
+
+# PHASE 8 — SEPARATE MARKET-DATA UPDATES FROM UI STATE
+
+High-frequency tick data must not cause the entire application to rerender on every message.
+
+Inspect the current state-management and chart-update architecture.
+
+Implement an appropriate subscription or store model so that:
+
+- The gateway owns provider subscriptions.
+- Market state is normalized by symbol and data type.
+- Consumers subscribe only to the data they require.
+- Tick updates affect the relevant quote or chart.
+- Account profile components do not rerender on every market tick.
+- Theme changes do not recreate subscriptions.
+- Navigation does not leak listeners.
+- Switching symbols cleans up old subscriptions.
+- Historical candle loading does not block live ticks.
+- Reconnecting does not duplicate historical candles or active subscriptions.
+
+Use the existing state-management library if it can support this cleanly. Avoid adding multiple competing global stores.
+
+Use throttling or frame-based batching for visual updates where appropriate, without discarding the latest required price or corrupting trade-related state.
+
+Keep authoritative trading and account data separate from presentation-only state.
+
+---
+
+# PHASE 9 — PROFESSIONAL MARKET AND TRADING INTERACTIONS
+
+Review the existing markets page and trade workspace for professional usability.
+
+### Market selector
+
+- Search by actual supported symbol and display name.
+- Organize verified markets into useful categories.
+- Display the correct provider symbol.
+- Show the last valid quote and its freshness.
+- Clearly indicate unsupported or unavailable markets.
+- Preserve the selected symbol where appropriate.
+- Prevent stale data from a previously selected symbol appearing under a new symbol.
+
+### Chart
+
+- Preserve timeframe, chart type, zoom, crosshair, and supported indicators.
+- Use genuine provider candles or tick-derived candles.
+- Provide a useful loading state before the first valid update.
+- Display the latest valid timestamp.
+- Show a stale-data state when necessary.
+- Avoid unnecessary chart recreation.
+- Ensure both themes are readable.
+
+### Trade ticket
+
+- Keep the order form compact and clear.
+- Display only contract options supported by the selected market and account.
+- Validate fields before submission.
+- Show current provider-returned terms where applicable.
+- Clearly distinguish a pending order from a confirmed order.
+- Prevent accidental duplicate clicks.
+- Preserve the selected account and market context.
+- Require explicit live-trade confirmation.
+
+### Portfolio and execution history
+
+- Use verified account and provider records.
+- Display actual open-contract and transaction states.
+- Provide meaningful empty states.
+- Do not generate synthetic transactions to make the interface look populated.
+- Reconcile uncertain executions before presenting a final outcome.
+
+---
+
+# PHASE 10 — REMOVE PRODUCTION MOCKS WITHOUT BREAKING DEVELOPMENT OR TESTS
+
+Find and classify every mock, fallback, fixture, and hardcoded value.
+
+For each one, decide whether it is:
+
+- A legitimate test fixture.
+- A development-only mock.
+- A static informational configuration.
+- A production fallback incorrectly representing live data.
+- A hardcoded identity or balance.
+- A simulated trade outcome.
+- A placeholder feature.
+
+Keep legitimate isolated test fixtures, but ensure they cannot leak into production execution paths.
+
+If development mode requires simulated data, label it explicitly and prevent it from being confused with live Deriv data.
+
+In production:
+
+- No fake account emails.
+- No fake user identities.
+- No fake Deriv account IDs.
+- No fabricated balances.
+- No generated market ticks.
+- No fabricated candles.
+- No fake market availability.
+- No synthetic trade success.
+- No hardcoded real/demo classification.
+- No fake connection indicators.
+- No artificial market counts.
+- No fake synchronization timestamps.
+
+When provider data is missing, show an appropriate loading, unavailable, or stale state.
+
+Do not silently fall back to demo mode when live account discovery fails.
+
+---
+
+# PHASE 11 — CENTRALIZED ERROR HANDLING AND HEALTH VISIBILITY
+
+Create a consistent internal error-handling strategy across authentication, market data, account discovery, and trading.
+
+Errors should have stable internal categories, useful structured logs, and concise user-facing messages.
+
+Handle at least:
+
+- OAuth failure.
+- Expired session.
+- Invalid or missing account selection.
+- Account discovery failure.
+- Missing permissions.
+- Market-data connection failure.
+- Provider rate limits.
+- Invalid market symbol.
+- Unsupported contract.
+- Proposal failure.
+- Trade rejection.
+- Trade submission timeout.
+- Uncertain execution outcome.
+- Database unavailable.
+- Subscription recovery failure.
+
+Do not swallow errors and then return fabricated success data.
+
+Do not repeatedly show the same global notification on every render.
+
+Use local error messages near the relevant feature, with a retry action where appropriate.
+
+Only administrators or authorized developers should see sensitive diagnostics. Sanitize all logs and responses.
+
+---
+
+# PHASE 12 — TESTS AND ACCEPTANCE GATES
+
+Implement or update automated tests using the project's existing test infrastructure.
+
+Do not claim success based only on a successful frontend build.
+
+### A. Account integrity
+
+Verify:
+
+- A genuine authenticated Deriv response populates account information.
+- Real and demo account types match provider responses.
+- Missing provider email does not generate a fake email.
+- Missing accounts produce an honest empty state.
+- Authentication failures cannot create connected-looking sessions.
+- One user's session cannot access another user's account.
+- Database persistence failures do not produce false success.
+- Account switching updates the correct verified account.
+
+### B. Market-data integrity
+
+Verify:
+
+- Real symbol discovery is used.
+- Live tick messages update the correct symbol.
+- Historical candles come from the correct provider response.
+- Invalid messages do not corrupt market state.
+- Disconnection changes the UI to an appropriate state.
+- Stale data is identified correctly.
+- Reconnection restores required subscriptions.
+- Duplicate subscriptions are prevented.
+- Unsupported symbols are handled correctly.
+- No production code substitutes random or fabricated market data.
+
+### C. Trading integrity
+
+Verify:
+
+- Live trades require a genuinely authorized real account.
+- Demo and real trading paths are clearly distinguished.
+- Unsupported contract types cannot be submitted.
+- Invalid stake and parameters are rejected.
+- Explicit confirmation is required for live purchases.
+- Provider rejection is reported as rejection.
+- Successful execution requires a verified provider response.
+- Timeouts trigger reconciliation rather than unsafe blind retries.
+- Duplicate submission protection works.
+- Balance and history reflect verified provider information.
+
+Never place a real-money order during automated testing. Use mocked provider responses in isolated tests for failure cases and a provider-approved demo account for end-to-end trading verification.
+
+### D. Theme and visual integrity
+
+Verify:
+
+- Every major route renders correctly in light mode.
+- Every major route renders correctly in dark mode.
+- Text and controls remain readable.
+- Modals, dropdowns, charts, and tooltips use the correct theme.
+- No hardcoded color causes invisible text.
+- Cards share consistent visual structure.
+- Buttons have consistent hover, focus, active, and disabled states.
+- Theme changes do not reset the Deriv connection.
+- Theme changes do not trigger market-data refetches.
+- Theme changes do not reset chart history or zoom unnecessarily.
+
+### E. Performance
+
+Profile the application before and after changes.
+
+Measure:
+
+- Theme-toggle interaction latency.
+- Unnecessary React renders.
+- Market-tick processing cost.
+- Chart update cost.
+- Duplicate network requests.
+- Duplicate subscriptions.
+- Memory and event-listener leaks.
+- Initial route load.
+- Market-page readiness after genuine data arrives.
+
+Do not invent performance metrics. Report actual measurements from the available environment.
+
+Set sensible performance budgets based on the current architecture and improve regressions found during profiling.
+
+### F. Production verification
+
+Run the available:
+
+- TypeScript checks.
+- Lint checks.
+- Unit tests.
+- Integration tests.
+- Production build.
+- Relevant end-to-end tests.
+
+Inspect the final production code paths for fake account identities, fabricated market data, false live indicators, and hardcoded execution success.
+
+Verify that required environment variables are documented and that missing variables fail safely.
+
+Do not print secret values during verification.
+
+---
+
+# PHASE 13 — PRESERVE THE APPLICATION AND DEPLOYMENT SAFELY
+
+Do not replace the project with a new unrelated starter template.
+
+Do not remove existing routes, administrative authorization, risk controls, legal disclosures, security settings, affiliate logic, or other established business logic unless a specific defect requires a justified change.
+
+Do not modify deployment configuration indiscriminately.
+
+Before changing authentication, database schema, environment variables, or provider infrastructure, inspect existing dependencies and deployment constraints.
+
+Preserve backward compatibility where practical.
+
+Add migrations only when required, and make them consistent with the existing database and schema.
+
+If a required production capability depends on an unconfigured service or unavailable credential, implement the safe integration boundary, document the blocker, and never simulate its success.
+
+---
+
+# PHASE 14 — FINAL REQUIRED DELIVERABLE
+
+After implementing the changes, provide a factual completion report with the following sections.
+
+## 1. Root causes
+
+Explain the actual causes found for:
+
+- Market-feed interruptions.
+- Inconsistent live-status indicators.
+- Theme-switching delays.
+- Light-mode contrast defects.
+- Inconsistent card styling.
+- Any production mocks or fabricated fallback values.
+- Any defects in account selection or trade execution.
+
+Do not claim a suspected cause was proven unless the code or test evidence supports it.
+
+## 2. Files changed
+
+List the files changed and explain each file's purpose.
+
+## 3. Deriv integration status
+
+Report separately:
+
+- OAuth and session status.
+- Account discovery status.
+- Real/demo account handling.
+- Market discovery status.
+- Live tick status.
+- Historical candle status.
+- Reconnection and recovery status.
+- Trade proposal status.
+- Trade execution status.
+- Open-contract monitoring.
+- Balance and transaction reconciliation.
+
+Use `Verified`, `Failed`, `Not tested`, or `Blocked`, with evidence.
+
+A successful login alone does not prove that market streaming or trade execution works.
+
+## 4. UI status
+
+Report:
+
+- Light-theme audit.
+- Dark-theme audit.
+- Shared design-token implementation.
+- Card and component consistency.
+- Redundant status cleanup.
+- Responsive trading workspace.
+- Theme-switch behavior.
+
+## 5. Tests and performance
+
+List the actual commands executed, results, failures, and measurements. Do not invent test results.
+
+## 6. Remaining production blockers
+
+List all unresolved credentials, environment variables, deployment services, provider permissions, account restrictions, or database problems.
+
+## 7. Final acceptance matrix
+
+For every major requirement, report:
+
+- Requirement.
+- Implementation status.
+- Test or evidence.
+- Remaining blocker.
+
+## 8. Deployment and verification instructions
+
+Give exact steps to deploy the changes and verify them using a genuinely authorized Deriv account, real provider market data, and a provider-approved demo account for safe execution testing.
+
+Never claim that the production deployment has changed unless it has actually been deployed and verified.
+
+---
+
+# FINAL OPERATING RULES
+
+1. Inspect before editing.
+2. Reuse the existing architecture whenever sound.
+3. Fix root causes rather than adding cosmetic workarounds.
+4. Never fabricate account identity, market data, balances, trades, or connection status.
+5. Never confuse an authenticated account with a healthy market-data feed.
+6. Never confuse a real account with a successfully executable trading connection.
+7. Never automatically place live trades.
+8. Never expose long-lived Deriv credentials to the browser.
+9. Never let theme changes restart authenticated sessions or market-data subscriptions.
+10. Keep light and dark themes consistent across the entire application.
+11. Keep the UI professional, restrained, fast, and optimized for active traders.
+12. Keep essential security, risk, and legal controls intact.
+13. Run the actual available tests and build.
+14. Fix regressions introduced by your changes.
+15. Report what is verified, what failed, and what remains blocked.
+
+**START NOW: inspect the repository and current production architecture, establish the real source of market and account data, identify the root causes, and implement the changes in dependency order. Do not finish with recommendations alone.**

@@ -459,6 +459,14 @@ export function sessionMiddleware(req: Request, res: Response, next: NextFunctio
   if (token) {
     const session = verifySessionToken(token);
     if (session) {
+      // Task 2.3: Implement deriv_token_enc cookie fallback
+      if (!session.encryptedDerivToken && cookies['deriv_token_enc']) {
+        try {
+          session.encryptedDerivToken = decodeURIComponent(cookies['deriv_token_enc']);
+        } catch {
+          session.encryptedDerivToken = cookies['deriv_token_enc'];
+        }
+      }
       req.sessionUser = session;
       req.sessionToken = token;
       res.setHeader('X-CSRF-Token', session.csrfToken);

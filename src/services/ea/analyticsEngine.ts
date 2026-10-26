@@ -620,9 +620,6 @@ export function seedTradeJournal(): void {
 
 // Get all trades
 export function getTradeJournal(): TradeJournalRecord[] {
-  if (tradeJournalDb.length === 0) {
-    seedTradeJournal();
-  }
   return tradeJournalDb;
 }
 

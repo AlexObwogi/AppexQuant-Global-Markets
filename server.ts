@@ -795,8 +795,8 @@ export async function createApp() {
   // 2. Acknowledge a specific alert or all alerts
   app.post('/api/alerts/acknowledge', async (req: Request, res: Response) => {
     try {
-      const { id, userEmail } = req.body;
-      const email = userEmail || 'trader@appexquant.global';
+      const { id, email: requestEmail } = req.body || {};
+      const email = requestEmail || (req.sessionUser?.email && !req.sessionUser.email.startsWith('usr-') ? req.sessionUser.email : 'system');
 
       const { acknowledgeAlert, acknowledgeAllAlerts } = await import('./src/services/alertsService.js');
       
@@ -913,7 +913,7 @@ export async function createApp() {
   // Mock users store for simulated user listing, login, and role changes
   const mockUsers = [
     { id: 'usr-super-obwogi', displayName: 'Alex Nyangaresi Obwogi', email: 'obwogialex728@gmail.com', role: 'SUPER_ADMIN' as UserRole, status: 'ACTIVE' },
-    { id: 'usr-default-001', displayName: 'Appex Quant Trader', email: 'trader@appexquant.global', role: 'USER' as UserRole, status: 'ACTIVE' },
+    { id: 'usr-default-001', displayName: 'System Administrator', email: 'admin@appexquant.global', role: 'SUPER_ADMIN' as UserRole, status: 'ACTIVE' },
     { id: 'usr-agent-002', displayName: 'Alice Support', email: 'alice.support@appexquant.global', role: 'SUPPORT_AGENT' as UserRole, status: 'ACTIVE' },
     { id: 'usr-content-003', displayName: 'Bob Content', email: 'bob.content@appexquant.global', role: 'CONTENT_MANAGER' as UserRole, status: 'ACTIVE' },
     { id: 'usr-risk-004', displayName: 'Carol Risk', email: 'carol.risk@appexquant.global', role: 'RISK_MANAGER' as UserRole, status: 'ACTIVE' },
@@ -1132,6 +1132,7 @@ export async function createApp() {
     <meta charset="utf-8">
     <title>Authentication Error</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
     <meta http-equiv="refresh" content="3;url=/">
   </head>
   <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0b111e; color: #f1f5f9;">
@@ -1179,6 +1180,7 @@ export async function createApp() {
     <meta charset="utf-8">
     <title>Authentication Error</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
     <meta http-equiv="refresh" content="3;url=/">
   </head>
   <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0b111e; color: #f1f5f9;">
@@ -1308,6 +1310,12 @@ export async function createApp() {
       }
       res.setHeader('Set-Cookie', cookieList);
 
+      // Configure authoritative gateway for this specific user session
+      if (rawToken) {
+        derivGateway.setUserAuthToken(appUserId, rawToken, accountId);
+        void derivGateway.connectUser(appUserId).catch(() => {});
+      }
+
       console.log('[DERIV_OAUTH_SESSION_PERSISTED]', { appUserId, loginid, accountId, accountType, currency, scopes });
       logSecurityEvent(req, 'DERIV_OAUTH_SUCCESS', 'INFO', { appUserId, loginid, accountId, accountType, currency });
 
@@ -1344,6 +1352,7 @@ export async function createApp() {
     <meta charset="utf-8">
     <title>Connecting to AppeX Quant...</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
     <meta http-equiv="refresh" content="3;url=${safeDestination}">
   </head>
   <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0b111e; color: #f1f5f9;">
@@ -1368,9 +1377,18 @@ export async function createApp() {
             balance: ${JSON.stringify(balance)},
             fullName: ${JSON.stringify(fullName || '')},
             email: ${JSON.stringify(realEmail)},
-            accountList: ${JSON.stringify(result.rawAccountDetails?.accountList || [])}
+            accountList: ${JSON.stringify(result.rawAccountDetails?.accountList || [])},
+            sessionToken: ${JSON.stringify(sessionToken)},
+            csrfToken: ${JSON.stringify(csrfToken)}
           }
         };
+        // Task 2.2: Implement HTML bridge for session establishment
+        if (typeof window !== 'undefined') {
+          try {
+            sessionStorage.setItem('apx_session_token', ${JSON.stringify(sessionToken)});
+            sessionStorage.setItem('apx_csrf_token', ${JSON.stringify(csrfToken)});
+          } catch(e) {}
+        }
         if (window.opener && window.opener !== window) {
           try {
             window.opener.postMessage(authData, window.location.origin);
@@ -2359,13 +2377,15 @@ export async function createApp() {
         });
       }
 
+      const userId = req.sessionUser?.userId || 'SYSTEM';
+
       const unsubBalance = derivGateway.onBalanceChange((bal) => {
         res.write(`data: ${JSON.stringify({ type: 'balance', data: bal })}\n\n`);
-      });
+      }, userId);
 
       const unsubProfile = derivGateway.onProfileChange((prof) => {
         res.write(`data: ${JSON.stringify({ type: 'profile', data: prof })}\n\n`);
-      });
+      }, userId);
 
       const unsubStatus = derivGateway.onStatusChange((status) => {
         res.write(`data: ${JSON.stringify({ type: 'status', data: status })}\n\n`);

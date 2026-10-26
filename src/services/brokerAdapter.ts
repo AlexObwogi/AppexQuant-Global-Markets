@@ -80,10 +80,10 @@ export class BaseBrokerAdapter implements BrokerAdapter {
       id: `acc-${this.connection.accountNumber}`,
       accountNumber: this.connection.accountNumber,
       currency: 'USD',
-      balance: this.connection.environment === 'REAL' ? 12450.00 : 50000.00,
-      equity: this.connection.environment === 'REAL' ? 12512.40 : 50240.10,
-      margin: 1250.00,
-      freeMargin: this.connection.environment === 'REAL' ? 11262.40 : 48990.10,
+      balance: 0.00,
+      equity: 0.00,
+      margin: 0.00,
+      freeMargin: 0.00,
       leverage: 500,
       environment: this.connection.environment,
       isReadOnly: this.connection.isReadOnly,
@@ -101,49 +101,11 @@ export class BaseBrokerAdapter implements BrokerAdapter {
   }
 
   async getPositions(): Promise<BrokerPosition[]> {
-    return [
-      {
-        id: 'pos-01',
-        symbol: 'XAUUSD',
-        type: 'BUY',
-        volume: 0.50,
-        openPrice: 2332.50,
-        currentPrice: 2338.20,
-        profit: 285.00,
-        swap: -1.20,
-        commission: -3.50,
-        openedAt: new Date(Date.now() - 3600000 * 3).toISOString(),
-      },
-      {
-        id: 'pos-02',
-        symbol: 'EURUSD',
-        type: 'SELL',
-        volume: 1.00,
-        openPrice: 1.08520,
-        currentPrice: 1.08440,
-        profit: 80.00,
-        swap: -0.40,
-        commission: -6.00,
-        openedAt: new Date(Date.now() - 3600000 * 1.5).toISOString(),
-      },
-    ];
+    return [];
   }
 
   async getOrders(): Promise<BrokerOrder[]> {
-    return [
-      {
-        id: 'ord-101',
-        symbol: 'GBPUSD',
-        type: 'LIMIT',
-        direction: 'BUY',
-        volume: 0.75,
-        price: 1.27200,
-        sl: 1.26800,
-        tp: 1.28000,
-        status: 'PENDING',
-        createdAt: new Date(Date.now() - 7200000).toISOString(),
-      },
-    ];
+    return [];
   }
 
   async getMarketData(symbol: string): Promise<{ symbol: string; bid: number; ask: number; timestamp: string }> {

@@ -36,13 +36,28 @@ function createDirectPrismaClient(): PrismaClient {
     return globalForDirectPrisma.directPrismaInstance;
   }
 
-  const datasourceUrl = buildDatabaseUrl();
-  const client = new PrismaClient(
-    datasourceUrl ? { datasourceUrl } : undefined
-  );
-
-  globalForDirectPrisma.directPrismaInstance = client;
-  return client;
+  try {
+    const datasourceUrl = buildDatabaseUrl();
+    const client = new PrismaClient(
+      datasourceUrl ? { datasourceUrl } : undefined
+    );
+    globalForDirectPrisma.directPrismaInstance = client;
+    return client;
+  } catch (err) {
+    logger.warn('[DirectPrismaClient] PrismaClient initialization warning (deferred until DB needed):', {
+      error: String(err),
+    });
+    const fallback = new Proxy({} as PrismaClient, {
+      get(_, prop) {
+        if (prop === '$queryRaw') {
+          return () => Promise.reject(new Error('Prisma database client is not ready or configured.'));
+        }
+        return () => Promise.reject(new Error('Prisma database client is not ready or configured.'));
+      },
+    });
+    globalForDirectPrisma.directPrismaInstance = fallback;
+    return fallback;
+  }
 }
 
 export const directPrisma: PrismaClient =

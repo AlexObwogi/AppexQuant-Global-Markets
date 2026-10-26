@@ -35,7 +35,7 @@ interface ExecutionCommandDeskProps {
 
 export const ExecutionCommandDesk: React.FC<ExecutionCommandDeskProps> = ({ onOrderExecuted }) => {
   const apiFetch = useApiFetch();
-  const { state } = useGlobalState();
+  const { state, selectedAccount } = useGlobalState();
   const { 
     announceOrderSubmitted, 
     announceOrderCancelled, 
@@ -100,7 +100,7 @@ export const ExecutionCommandDesk: React.FC<ExecutionCommandDeskProps> = ({ onOr
     setIsDispatching(true);
 
     const mappedPayload = {
-      accountId: 'acc-demo-001',
+      accountId: selectedAccount?.id || selectedAccount?.accountNumber || state.user?.derivAccountId || 'UNCONNECTED',
       strategyId: dispatchForm.source === 'MANUAL' ? 'strat-manual' : dispatchForm.strategyId,
       symbol: dispatchForm.symbol,
       side: dispatchForm.side,

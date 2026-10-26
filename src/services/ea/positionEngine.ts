@@ -131,9 +131,6 @@ export function seedPositions(): void {
 }
 
 export function getPositions(): OpenPosition[] {
-  if (positions.length === 0 && realizedPlHistory.length === 0) {
-    seedPositions();
-  }
   return positions;
 }
 
@@ -154,12 +151,12 @@ export function updateSafeguardsConfig(newConfig: Partial<SafeguardsConfig>): Sa
   return safeguardsConfig;
 }
 
-// Tick and recalculate current prices, exposure, margin and unrealized P/L dynamically
-export function tickPositionPrices(): void {
+// Tick and recalculate current prices, exposure, margin and unrealized P/L dynamically from real market quotes
+export function tickPositionPrices(latestPrices?: Record<string, number>): void {
   positions.forEach(pos => {
-    // Slight random price noise
-    const noisePct = (Math.random() - 0.5) * 0.0004; // small fluctuation
-    pos.currentPrice = Number((pos.currentPrice * (1 + noisePct)).toFixed(pos.symbol.includes('USD') && !pos.symbol.includes('XAU') ? 5 : 2));
+    if (latestPrices && latestPrices[pos.symbol] && latestPrices[pos.symbol] > 0) {
+      pos.currentPrice = latestPrices[pos.symbol];
+    }
     
     // Calculate P/L
     const pipMultiplier = pos.symbol.includes('XAU') ? 100 : pos.symbol.includes('BTC') ? 1 : 100000;

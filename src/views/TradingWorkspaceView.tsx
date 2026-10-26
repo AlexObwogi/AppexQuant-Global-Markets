@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useMarketData } from '../state/MarketDataContext.tsx';
+import { useGlobalState } from '../state/GlobalStateContext.tsx';
 import { InteractiveCandleChart } from '../components/chart/InteractiveCandleChart.tsx';
 import { MarketIntelligencePanel } from '../components/market/MarketIntelligencePanel.tsx';
 import { ConfluenceSummary } from '../components/analysis/ConfluenceSummary.tsx';
@@ -33,6 +34,10 @@ export const TradingWorkspaceView: React.FC = () => {
   const currentTick = ticks[selectedSymbol];
   const currentPrice = currentTick ? currentTick.quote : selectedInstrument?.bid || 0;
   const priceChange = currentTick ? currentTick.changePct : selectedInstrument?.change24hPercentage || 0;
+
+  const { state, selectedAccount } = useGlobalState();
+  const currentEquity = selectedAccount?.balance?.equity ?? selectedAccount?.balance?.balance ?? 0;
+  const verifiedAccountId = selectedAccount?.id || selectedAccount?.accountNumber || state.user?.derivAccountId || 'UNCONNECTED';
 
   return (
     <div className="flex flex-col h-full p-2 lg:p-4 space-y-4 container mx-auto max-w-screen-2xl">
@@ -114,7 +119,7 @@ export const TradingWorkspaceView: React.FC = () => {
 
         {/* Right: Execution + Intelligence */}
         <div className="lg:col-span-4 space-y-3 lg:space-y-4">
-          <AntiTiltCircuitBreaker accountId="ACC-LIVE-01" currentEquity={10450} />
+          <AntiTiltCircuitBreaker accountId={verifiedAccountId} currentEquity={currentEquity} />
           <div className="bg-bg-surface p-3 rounded-2xl border border-border-color shadow-sm">
             <ExecutionCommandDesk onOrderExecuted={(evt) => setConfirmedOrder(evt)} />
           </div>

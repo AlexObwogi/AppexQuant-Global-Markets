@@ -1,0 +1,1044 @@
+# APPEXQUANT MARKETS GLOBAL — UNIFIED BROKER TRADING, DERIV INTEGRATION, MT5, INSTANT MODE SWITCHING & PRODUCTION RELIABILITY RE-ENGINEERING
+
+## 1. YOUR ROLE AND MISSION
+
+Act as a principal fintech software architect, senior full-stack engineer, broker API integration specialist, quantitative trading systems engineer, security engineer, and professional trading-platform UI/UX designer.
+
+You are working on the existing **AppexQuant Markets Global** production application.
+
+Your task is to inspect, repair, and extend the existing codebase so that AppexQuant becomes a reliable, professional, real-time third-party trading platform connected to actual users' Deriv accounts and, where technically supported, MetaTrader 5 accounts.
+
+This is an implementation task, not a conceptual design exercise.
+
+Do not merely produce recommendations, mockups, placeholder services, pseudocode, or a list of proposed changes. Inspect the actual repository, trace existing behavior, implement the necessary changes, run the available tests, and report the results honestly.
+
+### Non-negotiable requirements
+
+- Preserve and repair the existing application instead of rebuilding working modules unnecessarily.
+- Reuse the established architecture, authentication system, database, broker services, components, and routes where appropriate.
+- Do not create competing authentication systems, duplicate broker gateways, duplicate trading services, or conflicting state managers.
+- Do not introduce hardcoded accounts, fabricated user identities, simulated market feeds presented as live, fake balances, fake order confirmations, or invented broker responses.
+- Do not break existing routes, trading features, authentication, risk controls, legal disclosures, audit logging, mobile layouts, or production deployment.
+- Do not weaken authentication, account isolation, or financial security to make the interface appear faster.
+- Never claim that a feature is operational until its implementation and its actual integration have been verified.
+- Keep the application deployable on its existing hosting architecture. Account for serverless execution limits, persistent storage, WebSocket limitations, and connection lifecycle constraints.
+
+**The source code and the broker's actual API capabilities—not the visual appearance of the interface—must determine the application's truth.**
+
+---
+
+## 2. PHASE ZERO: AUDIT THE EXISTING APPLICATION BEFORE CHANGING IT
+
+Before implementing features, inspect the repository and create an accurate map of the existing system.
+
+Inspect at minimum:
+
+- `package.json`, lockfiles, build scripts, and framework configuration.
+- Existing application entry points, route definitions, layouts, and design system.
+- `server.ts`, `api/index.ts`, and the existing API handlers where present.
+- All authentication, OAuth, session, account-discovery, and token-storage services.
+- Existing Deriv integration services, including `oauthService.ts`, `DerivGateway.ts`, and `deriv/oauthServerService.ts` if they exist.
+- Account, profile, wallet, transaction, order, position, and trading-history data models.
+- Existing database schema, migrations, ORM initialization, and connection pooling.
+- WebSocket clients, streaming subscriptions, SSE handlers, market-data caches, and reconnect logic.
+- Existing live/demo/paper mode state management.
+- The live-execution authorization modal shown in the supplied screenshot.
+- Existing theme provider, CSS variables, light/dark mode logic, shared cards, buttons, forms, and navigation.
+- Existing Deriv Bot-related functionality and MT5-related code.
+- Production environment-variable references and deployment configuration.
+- All code paths that produce labels such as `LIVE`, `DEMO`, `PAPER`, `CONNECTED`, `SYNCED`, `Streaming`, or `Active`.
+
+Search for:
+
+- Hardcoded account IDs, fake email addresses, generated user IDs, and placeholder profile objects.
+- Fixed balances, fixed market prices, synthetic candles, random signal scores, mock trades, and fabricated account records.
+- Demo fixtures, fallback arrays, default account objects, fake connection states, and locally generated transaction histories.
+- Any code that silently substitutes mock responses after an API error.
+- Frontend components that change a status badge without verifying the backend state.
+- Repeated API polling, redundant market subscriptions, and duplicate WebSocket connections.
+- Database failures that are swallowed while the UI still reports success.
+- Any service that reports successful order execution before receiving a genuine broker confirmation.
+
+Do not delete legitimate test fixtures from automated tests. Isolate them from production execution.
+
+### Produce an initial audit
+
+Document:
+
+1. The actual authentication flow.
+2. The authoritative source of user identity.
+3. The authoritative source of broker account identity.
+4. How demo, real, and paper modes are currently represented.
+5. How market data enters the application.
+6. How orders reach the broker.
+7. Whether deposits and withdrawals have working broker integrations.
+8. Whether MT5 is currently integrated, partially implemented, or absent.
+9. The source of any current fake or stale values.
+10. Existing architectural constraints and the minimum safe repair strategy.
+
+Then implement the repairs. Do not stop after the audit.
+
+---
+
+## 3. ESTABLISH A SINGLE, AUTHORITATIVE ACCOUNT AND BROKER ARCHITECTURE
+
+Create or consolidate the existing architecture around one canonical broker integration layer.
+
+Adapt names to the repository rather than introducing duplicate services.
+
+Conceptually, it should provide:
+
+- `BrokerIntegrationService`
+- `DerivIntegrationAdapter`
+- `MT5IntegrationAdapter`
+- `AccountService`
+- `TradingModeService`
+- `MarketDataService`
+- `OrderExecutionService`
+- `WalletService`
+- `TradingRiskService`
+
+These are logical responsibilities, not instructions to create duplicate files if equivalent services already exist.
+
+The frontend must not independently decide whether a user is authenticated, which broker account is active, whether a trade succeeded, or whether an account is real.
+
+The backend must be authoritative for:
+
+- Authenticated application user.
+- Broker authorization status.
+- Broker account ownership.
+- Account type and currency.
+- Selected account.
+- Trading mode.
+- Available trading permissions.
+- Current account balance and currency.
+- Current market-data subscription state.
+- Order validation and execution.
+- Deposit and withdrawal transaction status.
+- Bot execution status.
+- MT5 connection status.
+- Risk limits and account-specific restrictions.
+
+Every operation must be scoped to the authenticated application user and a broker account that user is authorized to access.
+
+Never accept a client-supplied account ID as sufficient proof of ownership.
+
+---
+
+## 4. GENUINE DERIV ACCOUNT INTEGRATION
+
+Integrate with the actual Deriv APIs and authorization mechanisms supported by the application's registered Deriv application.
+
+Consult the current official Deriv API documentation and use the correct supported endpoint, authentication flow, request parameters, scopes, and account-discovery process.
+
+Do not assume that an old WebSocket endpoint, REST endpoint, or legacy authentication flow is still valid without checking.
+
+### Account authorization and discovery
+
+Implement or repair the full flow:
+
+1. User selects Connect Deriv.
+2. The application redirects to the legitimate Deriv authorization page.
+3. The user authorizes access to their own Deriv account.
+4. The backend validates OAuth state and the callback.
+5. The backend securely exchanges the authorization code where applicable.
+6. The backend discovers the accounts actually authorized by Deriv.
+7. The backend retrieves the genuine account metadata returned by the broker.
+8. The user selects an authorized account.
+9. The backend validates account ownership, permissions, account type, and currency.
+10. The application establishes a verified session for the selected account.
+11. The application fetches the actual account balance and initializes supported market-data and trading connections.
+
+Never create a successful connection merely because an OAuth callback succeeded.
+
+OAuth success is not proof that account discovery, account selection, live market data, or trade execution works.
+
+### Real account identity
+
+The following must originate from authoritative sources:
+
+- Deriv login ID.
+- Account type: real or demo.
+- Account currency.
+- Actual balance.
+- Available permissions.
+- User's actual Deriv email, only where legitimately returned by a supported API.
+- Account verification and connection state.
+
+Do not manufacture email addresses such as `usr-...@deriv.user`.
+
+Do not substitute a Deriv login ID for a user's email address.
+
+Do not invent application user IDs from a broker login ID.
+
+Maintain a stable internal application user ID independently of the broker's account ID.
+
+If the authorized API does not expose a user's email, display a clear unavailable state or obtain it through an explicitly documented, legitimate mechanism. Never fabricate one.
+
+If database persistence fails, do not report that the account has been durably connected.
+
+### Account selection
+
+Support all authorized accounts that Deriv actually returns.
+
+Allow users to switch among their authorized real and demo accounts without connecting another person's account or reusing another user's token.
+
+Use the broker's authoritative account-type field. Do not infer whether an account is real or demo from its login-ID prefix.
+
+Do not automatically select a real account merely because it is present.
+
+Do not silently substitute a demo account when real-account discovery fails.
+
+If no account is available, explain the actual reason and offer the appropriate recovery action.
+
+---
+
+## 5. IMPLEMENT THREE DISTINCT TRADING MODES
+
+Separate **broker account type** from **trading mode**.
+
+Broker account type identifies the account maintained by Deriv or MT5. Trading mode determines how AppexQuant is allowed to operate.
+
+Implement these modes:
+
+### A. LIVE
+
+- Uses the selected, authenticated real broker account.
+- Retrieves real account balance and real market data.
+- Submits eligible orders to the actual broker.
+- Displays confirmed broker execution results.
+- Uses real account permissions and risk constraints.
+- Requires appropriate trade confirmation and server-side validation.
+
+### B. DERIV DEMO
+
+- Uses the actual demo account authorized by the user through Deriv.
+- Displays that account's genuine demo balance.
+- Uses supported Deriv demo trading endpoints and permissions.
+- Places demo orders through the broker where supported.
+- Displays actual demo order results and demo account history returned by Deriv.
+- Never presents locally simulated paper trades as Deriv demo trades.
+
+Switching to this mode must not silently generate a new account, invent a demo balance, or use a global shared demo account.
+
+If the user has not authorized a Deriv demo account, provide a legitimate connect or account-selection flow.
+
+### C. PAPER
+
+- Uses a clearly identified AppexQuant paper-trading ledger.
+- Simulates orders and fills using explicitly identified market data.
+- Never submits financial orders to the broker.
+- Keeps paper balances, positions, orders, and performance separate from real broker data.
+- Uses a documented paper-execution model that accounts for spread and slippage assumptions where relevant.
+- Labels paper-trading results as simulated.
+
+### Keep these dimensions separate
+
+A Deriv demo account is not the same thing as AppexQuant paper trading.
+
+A real account is not made safe simply by changing a frontend label.
+
+Never allow a paper order to reach the live broker because of stale state, a race condition, or a frontend mode toggle.
+
+Never allow a live order to proceed merely because the frontend displays `LIVE`.
+
+The backend must validate the current mode, selected account, account type, user permissions, risk controls, and order intent at execution time.
+
+---
+
+## 6. FIX MODE SWITCHING SO IT IS IMMEDIATE
+
+The current Live Execution Authorization modal, shown in the supplied screenshot, makes the mode transition appear to require a six-item pre-flight audit.
+
+Re-engineer the workflow so that changing the selected mode is a lightweight operation.
+
+### Required behavior
+
+- Switching between LIVE, DERIV DEMO, and PAPER should immediately update the interface when the backend confirms the transition.
+- Do not force the user through the entire live-execution authorization checklist every time they switch modes.
+- Do not reload the entire page.
+- Do not rebuild the application's entire component tree.
+- Do not reinitialize unrelated application services.
+- Do not recreate market subscriptions that are already valid.
+- Do not refetch every dashboard resource when only the mode changes.
+- Do not wait for an unrelated market-data feed to finish loading before changing the mode selector.
+- Prevent rapid repeated clicks from creating inconsistent state.
+- If a mode change requires an account that has not been authorized, immediately explain the missing prerequisite and provide a relevant action.
+- Roll back the selected mode if the backend rejects the transition.
+
+Use a centralized, typed mode state with predictable transitions and race-condition protection.
+
+Where appropriate, update the interface optimistically and reconcile with the authoritative backend response.
+
+### Separate mode selection from live trading authorization
+
+Opening LIVE mode must not itself execute a trade.
+
+Perform expensive or additional safety checks when the user actually attempts a live order, or when a required authorization has expired or materially changed.
+
+Maintain any legally required disclosures and risk controls, but do not make users repeatedly acknowledge unchanged documents simply to navigate between modes.
+
+If authorization is genuinely required before live trading, show a concise, persistent status and request confirmation at the appropriate point.
+
+A mode switch must never bypass required live-trading safeguards.
+
+---
+
+## 7. RE-ENGINEER DERIV MARKET-DATA INGESTION AND STREAMING
+
+This is a critical subsystem. Investigate the actual source of the market feed and fix the underlying reliability problem.
+
+Do not merely change `Offline` to `Active`.
+
+### One canonical market-data pipeline
+
+Trace the entire lifecycle:
+
+1. Market discovery.
+2. Symbol metadata retrieval.
+3. Subscription creation.
+4. Upstream WebSocket connection.
+5. Authentication where required.
+6. Tick, candle, and historical-data ingestion.
+7. Normalization and validation.
+8. Subscription fan-out to connected clients.
+9. Frontend chart updates.
+10. Disconnect detection.
+11. Reconnection and resubscription.
+12. Cleanup and resource release.
+
+Use the current official Deriv documentation to verify the correct endpoints, supported symbols, subscription parameters, authentication requirements, and message formats.
+
+### Real-time market requirements
+
+- Populate the market watchlist from actual broker-supported instruments.
+- Retrieve genuine instrument names, symbols, trading availability, precision, and metadata.
+- Retrieve genuine tick prices and supported historical candles.
+- Build candles from actual ticks only when appropriate and clearly distinguish them from broker-provided candle history.
+- Display the actual quote timestamp and data freshness.
+- Update the UI from incoming events without full-page refreshes.
+- Support multiple concurrent users without creating unnecessary duplicate upstream subscriptions.
+- Use reference-counted subscription management where appropriate.
+- Enforce broker subscription limits.
+- Remove unused subscriptions when clients disconnect.
+- Reconnect safely after transient network failures.
+- Resubscribe to the symbols each client actually needs.
+- Apply bounded exponential backoff with jitter.
+- Avoid reconnect storms, memory leaks, duplicate listeners, and stale closures.
+- Handle malformed messages, heartbeat failures, timeouts, and upstream error responses.
+- Prevent one user's private authenticated stream from leaking into another user's session.
+
+### Deployment architecture
+
+Inspect the actual hosting environment.
+
+If the production platform cannot reliably maintain persistent WebSocket connections in ordinary serverless request handlers, do not attempt to hide that limitation with repeated short-lived connections.
+
+Use a suitable persistent streaming service, supported managed infrastructure, or another deployment-compatible architecture.
+
+Keep ordinary HTTP APIs and persistent streaming responsibilities appropriately separated.
+
+If an existing Deriv connection service already solves this problem, repair and reuse it instead of introducing a competing gateway.
+
+### Accurate market-data status
+
+The application must distinguish:
+
+- Connected and receiving fresh data.
+- Connecting.
+- Reconnecting.
+- Stale.
+- Disconnected.
+- Broker unavailable.
+- Unsupported instrument.
+- Subscription rejected.
+
+A successful WebSocket handshake is not sufficient to declare the market feed healthy.
+
+Require valid incoming market events and a freshness check before declaring a feed live.
+
+Never generate random replacement prices, random candles, or fabricated market events to conceal a failed feed.
+
+When real data is unavailable, preserve the last valid quote with a visible stale indicator and timestamp, or display an unavailable state.
+
+### Fix the current market-feed inconsistency
+
+The screenshots show the dashboard sometimes reporting the feed as Offline while other screens display live data and a large number of available markets.
+
+Investigate and eliminate conflicting status sources.
+
+There must be one authoritative market-feed health model, with per-connection and per-symbol subscription state where necessary.
+
+Do not equate the number of listed instruments with the number of active subscriptions.
+
+---
+
+## 8. MAKE THE MARKETS WORKSPACE A PROFESSIONAL TRADING TERMINAL
+
+Build on the existing markets and trading components.
+
+Avoid unnecessary visual redesign of functional chart components unless required to resolve actual inconsistencies.
+
+### Market watchlist
+
+Support:
+
+- Searchable instrument list.
+- Broker-supported instrument categories.
+- Favorites.
+- Trading availability.
+- Latest valid price.
+- Absolute and percentage change when calculated from valid reference data.
+- Last-update timestamp.
+- Clear stale or unavailable states.
+
+Do not invent change percentages when the required reference data is missing.
+
+### Chart workspace
+
+Support the intervals and chart types actually supported by the chosen data source.
+
+Implement:
+
+- Live tick updates.
+- Consistent historical candles.
+- Timeframe switching.
+- Instrument switching.
+- Loading, empty, and error states.
+- Price precision based on instrument metadata.
+- Responsive chart layout.
+- Indicator calculations based on the displayed data.
+- Clear distinction between historical data, live ticks, and simulated paper-execution assumptions.
+
+Ensure that switching instruments or timeframes cleans up old subscriptions and cannot cause older responses to overwrite newer selections.
+
+### Order ticket
+
+Create a consistent order-entry experience with:
+
+- Selected broker and account.
+- Selected instrument.
+- Correct account currency.
+- Order type supported by the connected broker.
+- Stake, volume, or contract size as applicable.
+- Required expiry or duration where applicable.
+- Supported stop-loss and take-profit settings.
+- Estimated cost, payout, or margin where available.
+- Current quote and quote freshness.
+- Risk disclosure appropriate to the product.
+- Clear validation errors.
+- Final order summary and confirmation.
+
+Do not display controls for order types that the connected broker does not support.
+
+Do not pretend that Deriv's contract products and conventional leveraged forex orders have identical execution semantics.
+
+### Fast execution
+
+Optimize the path from user confirmation to broker submission.
+
+- Avoid redundant serial API calls.
+- Reuse valid account and instrument metadata.
+- Perform server-side preflight validation efficiently.
+- Prevent duplicate order submissions.
+- Use idempotency protection where supported by the integration design.
+- Use request IDs or client order intent identifiers to correlate requests and responses.
+- Return clear pending, confirmed, rejected, and unknown outcomes.
+- Reconcile uncertain outcomes with broker order history or transaction data instead of submitting duplicate orders.
+- Display the actual broker-confirmed execution status and order identifier.
+
+Never claim execution merely because the HTTP request returned successfully.
+
+---
+
+## 9. ENABLE DIRECT DERIV TRADING FROM APPEXQUANT
+
+Users should be able to trade from AppexQuant without repeatedly navigating back to the Deriv website after authorizing their account.
+
+Use the broker-supported trading interface and APIs for each product.
+
+Implement the actual supported order lifecycle:
+
+1. Validate authenticated user.
+2. Validate selected account and trading mode.
+3. Validate broker authorization and order permissions.
+4. Validate instrument availability and current quote freshness.
+5. Validate contract parameters and account-specific limits.
+6. Apply server-side risk controls.
+7. Obtain explicit user confirmation when required.
+8. Submit the order through the appropriate broker adapter.
+9. Await or reconcile the broker's response.
+10. Persist the confirmed result.
+11. Update the UI and trading history.
+12. Record a secure audit event.
+
+Support real and demo execution independently where the broker allows it.
+
+Never allow a UI toggle, URL parameter, cached account object, or stale session to convert a demo request into a live order or vice versa.
+
+Keep trading disabled when the selected account or order outcome cannot be verified.
+
+For unsupported order types, show a clear explanation and provide only the supported alternatives.
+
+---
+
+## 10. DEPOSITS, WITHDRAWALS, AND ACCOUNT FINANCIAL ACTIVITY
+
+Provide a professional in-app financial management experience wherever the authorized broker APIs permit it.
+
+Inspect current official Deriv documentation and account permissions before implementing each feature.
+
+### Required user experience
+
+Where supported, provide:
+
+- Deposit options available to the actual user.
+- Supported payment methods.
+- Deposit instructions or secure broker-provided payment flows.
+- Withdrawal initiation.
+- Withdrawal eligibility and limits.
+- Required verification and payment details.
+- Transaction history.
+- Pending, processing, completed, failed, and rejected states.
+- Genuine transaction references.
+- Current account balance and currency.
+- Clear handling of broker-side verification requirements.
+
+The user should not need to repeatedly navigate to Deriv for an action that Deriv legitimately supports through an authorized API or embedded payment flow.
+
+However:
+
+- Do not store payment-card credentials or sensitive payment details unnecessarily.
+- Never bypass broker KYC, AML, sanctions checks, payment verification, or withdrawal restrictions.
+- Never collect or store a Deriv password.
+- Never invent a deposit method, payment URL, withdrawal limit, or transaction confirmation.
+- Never mark a deposit or withdrawal complete until the authoritative provider confirms it.
+- Never modify the displayed real balance based only on a locally submitted request.
+- Never use trading API permissions as evidence that financial account-management permissions are available.
+
+If a flow requires the user to complete a secure action through Deriv, provide the supported official flow within the application when permitted, or open the legitimate broker destination when embedding is unavailable.
+
+If a feature is unsupported, state that accurately and keep it disabled or clearly marked unavailable.
+
+Do not claim that every deposit or withdrawal can be completed entirely in-app until the broker confirms that the relevant API supports it for the user's account and jurisdiction.
+
+---
+
+## 11. INTEGRATE DERIV BOT AND APPEXQUANT BOTS WITHOUT CONFUSING THEM
+
+Users should be able to access Deriv Bot strategies alongside AppexQuant's own bots.
+
+First inspect the current Deriv Bot product, official integration options, and the existing AppexQuant bot architecture.
+
+### Deriv Bot
+
+Determine the officially supported way to open, embed, or integrate Deriv Bot functionality.
+
+If a supported official embed or launch mechanism exists, integrate it cleanly into the trading workspace.
+
+If direct in-page execution is not supported, provide a clearly labeled official launch experience without pretending the bot runs inside AppexQuant.
+
+Where supported by official APIs, allow the user to review strategy parameters, authorize the required account, and monitor genuine execution outcomes.
+
+Do not claim access to a Deriv Bot runtime that is not actually exposed through the supported API.
+
+### AppexQuant bots
+
+Support:
+
+- Strategy selection.
+- Parameter configuration.
+- Account and mode selection.
+- Backtesting using clearly identified historical data.
+- Paper testing.
+- Demo execution.
+- Live execution only with explicit authorization.
+- Start, pause, resume, and stop.
+- Execution logs.
+- Risk limits.
+- Position and order reconciliation.
+- Error reporting.
+- Restart recovery where supported.
+- Per-user strategy isolation.
+
+Every automated order must pass through the same authoritative account and execution controls as a manually submitted order.
+
+Do not let a background bot continue placing real orders after authorization has been revoked, the account has changed, the selected mode becomes invalid, or the required safety conditions fail.
+
+Distinguish bot-generated simulated orders from genuine broker orders in every view.
+
+---
+
+## 12. ADD META TRADER 5 SUPPORT WITHOUT FAKING A BROKER CONNECTION
+
+Investigate the supported MT5 integration options before choosing an implementation.
+
+MT5 account integration must use a real, supported architecture. Do not assume that a generic browser API exists for every MT5 broker.
+
+Evaluate the appropriate option for the existing deployment, such as:
+
+- An official broker-supported API or gateway.
+- A legitimate MetaTrader integration service.
+- An authenticated MT5 terminal or bridge running in suitable persistent infrastructure.
+- Another supported broker integration mechanism that can reliably expose the necessary account and trading operations.
+
+Do not use an unofficial or unsafe password collection flow as a shortcut.
+
+### MT5 functionality
+
+Where the selected integration supports it, implement:
+
+- Real and demo account identification.
+- Account authorization and ownership validation.
+- Account balance and equity.
+- Margin and free margin.
+- Instrument metadata.
+- Bid/ask prices and market data.
+- Open positions.
+- Pending orders.
+- Order submission and modification.
+- Stop-loss and take-profit management.
+- Order cancellation.
+- Trade history.
+- Connection health and last-update time.
+
+Respect broker-specific symbol naming, lot sizes, volume steps, contract sizes, margin rules, trading hours, and execution semantics.
+
+Do not use Deriv account data to populate an MT5 account.
+
+Do not use MT5 demo balances or positions in a real MT5 account.
+
+If MT5 integration requires persistent infrastructure not available in the current hosting environment, implement the supported adapter boundary and the required deployment configuration, clearly identify the external dependency, and never present the feature as operational before end-to-end verification.
+
+---
+
+## 13. PROFESSIONAL LIGHT AND DARK UI RE-ENGINEERING
+
+Re-engineer the interface into a consistent professional trading terminal.
+
+The screenshots show inconsistent card structures, uneven contrast, redundant status labels, overly technical language, and theme changes that appear to trigger slow or inconsistent rendering.
+
+Fix the underlying design system rather than applying isolated CSS patches.
+
+### Establish one design system
+
+Create a single source of truth for design tokens:
+
+- Primary brand color.
+- Secondary accent.
+- Positive/success.
+- Warning.
+- Error.
+- Informational.
+- Page background.
+- Surface and elevated surface.
+- Border.
+- Primary and secondary text.
+- Muted text.
+- Chart-specific semantic colors.
+- Focus and selection states.
+
+Use CSS variables or the existing equivalent theme-token system.
+
+Every page, card, table, modal, chart wrapper, form, navigation item, badge, tooltip, dropdown, and mobile control must consume the shared tokens.
+
+Do not allow different pages to invent their own versions of the brand yellow, green success states, dark surfaces, or light backgrounds.
+
+### Professional light mode
+
+Use a restrained, high-contrast professional palette with:
+
+- Clear neutral page backgrounds.
+- Consistent white or near-white surfaces.
+- Legible primary and secondary text.
+- Subtle borders.
+- Limited, purposeful shadows.
+- Semantic colors that match dark mode.
+- Professional chart grids and labels.
+
+Eliminate white text on white surfaces, dark text on dark surfaces, invisible labels, low-contrast placeholders, and unreadable disabled controls.
+
+### Professional dark mode
+
+Use a coherent dark trading-terminal palette with:
+
+- Deep neutral page backgrounds.
+- Consistent elevated surfaces.
+- Clearly differentiated cards.
+- Legible muted text.
+- Controlled accent colors.
+- Consistent border and focus treatment.
+- Readable charts and order-entry panels.
+
+Avoid excessive neon colors, gradients, glows, decorative status lights, and borders that make the interface look like a gaming dashboard rather than a professional trading terminal.
+
+### Fix the theme-switching delay
+
+Changing between light and dark modes must be effectively immediate.
+
+Investigate the actual cause of the delay. Do not guess.
+
+- Change the root theme attribute or class instead of remounting the whole application.
+- Update shared CSS variables rather than recalculating large component trees unnecessarily.
+- Keep theme state separate from broker connection state, market-data state, and trading state.
+- Do not refetch account balances, candles, market lists, or user data solely because the theme changed.
+- Do not recreate WebSocket connections or market subscriptions during a theme transition.
+- Avoid synchronous storage operations and expensive global DOM scans during rendering.
+- Persist the theme using the existing safe preference mechanism.
+- Apply the saved theme early enough to minimize visible flashing.
+- Respect system preference where appropriate.
+- Handle hydration and first-render consistency.
+- Avoid broad transitions on layout, width, height, or other expensive properties.
+- Keep theme transitions subtle and limited to appropriate visual properties.
+- Verify that the theme toggle works without a full page reload.
+
+Target an immediate visual response on ordinary devices. Measure theme-switching performance before and after the changes.
+
+---
+
+## 14. STANDARDIZE CARDS, TABLES, FORMS, AND NAVIGATION
+
+Create reusable visual patterns for the main application components.
+
+### Standard card system
+
+Cards should have consistent:
+
+- Radius.
+- Border.
+- Padding.
+- Header layout.
+- Title typography.
+- Metadata placement.
+- Content spacing.
+- Footer alignment.
+- Responsive behavior.
+- Loading and error states.
+
+Use defined card variants only where they have a meaningful purpose, such as metric cards, market cards, account cards, order cards, and alert panels.
+
+Do not make every card identical, but ensure that components serving the same purpose share the same structure.
+
+Metric cards should align their values, units, labels, and secondary information consistently.
+
+Market cards should align symbols, prices, and changes.
+
+Order and position cards should align quantities, execution state, protective levels, and actions.
+
+Account cards should align account identity, type, currency, balance, and account actions.
+
+Remove overlapping text, inconsistent widths, excessive blank areas, truncated important data, and controls that move unpredictably between themes or screen sizes.
+
+### Simplify the language
+
+Remove repetitive, redundant, and unnecessary status labels.
+
+Examples:
+
+- Do not display `LIVE`, `CONNECTED`, `SYNCED`, and `Streaming` repeatedly for the same healthy connection.
+- Do not show a technical WebSocket status to ordinary traders when a simple `Live data` label communicates the important state.
+- Do not show `Backend authority status` as a major dashboard feature unless the user is an administrator or the information is essential.
+- Do not use lengthy security slogans in ordinary account cards.
+- Do not display internal implementation names or engineering diagnostics to ordinary traders.
+- Do not describe an account as live solely because the user selected live mode.
+- Do not claim the feed is active when it is stale.
+
+Prefer short, meaningful statuses:
+
+- `Live`
+- `Demo`
+- `Paper`
+- `Connecting`
+- `Reconnecting`
+- `Data delayed`
+- `Unavailable`
+- `Order pending`
+- `Executed`
+- `Rejected`
+
+Use contextual status indicators rather than repeating the same badge across every page.
+
+Keep detailed diagnostics in an appropriate troubleshooting or administrator view.
+
+### Responsive design
+
+Support desktop trading layouts, tablets, and mobile devices.
+
+- Preserve important order-entry controls on small screens.
+- Avoid horizontal overflow.
+- Keep navigation predictable.
+- Ensure modals fit the viewport.
+- Maintain usable chart controls.
+- Ensure buttons have clear hit targets.
+- Do not hide critical risk or execution states on mobile.
+- Avoid layout shifts caused by streaming price updates.
+
+---
+
+## 15. RELIABILITY, PERFORMANCE, AND CONSISTENT STATE
+
+Investigate and fix the actual causes of slow transitions, stale data, contradictory connection states, and inconsistent account screens.
+
+### Frontend performance
+
+- Avoid repeated fetching of the same resources.
+- Deduplicate concurrent identical requests.
+- Use appropriate caching for stable metadata.
+- Keep volatile account balances and market prices fresh.
+- Cancel obsolete requests.
+- Prevent stale responses from overwriting current selections.
+- Avoid unnecessary component remounts.
+- Use memoization only where it measurably helps.
+- Avoid overusing global state.
+- Avoid polling high-frequency prices when an event stream is available and supported.
+- Virtualize long market lists where appropriate.
+- Clean up timers, subscriptions, event listeners, and abort controllers.
+
+### Backend performance
+
+- Reuse the existing connection-pooling strategy.
+- Avoid opening a new database connection for every tick.
+- Do not write every market tick to the database unless there is a justified storage design.
+- Batch or aggregate noncritical market-data processing where appropriate.
+- Keep order execution and financial state persistence reliable.
+- Apply bounded timeouts and retry policies appropriate to each operation.
+- Do not blindly retry non-idempotent financial operations.
+- Isolate broker outages from unrelated UI functionality.
+
+### State consistency
+
+Maintain a clear distinction between:
+
+- Application login.
+- Broker authorization.
+- Selected account.
+- Selected trading mode.
+- Market-feed health.
+- Order execution state.
+- Wallet transaction state.
+- Bot execution state.
+
+A healthy application login must not imply a healthy broker connection.
+
+A healthy broker connection must not imply fresh market data.
+
+Fresh market data must not imply that an account has permission to trade.
+
+A selected real account must not imply that an order has executed.
+
+An HTTP success response must not automatically imply financial transaction completion.
+
+---
+
+## 16. SECURITY AND FINANCIAL SAFEGUARDS
+
+Preserve and strengthen the application's existing protections.
+
+- Store broker tokens securely on the server using the existing supported encryption design.
+- Never expose access tokens or refresh tokens to browser JavaScript, URLs, logs, or local storage.
+- Use secure session cookies and appropriate CSRF protection.
+- Validate OAuth state and callback origin.
+- Enforce user and account ownership on every sensitive endpoint.
+- Apply rate limits and input validation.
+- Prevent cross-user account leakage.
+- Keep application user IDs separate from broker login IDs.
+- Keep broker secrets in validated environment configuration.
+- Fail closed when authentication, account ownership, or trading mode cannot be verified.
+- Prevent replay and duplicate order submissions.
+- Apply server-side risk limits.
+- Preserve audit trails for sensitive financial operations.
+- Redact tokens, payment details, and unnecessary personal information from logs.
+- Do not weaken existing risk checks just to simplify mode switching.
+- Never use a frontend-only role or permission check to authorize trading.
+- Never enable a real order from a demo or paper account.
+- Require clear, explicit user intent before live financial orders are submitted.
+
+Do not introduce an automated trading behavior that the user has not explicitly configured and authorized.
+
+---
+
+## 17. TESTS AND ACCEPTANCE CRITERIA
+
+Create or update tests that exercise the actual business logic and integration boundaries.
+
+Use mocks only in controlled automated tests. Make their use explicit and prevent them from becoming production fallbacks.
+
+### Account integration
+
+Verify:
+
+- Real Deriv authorization.
+- Demo Deriv authorization.
+- Discovery of multiple authorized accounts.
+- Correct account-type selection.
+- Accurate balance and currency.
+- Genuine profile data where available.
+- Missing or revoked authorization.
+- Expired tokens.
+- Empty account discovery.
+- Broker API errors.
+- Database persistence failure.
+- User/account isolation.
+- Safe account switching.
+
+### Mode switching
+
+Verify:
+
+- Live, Deriv Demo, and Paper transitions.
+- Immediate visual mode changes.
+- No full-page reload.
+- No unnecessary account refetches.
+- No WebSocket recreation caused solely by theme or mode UI rendering.
+- No live execution from demo mode.
+- No broker execution from paper mode.
+- Rejection of unauthorized real-account actions.
+- Correct recovery after failed transitions.
+
+### Market data
+
+Verify:
+
+- Real tick ingestion from the broker integration.
+- Correct symbol mapping.
+- Correct timestamp and price normalization.
+- Valid candle generation.
+- Reconnection and resubscription.
+- Subscription cleanup.
+- Multiple-client behavior.
+- Stale-data detection.
+- No fabricated fallback prices.
+- No duplicate subscriptions.
+- No contradictory feed-health status.
+- No private stream leakage across users.
+
+### Order execution
+
+Verify:
+
+- Valid live order.
+- Valid demo order.
+- Paper-only order.
+- Invalid parameters.
+- Insufficient balance or margin.
+- Unsupported instrument.
+- Expired authorization.
+- Duplicate submission.
+- Broker rejection.
+- Timeout with unknown execution outcome.
+- Broker-confirmed execution and reconciliation.
+- Accurate trading history.
+
+### Deposits and withdrawals
+
+Verify the real supported provider flow, validation, authorization, transaction states, error handling, and reconciliation.
+
+Do not count a mocked provider response as successful real-world integration.
+
+### MT5 and bots
+
+Verify actual supported integration boundaries, account separation, permission checks, mode isolation, start/stop behavior, execution reconciliation, and failure states.
+
+Where external credentials or infrastructure are unavailable, clearly report the missing integration test rather than claiming it passed.
+
+### UI and performance
+
+Verify:
+
+- Light mode on every major route.
+- Dark mode on every major route.
+- Immediate theme switching.
+- No contrast regressions.
+- Consistent card structures.
+- Responsive layouts.
+- No redundant status badges.
+- No unnecessary API requests on theme change.
+- No console errors.
+- No broken navigation.
+- No regressions in existing features.
+
+Run the project's build, type checks, lint checks, unit tests, and integration tests where available.
+
+---
+
+## 18. IMPLEMENTATION ORDER
+
+Work in controlled stages within the existing codebase.
+
+### Stage 1 — Audit and baseline
+
+Map the architecture, identify the current data sources, reproduce the mode-switching and theme issues, and record existing test/build results.
+
+### Stage 2 — Account and state correctness
+
+Fix account identity, broker account selection, session persistence, mode separation, and inconsistent status sources.
+
+### Stage 3 — Market-data reliability
+
+Repair the real Deriv data pipeline, connection lifecycle, subscriptions, freshness detection, and chart updates.
+
+### Stage 4 — Trading execution
+
+Verify and repair the order-entry flow, backend authorization, risk checks, submission, and reconciliation for real and demo accounts.
+
+### Stage 5 — Financial management
+
+Implement only the supported deposit and withdrawal flows, with real transaction state and safe reconciliation.
+
+### Stage 6 — Deriv Bot and MT5
+
+Integrate genuine supported functionality and document any required external infrastructure.
+
+### Stage 7 — UI design system
+
+Standardize light mode, dark mode, cards, typography, spacing, badges, tables, and responsive layouts.
+
+### Stage 8 — Performance and release verification
+
+Measure theme-switching latency, market-data freshness, resource use, duplicate requests, reconnect behavior, and order-flow reliability.
+
+Complete each stage without leaving the application in a broken intermediate state. Use small, coherent changes and run relevant tests after each major change.
+
+Do not rewrite unrelated modules or make sweeping configuration changes without a demonstrated need.
+
+---
+
+## 19. FINAL DELIVERY REPORT
+
+At completion, provide a factual report containing:
+
+1. The root causes found in the existing code.
+2. The specific market-data failure and how it was fixed.
+3. The cause of slow light/dark theme switching and the measured improvement.
+4. The changes to account identity, mode switching, and account isolation.
+5. The actual Deriv endpoints and authorization mechanisms implemented.
+6. The order types genuinely supported for live and demo accounts.
+7. The deposit and withdrawal capabilities verified against the supported API.
+8. The Deriv Bot integration actually implemented.
+9. The MT5 integration actually implemented and any infrastructure it requires.
+10. Files changed and the purpose of each change.
+11. Build, type-check, lint, unit-test, and integration-test results.
+12. Measured theme-switching performance and market-data freshness.
+13. Environment variables and external configuration still required.
+14. Any remaining blockers that prevent genuine end-to-end operation.
+15. Features that remain unavailable because of broker API, permissions, jurisdiction, or hosting limitations.
+
+For each feature, label its status honestly:
+
+- **Implemented and tested**
+- **Implemented, external verification required**
+- **Partially implemented**
+- **Blocked by external dependency**
+- **Not implemented**
+
+Do not label a feature fully operational solely because the UI renders, an endpoint returns HTTP 200, or a mocked test passes.
+
+## FINAL DIRECTIVE
+
+Build a coherent, production-oriented trading system in which AppexQuant's account state, market data, orders, balances, transactions, bots, and connection indicators reflect genuine authoritative sources.
+
+Preserve the existing product, simplify the UI, unify the design system, and make mode switching and theme switching fast without compromising financial security.
+
+Do not hide failures with simulations. Do not introduce fake accounts. Do not fabricate market prices. Do not fake order confirmations. Do not silently downgrade a live operation to demo or paper mode.
+
+**Inspect first. Trace the real data path. Fix the underlying causes. Implement the supported broker integrations. Test them. Report exactly what is verified and what still needs external credentials or infrastructure.**

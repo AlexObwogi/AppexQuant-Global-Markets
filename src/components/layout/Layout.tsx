@@ -1,20 +1,30 @@
 /**
- * AppexQuant Markets Global - Master Frame Chassis (Phase 1)
- * Enforces h-screen w-screen overflow-hidden select-none bg-[#15171e] text-[#ffffff]
- * and 3-Zone High-Density Grid Structure (grid-cols-[240px_1fr_340px] h-full)
+ * AppexQuant Markets Global - Responsive Master Layout Chassis
+ * Fully mobile-adaptive, high-density Deriv dark aesthetic.
+ * Removes terminal-like technical jargon and delivers seamless mobile & desktop experiences.
  */
 
 import React, { ReactNode, useState, useEffect } from 'react';
 import { useGlobalState } from '../../state/GlobalStateContext.tsx';
+import { useMarketData } from '../../state/MarketDataContext.tsx';
+import { Header } from './Header.tsx';
 import { Sidebar } from './Sidebar.tsx';
-import { X, Activity, ShieldCheck, TrendingUp, DollarSign } from 'lucide-react';
+import { BottomNav } from './BottomNav.tsx';
+import { MoreDrawer } from './MoreDrawer.tsx';
+import { OfflineBanner } from '../common/OfflineBanner.tsx';
+import { SystemFailSafeBanner } from '../common/SystemFailSafeBanner.tsx';
+import { PWAInstallBanner } from '../common/PWAInstallBanner.tsx';
+import { ConnectionStatus } from '../common/ConnectionStatus.tsx';
+import { X } from 'lucide-react';
 
 interface LayoutProps {
   children: ReactNode;
 }
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
-  const { state, dispatch } = useGlobalState();
+  const { state, dispatch, selectedAccount } = useGlobalState();
+  const { ticks } = useMarketData();
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [utcTime, setUtcTime] = useState('');
 
   useEffect(() => {
@@ -27,110 +37,132 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     return () => clearInterval(timer);
   }, []);
 
+  // Active user / account label
+  const activeAccountId = selectedAccount?.id || selectedAccount?.accountNumber || state.user?.derivAccountId || state.user?.loginid;
+  const isDemo = state.executionEnvironment === 'DEMO' || activeAccountId?.startsWith('VR');
+
+  // Market quotes from market data or defaults
+  const eurUsdQuote = ticks['frxEURUSD']?.quote || 1.08452;
+  const btcQuote = ticks['cryBTCUSD']?.quote || 91420.50;
+  const vol100Quote = ticks['1HZ100V']?.quote || 4821.10;
+  const goldQuote = ticks['frxXAUUSD']?.quote || 2335.80;
+
+  // Auto-dismiss notifications after 5 seconds
+  useEffect(() => {
+    if (state.notifications.length > 0) {
+      const timer = setTimeout(() => {
+        const oldestNotification = state.notifications[state.notifications.length - 1];
+        if (oldestNotification) {
+          dispatch({ type: 'DISMISS_NOTIFICATION', payload: oldestNotification.id });
+        }
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [state.notifications, dispatch]);
+
+  const showRightPanelOnRoute = state.currentRoute === 'trade';
+
   return (
-    <div className="h-screen w-screen overflow-hidden select-none bg-[#15171e] text-[#ffffff] flex flex-col font-sans antialiased">
-      {/* Absolute Continuous Market Ticker Tape across absolute top layout layer (Zone 2 header / top strip) */}
-      <div className="h-10 bg-[#15171e] border-b border-[#2a2e39] px-4 flex items-center justify-between text-xs shrink-0 z-20">
-        <div className="flex items-center space-x-6 overflow-hidden no-scrollbar">
+    <div className="min-h-screen lg:h-screen w-screen overflow-x-hidden lg:overflow-hidden select-none bg-[#15171e] text-[#ffffff] flex flex-col font-sans antialiased relative">
+      {/* Offline & System Alerts */}
+      <OfflineBanner />
+      <SystemFailSafeBanner />
+      <PWAInstallBanner />
+
+      {/* Main Adaptive Header */}
+      <Header onToggleMobileDrawer={() => setIsMoreOpen(true)} />
+
+      {/* Responsive Live Market Ribbon (Single-line, horizontal scroll on mobile, no wrapping) */}
+      <div className="h-9 sm:h-10 bg-[#15171e] border-b border-[#2a2e39] px-3 sm:px-4 flex items-center justify-between text-xs shrink-0 z-20 overflow-x-auto no-scrollbar whitespace-nowrap">
+        {/* Left: Live Connection & Market Ticker */}
+        <div className="flex items-center space-x-4 sm:space-x-6 shrink-0">
           <div className="flex items-center space-x-2 text-[#9699a0]">
             <span className="inline-block w-2 h-2 rounded-full bg-[#00a86b] animate-pulse"></span>
-            <span className="font-mono text-[#ffffff] font-bold">WS SYNC: ACTIVE</span>
+            <span className="font-semibold text-[#ffffff] text-[11px] sm:text-xs">Live Feed</span>
           </div>
-          <div className="flex items-center space-x-4 font-mono text-[#9699a0]">
-            <span>EUR/USD: <strong className="text-[#00a86b]">1.08452</strong> (+0.14%)</span>
-            <span>BTC/USD: <strong className="text-[#ff444f]">91,420.50</strong> (-0.82%)</span>
-            <span>VOL-100: <strong className="text-[#00a86b]">4,821.10</strong> (+1.25%)</span>
-            <span>GOLD: <strong className="text-[#00a86b]">2,335.80</strong> (+0.43%)</span>
+
+          <div className="flex items-center space-x-3 sm:space-x-4 font-mono text-[11px] sm:text-xs text-[#9699a0]">
+            <div className="flex items-center space-x-1">
+              <span>EUR/USD:</span>
+              <strong className="text-[#00a86b]">{eurUsdQuote.toFixed(5)}</strong>
+              <span className="text-[#00a86b] text-[10px]">(+0.14%)</span>
+            </div>
+            <div className="flex items-center space-x-1">
+              <span>BTC/USD:</span>
+              <strong className="text-[#ff444f]">${btcQuote.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <span className="text-[#ff444f] text-[10px]">(-0.82%)</span>
+            </div>
+            <div className="flex items-center space-x-1">
+              <span>Volatility 100:</span>
+              <strong className="text-[#00a86b]">{vol100Quote.toFixed(2)}</strong>
+              <span className="text-[#00a86b] text-[10px]">(+1.25%)</span>
+            </div>
+            <div className="hidden md:flex items-center space-x-1">
+              <span>Gold:</span>
+              <strong className="text-[#00a86b]">${goldQuote.toFixed(2)}</strong>
+            </div>
           </div>
         </div>
-        <div className="flex items-center space-x-4 font-mono text-[#9699a0] shrink-0">
-          <span>UTC: {utcTime}</span>
-          <span className="px-2 py-0.5 rounded bg-[#1c1f26] border border-[#2a2e39] text-[#ffffff] font-bold">
-            ACC ID: DOT94330131
+
+        {/* Right: UTC Time & Account Badge (Clean, friendly formatting) */}
+        <div className="hidden sm:flex items-center space-x-3 font-mono text-[11px] sm:text-xs text-[#9699a0] shrink-0 pl-4">
+          <span>UTC {utcTime}</span>
+          <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${
+            isDemo
+              ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+              : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+          }`}>
+            {isDemo ? 'Demo Account' : 'Real Account'}{activeAccountId ? `: ${activeAccountId}` : ''}
           </span>
         </div>
       </div>
 
-      {/* Main 3-Zone High-Density Structural Grid Layout Container */}
-      <div className="flex-1 grid grid-cols-[240px_1fr_340px] h-full overflow-hidden w-full">
-        {/* ZONE 1: Left Nav Hub (Fixed 240px) */}
-        <aside className="h-full bg-[#15171e] border-r border-[#2a2e39] flex flex-col overflow-hidden z-10">
+      {/* Main Responsive Body Chassis */}
+      <div className="flex-1 flex flex-col lg:flex-row h-full overflow-hidden w-full relative min-h-0">
+        {/* ZONE 1: Left Navigation Sidebar (Visible only on desktop lg+) */}
+        <aside className="hidden lg:flex w-[240px] shrink-0 h-full bg-[#15171e] border-r border-[#2a2e39] flex-col overflow-y-auto no-scrollbar z-10">
           <Sidebar />
         </aside>
 
-        {/* ZONE 2: Center Workspace Engine (flex-1) */}
-        <main className="h-full bg-[#15171e] flex flex-col overflow-hidden relative min-w-0">
-          <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-4 space-y-3 no-scrollbar">
+        {/* ZONE 2: Center Workspace (Full width on mobile/tablet, expands to fill remaining space on desktop) */}
+        <main className="flex-1 w-full min-w-0 h-full overflow-y-auto overflow-x-hidden p-2.5 sm:p-4 md:p-6 pb-24 lg:pb-8 bg-[#15171e] relative">
+          <div className="max-w-[1920px] mx-auto w-full min-w-0">
             {children}
           </div>
         </main>
-
-        {/* ZONE 3: Right Parameter Deck (Fixed 340px) */}
-        <aside className="h-full bg-[#1c1f26] border-l border-[#2a2e39] flex flex-col overflow-hidden p-3.5 z-10 space-y-3">
-          <div className="flex items-center justify-between pb-2.5 border-b border-[#2a2e39]">
-            <span className="text-xs font-bold text-[#ffffff] uppercase tracking-wider">Parameter Control Deck</span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 bg-[#15171e] text-[#00a86b] rounded border border-[#2a2e39]">SECURE</span>
-          </div>
-
-          <div className="space-y-2.5 flex-1 overflow-y-auto no-scrollbar text-xs">
-            <div className="p-2.5 rounded bg-[#15171e] border border-[#2a2e39] space-y-1.5">
-              <div className="flex justify-between text-[#9699a0]">
-                <span>Asset Instrument</span>
-                <strong className="text-[#ffffff]">Volatility 100 Index</strong>
-              </div>
-              <div className="flex justify-between text-[#9699a0]">
-                <span>Contract Type</span>
-                <strong className="text-[#00a86b]">Rise / Fall (High-Frequency)</strong>
-              </div>
-              <div className="flex justify-between text-[#9699a0]">
-                <span>Duration</span>
-                <strong className="text-[#ffffff]">5 Ticks</strong>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[11px] text-[#9699a0] block font-bold">Stake Capital (USD)</label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-[#9699a0]">$</span>
-                <input
-                  type="number"
-                  defaultValue={100}
-                  className="w-full bg-[#15171e] border border-[#2a2e39] rounded px-3 py-2 pl-7 text-[#ffffff] font-mono font-bold text-sm focus:outline-none focus:border-[#ff444f]"
-                />
-              </div>
-            </div>
-
-            <div className="p-2.5 rounded bg-[#15171e] border border-[#2a2e39] space-y-1.5">
-              <div className="flex justify-between text-[#9699a0]">
-                <span>Payout Potential</span>
-                <strong className="text-[#00a86b] font-mono">+$195.50 (95.5%)</strong>
-              </div>
-              <div className="flex justify-between text-[#9699a0]">
-                <span>Risk Exposure</span>
-                <strong className="text-[#ff444f] font-mono">-$100.00</strong>
-              </div>
-            </div>
-          </div>
-
-          {/* High-Contrast Buy and Sell Action Terminus Buttons */}
-          <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-[#2a2e39] shrink-0">
-            <button
-              onClick={() => dispatch({ type: 'ADD_NOTIFICATION', payload: { title: 'BUY ORDER PLACED', message: 'Rise order submitted successfully @ $100.00', type: 'success' } })}
-              className="py-3 px-3 rounded bg-[#ff444f] hover:bg-[#e03b44] text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-1.5 cursor-pointer transition-colors shadow-lg"
-            >
-              <TrendingUp className="w-4 h-4" />
-              <span>BUY (RISE)</span>
-            </button>
-            <button
-              onClick={() => dispatch({ type: 'ADD_NOTIFICATION', payload: { title: 'SELL ORDER PLACED', message: 'Fall order submitted successfully @ $100.00', type: 'success' } })}
-              className="py-3 px-3 rounded bg-[#00a86b] hover:bg-[#00925c] text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-1.5 cursor-pointer transition-colors shadow-lg"
-            >
-              <DollarSign className="w-4 h-4" />
-              <span>SELL (FALL)</span>
-            </button>
-          </div>
-        </aside>
       </div>
+
+      {/* Floating Toast Notifications */}
+      {state.notifications.length > 0 && (
+        <div className="fixed top-20 right-4 z-50 space-y-2 max-w-[calc(100vw-2rem)] sm:max-w-sm w-full pointer-events-none">
+          {state.notifications.map((notif) => (
+            <div
+              key={notif.id}
+              className="pointer-events-auto p-3.5 rounded-xl bg-[#1c1f26] border border-[#2a2e39] shadow-2xl flex items-start justify-between gap-3 text-xs"
+            >
+              <div className="min-w-0 flex-1">
+                <h5 className="font-bold text-[#ffffff] mb-0.5 break-words">{notif.title}</h5>
+                <p className="text-[#9699a0] break-words">{notif.message}</p>
+              </div>
+              <button
+                onClick={() => dispatch({ type: 'DISMISS_NOTIFICATION', payload: notif.id })}
+                className="text-[#9699a0] hover:text-[#ffffff] p-1 cursor-pointer shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Connection Status Pill */}
+      <ConnectionStatus />
+
+      {/* Mobile Bottom Navigation Bar (Fixed bottom for screens < lg) */}
+      <BottomNav onOpenMore={() => setIsMoreOpen(true)} />
+
+      {/* Mobile Drawer (Accessible via hamburger or 'More' tab) */}
+      <MoreDrawer isOpen={isMoreOpen} onClose={() => setIsMoreOpen(false)} />
     </div>
   );
 };

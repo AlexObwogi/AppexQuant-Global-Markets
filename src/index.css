@@ -82,8 +82,7 @@
   body {
     background-color: var(--bg-main) !important;
     color: var(--text-primary) !important;
-    font-family: "IBM Plex Sans", "Inter", system-ui, sans-serif !important;
-    font-weight: 600 !important; /* Force global bold permanence by default */
+    font-family: "Inter", "IBM Plex Sans", system-ui, -apple-system, sans-serif;
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
@@ -92,29 +91,13 @@
   }
 
   code, pre, .font-mono {
-    font-family: "JetBrains Mono", monospace !important;
+    font-family: "JetBrains Mono", monospace;
   }
 
-  /* Force system font-family and robust bold weights globally */
-  h1, h2, h3, h4, h5, h6, strong, b, th {
-    font-family: "IBM Plex Sans", "Inter", system-ui, sans-serif !important;
-    font-weight: 700 !important; /* Ultra-bold */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: "Inter", "IBM Plex Sans", system-ui, sans-serif;
+    font-weight: 700;
   }
-
-  p, span, div, a, button, input, select, textarea, label, td, li, option {
-    font-family: "IBM Plex Sans", "Inter", system-ui, sans-serif !important;
-    font-weight: 600 !important; /* Bold permanence */
-  }
-
-  /* Force critical buttons, lists, and numbers to heavy bold weight */
-  button, [role="button"], .font-bold, .font-semibold, .font-extrabold, .text-xl, .text-2xl, .text-3xl, .text-4xl, .text-5xl {
-    font-weight: 700 !important;
-  }
-}
-
-/* Intercept and override light/thin font-weight utility classes */
-.font-thin, .font-extralight, .font-light, .font-normal, .font-medium {
-  font-weight: 600 !important;
 }
 
 /* Custom Scrollbars */

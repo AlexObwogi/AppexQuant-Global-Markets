@@ -1,11 +1,11 @@
 /**
  * AppexQuant Markets Global - Adaptive Mobile Bottom Navigation
- * Rule 20: Prioritizes primary screens (Home, Markets, Signals, Trade, More).
+ * High-ergonomics touch navigation bar for mobile viewports.
  */
 
 import React from 'react';
 import { useGlobalState, AppViewRoute } from '../../state/GlobalStateContext.tsx';
-import { LayoutDashboard, BarChart2, Zap, ArrowRightLeft, MoreHorizontal } from 'lucide-react';
+import { LayoutDashboard, BarChart2, Zap, ArrowRightLeft, Menu } from 'lucide-react';
 
 interface BottomNavProps {
   onOpenMore: () => void;
@@ -17,37 +17,55 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenMore }) => {
   const primaryItems: { id: AppViewRoute; label: string; icon: React.ReactNode }[] = [
     { id: 'dashboard', label: 'Home', icon: <LayoutDashboard className="w-5 h-5" /> },
     { id: 'markets', label: 'Markets', icon: <BarChart2 className="w-5 h-5" /> },
-    { id: 'signals', label: 'Signals', icon: <Zap className="w-5 h-5" /> },
     { id: 'trade', label: 'Trade', icon: <ArrowRightLeft className="w-5 h-5" /> },
+    { id: 'signals', label: 'Signals', icon: <Zap className="w-5 h-5" /> },
   ];
 
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-bg-nav/95 backdrop-blur-md border-t border-border-color px-1 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom,0px))] flex items-center justify-around shadow-2xl">
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-40 bg-[#15171e]/98 backdrop-blur-xl border-t border-[#2a2e39] px-2 pt-1.5 pb-[max(0.6rem,env(safe-area-inset-bottom,0px))] flex items-center justify-around shadow-2xl select-none"
+      role="navigation"
+      aria-label="Mobile Navigation"
+    >
       {primaryItems.map((item) => {
         const isActive = state.currentRoute === item.id;
         return (
           <button
             key={item.id}
             onClick={() => dispatch({ type: 'SET_ROUTE', payload: item.id })}
-            className={`flex flex-col items-center justify-center min-w-[50px] min-h-[38px] rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-              isActive ? 'text-accent-primary font-extrabold' : 'text-text-secondary hover:text-text-primary'
+            className={`flex flex-col items-center justify-center flex-1 max-w-[76px] min-h-[48px] py-1 rounded-xl text-[10px] font-semibold transition-all duration-150 cursor-pointer active:scale-95 touch-manipulation ${
+              isActive
+                ? 'text-[#ff444f]'
+                : 'text-[#9699a0] hover:text-[#ffffff]'
             }`}
           >
-            <div className={`p-1 rounded-md transition-colors ${isActive ? 'bg-accent-primary/10' : ''}`}>
+            <div
+              className={`p-1.5 rounded-xl transition-all duration-150 ${
+                isActive
+                  ? 'bg-[#ff444f]/15 text-[#ff444f] shadow-xs scale-105'
+                  : 'text-[#9699a0]'
+              }`}
+            >
               {item.icon}
             </div>
-            <span className="text-[9px] scale-95 leading-none mt-0.5">{item.label}</span>
+            <span className={`text-[10px] leading-tight mt-0.5 tracking-tight ${isActive ? 'font-bold text-[#ffffff]' : 'font-medium'}`}>
+              {item.label}
+            </span>
           </button>
         );
       })}
+
+      {/* More / Menu Drawer Trigger */}
       <button
         onClick={onOpenMore}
-        className="flex flex-col items-center justify-center min-w-[50px] min-h-[38px] rounded-lg text-[10px] font-bold text-text-secondary hover:text-text-primary cursor-pointer"
+        className="flex flex-col items-center justify-center flex-1 max-w-[76px] min-h-[48px] py-1 rounded-xl text-[10px] font-medium text-[#9699a0] hover:text-[#ffffff] cursor-pointer active:scale-95 touch-manipulation transition-all duration-150"
       >
-        <div className="p-1">
-          <MoreHorizontal className="w-5 h-5" />
+        <div className="p-1.5 rounded-xl text-[#9699a0]">
+          <Menu className="w-5 h-5" />
         </div>
-        <span className="text-[9px] scale-95 leading-none mt-0.5">More</span>
+        <span className="text-[10px] leading-tight mt-0.5 tracking-tight font-medium">
+          Menu
+        </span>
       </button>
     </nav>
   );

@@ -41,27 +41,27 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   // Group 1: Trading & Core Hubs
-  { id: 'dashboard', label: 'Home Dashboard', icon: <LayoutDashboard className="w-4 h-4" />, group: 'core' },
+  { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" />, group: 'core' },
   { id: 'markets', label: 'Markets & Watchlist', icon: <BarChart2 className="w-4 h-4" />, group: 'core' },
   { id: 'trade', label: 'Trade Workspace', icon: <ArrowRightLeft className="w-4 h-4" />, group: 'core' },
   { id: 'analytics', label: 'Portfolio & Analytics', icon: <PieChart className="w-4 h-4" />, group: 'core' },
 
   // Group 2: Intelligence & Strategy Hub
-  { id: 'audit', label: 'Trade Audit Ledger (SHA-256)', icon: <ShieldCheck className="w-4 h-4" />, group: 'resources' },
-  { id: 'risk-calculator', label: 'Prop Risk-Mirroring Calc', icon: <LineChart className="w-4 h-4" />, group: 'resources' },
+  { id: 'audit', label: 'Trade History & Audit', icon: <ShieldCheck className="w-4 h-4" />, group: 'resources' },
+  { id: 'risk-calculator', label: 'Risk & Lot Calculator', icon: <LineChart className="w-4 h-4" />, group: 'resources' },
   { id: 'creator-portal', label: 'Creator Revenue Portal', icon: <DollarSign className="w-4 h-4" />, group: 'resources' },
-  { id: 'developer', label: 'Developer API & Gateway', icon: <Code2 className="w-4 h-4" />, group: 'resources' },
-  { id: 'education', label: 'Education Hub (Academy)', icon: <GraduationCap className="w-4 h-4" />, group: 'resources' },
-  { id: 'ai-analysis', label: 'AI Intelligence & Strategy Lab', icon: <Brain className="w-4 h-4" />, group: 'resources' },
-  { id: 'backtest', label: 'Backtesting Engine & EA Hub', icon: <LineChart className="w-4 h-4" />, group: 'resources' },
-  { id: 'signals', label: 'Signals & Alerts', icon: <Zap className="w-4 h-4" />, group: 'resources' },
+  { id: 'developer', label: 'Developer API', icon: <Code2 className="w-4 h-4" />, group: 'resources' },
+  { id: 'education', label: 'Trading Academy', icon: <GraduationCap className="w-4 h-4" />, group: 'resources' },
+  { id: 'ai-analysis', label: 'AI Market Intelligence', icon: <Brain className="w-4 h-4" />, group: 'resources' },
+  { id: 'backtest', label: 'Strategy Testing & Bots', icon: <LineChart className="w-4 h-4" />, group: 'resources' },
+  { id: 'signals', label: 'Trading Signals & Alerts', icon: <Zap className="w-4 h-4" />, group: 'resources' },
 
   // Group 3: Community & Account Settings
-  { id: 'leaderboard', label: 'Leaderboard & Hall of Fame', icon: <Trophy className="w-4 h-4" />, group: 'system' },
+  { id: 'leaderboard', label: 'Trader Leaderboard', icon: <Trophy className="w-4 h-4" />, group: 'system' },
   { id: 'p2p', label: 'P2P Marketplace', icon: <DollarSign className="w-4 h-4" />, group: 'system' },
-  { id: 'community', label: 'Trader Community & Directory', icon: <Users className="w-4 h-4" />, group: 'system' },
-  { id: 'account', label: 'Profile & OAuth Broker Connection', icon: <User className="w-4 h-4" />, group: 'system' },
-  { id: 'legal', label: 'Platform Settings & Security', icon: <ShieldCheck className="w-4 h-4" />, group: 'system' },
+  { id: 'community', label: 'Trader Community', icon: <Users className="w-4 h-4" />, group: 'system' },
+  { id: 'account', label: 'Account & Broker Settings', icon: <User className="w-4 h-4" />, group: 'system' },
+  { id: 'legal', label: 'Platform & Security Settings', icon: <ShieldCheck className="w-4 h-4" />, group: 'system' },
 
   // Group 4: Administration Controls
   { id: 'automation', label: 'Automation Control', icon: <Cpu className="w-4 h-4" />, group: 'system', adminOnly: true },

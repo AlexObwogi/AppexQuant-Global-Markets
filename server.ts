@@ -160,12 +160,11 @@ export async function createApp() {
   // 2. Comprehensive Security Headers
   app.use((req: Request, res: Response, next: NextFunction) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
-    res.setHeader('Content-Security-Policy', "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:; connect-src 'self' https: wss: wss://ws.derivws.com wss://*.derivws.com;");
+    res.setHeader('Content-Security-Policy', "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:; frame-ancestors *; connect-src 'self' https: wss: wss://ws.derivws.com wss://*.derivws.com;");
     next();
   });
 
@@ -1254,7 +1253,7 @@ export async function createApp() {
 
       const sessionPayload: SessionPayload = {
         userId: appUserId,
-        email: realEmail || `${appUserId}@deriv.user`,
+        email: realEmail || '',
         fullName,
         balance,
         derivAccountId: accountId,
@@ -1281,7 +1280,7 @@ export async function createApp() {
           where: { id: appUserId },
           create: {
             id: appUserId,
-            email: realEmail || `${appUserId}@deriv.user`,
+            email: realEmail || '',
             displayName: fullName || accountId,
             role: sessionPayload.role,
             status: 'ACTIVE',
@@ -1754,18 +1753,127 @@ export async function createApp() {
       const otpResult = await requestDerivAccountOtp(targetAccountId, tokenToUse, appId || undefined);
 
       if (!otpResult.success || !otpResult.url) {
+        if (otpResult.statusCode === 401 || (otpResult.error && otpResult.error.toLowerCase().includes('unauthorized'))) {
+          return res.status(401).json(createErrorResponse('Session expired - log in again', 'TOKEN_EXPIRED'));
+        }
         return res.status(422).json(createErrorResponse(otpResult.error || 'Failed to generate Deriv OTP', 'OTP_GENERATION_FAILED'));
       }
 
+      // Hard safety rule: Never log OTP URLs or tokens to console/logs
       res.json(createSuccessResponse({
-        otp: otpResult.otp,
         url: otpResult.url,
         accountId: targetAccountId,
         expiresIn: 120,
       }));
     } catch (err: any) {
-      console.error('[DERIV_OTP_ENDPOINT_ERROR]', err);
+      logger.error('Deriv OTP generation error', { message: err?.message || 'Unknown error' });
       res.status(500).json(createErrorResponse(err?.message || 'Failed to request Deriv OTP', 'DERIV_OTP_ERROR'));
+    }
+  });
+
+  // Best-effort Trade Audit Logging endpoint (Session required)
+  app.post('/api/trade/audit', async (req: Request, res: Response) => {
+    try {
+      const s = req.sessionUser;
+      if (!s) {
+        return res.status(401).json(createErrorResponse('Authentication required', 'UNAUTHENTICATED'));
+      }
+
+      const { accountId, contractType, symbol, stake, result, contractId } = req.body || {};
+      const accountIdStr = String(accountId || s.derivAccountId || '');
+      const accountIdSuffix = accountIdStr.length > 4 ? `***${accountIdStr.slice(-4)}` : accountIdStr;
+
+      // Log safe audit event without exposing credentials or OTP tokens
+      logAuditEvent('TRADE_EXECUTED', s.userId || 'USER', {
+        accountIdSuffix,
+        contractType: String(contractType || ''),
+        symbol: String(symbol || ''),
+        stake: Number(stake) || 0,
+        contractId: contractId ? String(contractId) : undefined,
+        result: result ? String(result) : 'SUBMITTED',
+        timestamp: new Date().toISOString(),
+      });
+
+      res.json(createSuccessResponse({ audited: true }));
+    } catch (err: any) {
+      // Best-effort audit: failure never blocks a trade
+      res.json(createSuccessResponse({ audited: false, error: err?.message || 'Audit skipped' }));
+    }
+  });
+
+  // Create Demo Account endpoint (Phase 5)
+  app.post('/api/auth/deriv/create-demo', async (req: Request, res: Response) => {
+    try {
+      const s = req.sessionUser;
+      if (!s) {
+        return res.status(401).json(createErrorResponse('Authentication required', 'UNAUTHENTICATED'));
+      }
+      const userId = s.derivAccountId || s.userId;
+      const parsedCookies = parseCookies(req.headers.cookie);
+
+      let tokenToUse: string | undefined = undefined;
+      if (s.encryptedDerivToken) {
+        try { tokenToUse = decryptSensitiveData(s.encryptedDerivToken); } catch {}
+      }
+      if (!tokenToUse && parsedCookies['deriv_token_enc']) {
+        try { tokenToUse = decryptSensitiveData(parsedCookies['deriv_token_enc']); } catch {}
+      }
+
+      const connectionRecord = getDerivConnectionRecord(userId);
+      const accountList = connectionRecord?.accountList || [];
+      const hasDemoAccount = accountList.some(a => a.is_virtual === 1 || a.loginid.startsWith('VR'));
+
+      if (hasDemoAccount) {
+        return res.json(createSuccessResponse({
+          message: 'Demo account already exists in authorized accounts.',
+          accountList,
+        }));
+      }
+
+      const scopes = connectionRecord?.scopes || [];
+      if (!scopes.includes('account_manage') && !scopes.includes('admin')) {
+        return res.status(403).json(createErrorResponse(
+          'Open a demo account on Deriv, then log in again.',
+          'INSUFFICIENT_SCOPE_FOR_DEMO'
+        ));
+      }
+
+      if (!tokenToUse) {
+        return res.status(401).json(createErrorResponse('Session expired - log in again', 'TOKEN_EXPIRED'));
+      }
+
+      const appId = (process.env.DERIV_CLIENT_ID || getDerivOAuthClientId() || '1089').trim();
+      const createRes = await fetch('https://api.derivws.com/trading/v1/options/accounts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${tokenToUse}`,
+          'Deriv-App-ID': appId,
+        },
+        body: JSON.stringify({
+          currency: 'USD',
+          group: 'row',
+          account_type: 'demo',
+        }),
+      });
+
+      if (!createRes.ok) {
+        return res.status(createRes.status).json(createErrorResponse(
+          'Open a demo account on Deriv, then log in again.',
+          'DEMO_CREATION_FAILED'
+        ));
+      }
+
+      const createData = await createRes.json().catch(() => null);
+      res.json(createSuccessResponse({
+        message: 'Demo account created successfully.',
+        data: createData,
+      }));
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse(
+        'Open a demo account on Deriv, then log in again.',
+        'CREATE_DEMO_ERROR'
+      ));
     }
   });
 
@@ -3090,10 +3198,14 @@ export async function startServer() {
 // Auto-start standalone server when run directly as CLI entry point (not when imported as module)
 const isDirectCliRun =
   typeof process !== 'undefined' &&
-  process.argv &&
-  process.argv[1] &&
-  (process.argv[1].endsWith('server.ts') || process.argv[1].endsWith('server.cjs'));
+  (
+    !process.argv ||
+    process.argv.length <= 1 ||
+    process.argv.some((arg) => typeof arg === 'string' && (arg.endsWith('server.ts') || arg.endsWith('server.cjs') || arg.includes('server.')))
+  );
 
 if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME && isDirectCliRun) {
-  startServer();
+  startServer().catch((err) => {
+    logger.error('[Server] Fatal startup failure:', err);
+  });
 }

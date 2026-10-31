@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useApiFetch } from '../../utils/apiFetch.ts';
+import { derivBrowserClient } from '../../services/deriv/browserClient.ts';
 import { Card } from '../ui/Card.tsx';
 import {
   Activity,
@@ -40,20 +41,20 @@ export interface DerivRateLimitData {
 }
 
 const DEFAULT_METRICS: DerivRateLimitData = {
-  requestsInLastMinute: 8,
-  limitPerMinute: 120,
-  remaining: 112,
-  usagePercentage: 6.7,
+  requestsInLastMinute: 1,
+  limitPerMinute: 80,
+  remaining: 79,
+  usagePercentage: 1.2,
   status: 'NORMAL',
   isThrottled: false,
-  resetTimeSeconds: 45,
+  resetTimeSeconds: 60,
   breakdown: {
-    rest: 2,
-    ws: 4,
-    subscription: 1,
-    auth: 1,
+    rest: 0,
+    ws: 1,
+    subscription: 0,
+    auth: 0,
   },
-  totalRecorded: 18,
+  totalRecorded: 1,
   lastRequestTimestamp: new Date().toISOString(),
 };
 
@@ -70,29 +71,25 @@ export const DerivRateLimitTracker: React.FC<DerivRateLimitTrackerProps> = ({
   const [data, setData] = useState<DerivRateLimitData>(DEFAULT_METRICS);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
-  const [countdown, setCountdown] = useState<number>(45);
+  const [countdown, setCountdown] = useState<number>(60);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchMetrics = useCallback(async (isManual = false) => {
     if (isManual) setIsRefreshing(true);
     try {
-      const res = await apiFetch('/api/deriv/rate-limit');
-      if (res.ok) {
-        const json = await res.json();
-        if (json && json.success && json.data) {
-          setData(json.data);
-          setCountdown(json.data.resetTimeSeconds || 60);
-          setLastUpdated(new Date());
-        }
-      }
+      // Prioritize live client metrics computed directly from active WebSocket message tracker
+      const liveMetrics = derivBrowserClient.getRateLimitMetrics();
+      setData(liveMetrics);
+      setCountdown(liveMetrics.resetTimeSeconds || 60);
+      setLastUpdated(new Date());
     } catch {
-      // Keep optimistic or previous metrics
+      // Fallback
     } finally {
       if (isManual) {
         setTimeout(() => setIsRefreshing(false), 300);
       }
     }
-  }, [apiFetch]);
+  }, []);
 
   // Periodic polling every 5s while document is visible
   useEffect(() => {

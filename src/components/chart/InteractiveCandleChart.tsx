@@ -61,7 +61,8 @@ export const InteractiveCandleChart: React.FC<InteractiveCandleChartProps> = ({
   // Crosshair state
   const [crosshairPos, setCrosshairPos] = useState<{ x: number; y: number } | null>(null);
 
-  const timeframes = ['1m', '5m', '15m', '30m', '1h', '4h', '1D', '1W'];
+  // Deriv supported candle granularities: 60 (1m), 300 (5m), 900 (15m), 1800 (30m), 3600 (1h), 14400 (4h), 86400 (1D)
+  const timeframes = ['1m', '5m', '15m', '30m', '1h', '4h', '1D'];
 
   // Combine historical candles with live tick candle if available
   const activeCandles = useMemo(() => {
@@ -700,6 +701,18 @@ export const InteractiveCandleChart: React.FC<InteractiveCandleChartProps> = ({
 
         {/* Right: Technical Indicators & View Controls */}
         <div className="flex items-center space-x-2">
+          {liveTick && liveTick.bid > 0 && (
+            <div className="hidden xl:flex items-center space-x-2 text-[11px] font-mono mr-2 border-r border-[#1E293B] pr-3">
+              <span className="text-[#94A3B8]">Bid: <strong className="text-[#F8FAFC]">{liveTick.bid.toFixed(liveTick.bid > 100 ? 2 : 5)}</strong></span>
+              <span className="text-[#94A3B8]">Ask: <strong className="text-[#F8FAFC]">{liveTick.ask.toFixed(liveTick.ask > 100 ? 2 : 5)}</strong></span>
+              {liveTick.ask > liveTick.bid && (
+                <span className="text-sky-400 bg-sky-500/10 px-1.5 py-0.5 rounded text-[10px]">
+                  Spread: {((liveTick.ask - liveTick.bid) / (symbol.startsWith('frx') && !symbol.includes('JPY') ? 0.0001 : 0.01)).toFixed(1)} pips
+                </span>
+              )}
+            </div>
+          )}
+
           <button
             onClick={() => setShowMA20(!showMA20)}
             className={`px-2 py-1 rounded text-[10px] font-mono cursor-pointer transition-colors ${
@@ -782,8 +795,16 @@ export const InteractiveCandleChart: React.FC<InteractiveCandleChartProps> = ({
           className="w-full h-full block"
         />
 
+        {/* Market Closed Overlay Banner */}
+        {dataFreshness === 'CLOSED' && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-[#1c1f26]/90 border border-[#2a2e39] text-[#94A3B8] px-4 py-2 rounded-xl text-xs font-mono shadow-lg flex items-center space-x-2 z-10 backdrop-blur-sm pointer-events-none">
+            <span className="w-2 h-2 rounded-full bg-slate-400" />
+            <span>Market closed &bull; Forex trades 24/5 (closed weekends) &bull; Synthetics trade 24/7</span>
+          </div>
+        )}
+
         {/* Loading Overlay */}
-        {candles.length === 0 && (
+        {candles.length === 0 && dataFreshness !== 'CLOSED' && (
           <div className="absolute inset-0 bg-[#0B0E14]/80 backdrop-blur-sm flex flex-col items-center justify-center space-y-3 z-10">
             <div className="w-8 h-8 rounded-full border-2 border-[#38BDF8] border-t-transparent animate-spin" />
             <p className="text-xs font-mono text-[#94A3B8]">Loading market history from Deriv...</p>
@@ -795,14 +816,24 @@ export const InteractiveCandleChart: React.FC<InteractiveCandleChartProps> = ({
           <span
             className={`w-2 h-2 rounded-full ${
               dataFreshness === 'LIVE'
-                ? 'bg-[#22C55E] animate-pulse'
+                ? 'bg-[#00a86b] animate-pulse'
+                : dataFreshness === 'CLOSED'
+                ? 'bg-slate-400'
                 : dataFreshness === 'RECENT'
                 ? 'bg-amber-400'
-                : 'bg-[#EF4444]'
+                : dataFreshness === 'SUSPENDED'
+                ? 'bg-amber-500'
+                : 'bg-[#ff444f]'
             }`}
           />
           <span className="text-[#94A3B8] font-semibold uppercase">{symbolName}</span>
-          <span className="text-[#F8FAFC]">{dataFreshness} DATA</span>
+          <span className="text-[#F8FAFC]">
+            {dataFreshness === 'CLOSED'
+              ? 'MARKET CLOSED'
+              : dataFreshness === 'SUSPENDED'
+              ? 'TRADING SUSPENDED'
+              : `${dataFreshness} DATA`}
+          </span>
         </div>
       </div>
     </div>

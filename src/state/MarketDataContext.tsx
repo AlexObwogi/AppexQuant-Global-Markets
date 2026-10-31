@@ -13,6 +13,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
 import { MarketInstrument, InstrumentCategory } from '../types/market.ts';
 import { derivWs, DerivConnectionState } from '../services/deriv/DerivWebSocketManager.ts';
+import { derivBrowserClient, DerivActiveSymbolItem } from '../services/deriv/browserClient.ts';
+import { derivTradingClient } from '../services/deriv/tradingClient.ts';
 import { derivAuthService } from '../services/deriv/authService.ts';
 import {
   normalizeDerivActiveSymbols,
@@ -22,7 +24,7 @@ import {
 import { FALLBACK_INSTRUMENTS } from '../services/deriv/marketTaxonomy.ts';
 import { NormalizedTick, NormalizedCandle, DerivContractCategory } from '../services/deriv/derivTypes.ts';
 
-export type DataFreshness = 'LIVE' | 'RECENT' | 'STALE' | 'DISCONNECTED' | 'UNAVAILABLE';
+export type DataFreshness = 'LIVE' | 'RECENT' | 'STALE' | 'CLOSED' | 'SUSPENDED' | 'DISCONNECTED' | 'UNAVAILABLE';
 
 export interface MarketDataContextType {
   instruments: MarketInstrument[];
@@ -122,6 +124,9 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   // Map of symbol -> Set of consumer listener callbacks
   const subscribersRef = useRef<Map<string, Set<(tick: NormalizedTick) => void>>>(new Map());
 
+  // Track active upstream subscriptions to browser client
+  const derivUnsubMapRef = useRef<Map<string, () => void>>(new Map());
+
   // Watchlist stored in localStorage
   const [watchlist, setWatchlist] = useState<string[]>(() => {
     try {
@@ -175,14 +180,15 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
       [symbol]: latency,
     }));
 
+    const symStatus = derivBrowserClient.getSymbolStatus(symbol);
     setFeedStatus((prev) => ({
       ...prev,
-      [symbol]: latency < FRESHNESS_LIVE_THRESHOLD_MS ? 'LIVE' : latency < FRESHNESS_RECENT_THRESHOLD_MS ? 'RECENT' : 'STALE',
+      [symbol]: symStatus === 'CLOSED' ? 'CLOSED' : symStatus === 'SUSPENDED' ? 'SUSPENDED' : latency < FRESHNESS_LIVE_THRESHOLD_MS ? 'LIVE' : latency < FRESHNESS_RECENT_THRESHOLD_MS ? 'RECENT' : 'STALE',
     }));
 
     setIsStaleMap((prev) => ({
       ...prev,
-      [symbol]: latency >= FRESHNESS_RECENT_THRESHOLD_MS,
+      [symbol]: symStatus === 'CLOSED' ? false : latency >= FRESHNESS_RECENT_THRESHOLD_MS,
     }));
 
     // Dispatch to registered subscriber callbacks (widgets, charts, orderbooks)
@@ -209,7 +215,7 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
       return () => {};
     }
 
-    // 2. Strict validation against availableSymbols returned by Deriv active_symbols(full)
+    // 2. Strict validation against availableSymbols returned by Deriv active_symbols
     if (availableSymbolsRef.current.size > 0 && !availableSymbolsRef.current.has(cleanSymbol)) {
       console.warn(`[MarketDataContext] Subscription rejected: Symbol '${cleanSymbol}' is not present in available active symbols.`);
       return () => {};
@@ -238,7 +244,8 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
 
     // Only subscribe to Deriv WS once per symbol across the entire application
     if (isFirstSubscriber) {
-      derivWs.subscribeTick(cleanSymbol, handleCentralIncomingTick);
+      const unsub = derivBrowserClient.subscribeTicks(cleanSymbol, handleCentralIncomingTick);
+      derivUnsubMapRef.current.set(cleanSymbol, unsub);
     }
 
     // Return idempotently managed cleanup function
@@ -247,7 +254,11 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
       if (currentSubs) {
         if (callback) currentSubs.delete(callback);
         if (currentSubs.size === 0) {
-          derivWs.unsubscribeTick(cleanSymbol, handleCentralIncomingTick);
+          const unsub = derivUnsubMapRef.current.get(cleanSymbol);
+          if (unsub) {
+            unsub();
+            derivUnsubMapRef.current.delete(cleanSymbol);
+          }
           subscribersRef.current.delete(cleanSymbol);
         }
       }
@@ -261,11 +272,15 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     if (subs) {
       if (callback) subs.delete(callback);
       if (subs.size === 0) {
-        derivWs.unsubscribeTick(cleanSymbol, handleCentralIncomingTick);
+        const unsub = derivUnsubMapRef.current.get(cleanSymbol);
+        if (unsub) {
+          unsub();
+          derivUnsubMapRef.current.delete(cleanSymbol);
+        }
         subscribersRef.current.delete(cleanSymbol);
       }
     }
-  }, [handleCentralIncomingTick]);
+  }, []);
 
   // Synchronous accessor for latest normalized tick
   const getLatestTick = useCallback((symbol: string): NormalizedTick | undefined => {
@@ -276,11 +291,11 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   const refreshSymbols = useCallback(async () => {
     setIsLoadingSymbols(true);
     try {
-      // 1. Call active_symbols('full')
-      const rawSymbols = await derivWs.fetchActiveSymbols('full');
+      // 1. Call active_symbols from browser client
+      const rawSymbols = await derivBrowserClient.getActiveSymbols();
       if (rawSymbols && rawSymbols.length > 0) {
         // 2. Normalize returned symbols
-        const normalized = normalizeDerivActiveSymbols(rawSymbols);
+        const normalized = normalizeDerivActiveSymbols(rawSymbols as any);
         const available = extractAvailableSymbols(normalized);
 
         availableSymbolsRef.current = available;
@@ -289,7 +304,7 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
 
         // Update WebSocket manager with authoritative set
         derivWs.setAvailableSymbols(available);
-        console.log(`[MarketDataContext] Successfully initialized ${normalized.length} normalized symbols from Deriv.`);
+        console.log(`[MarketDataContext] Successfully initialized ${normalized.length} normalized symbols from Deriv Browser client.`);
       }
     } catch (err) {
       console.warn('[MarketDataContext] Failed to load active symbols from Deriv:', err);
@@ -300,10 +315,9 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
 
   // Connect to Deriv WebSocket on mount & initialize active symbols
   useEffect(() => {
-    const unsubStatus = derivWs.onStatusChange((status) => {
-      setConnectionState(status);
-      if (status !== 'CONNECTED') {
-        // Mark feeds as disconnected / stale when WS is offline
+    const unsubBrowser = derivBrowserClient.subscribeConnectionState((state) => {
+      setConnectionState(state === 'CONNECTED' ? 'CONNECTED' : state === 'CONNECTING' ? 'CONNECTING' : state === 'RECONNECTING' ? 'RECONNECTING' : 'DISCONNECTED');
+      if (state !== 'CONNECTED') {
         const newStatus: Record<string, DataFreshness> = {};
         const newStale: Record<string, boolean> = {};
         ticksRef.current.forEach((_, sym) => {
@@ -315,33 +329,18 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
       }
     });
 
-    const unsubBalance = derivWs.onBalanceChange((bal) => {
-      if (bal) {
-        if (bal.balance !== undefined) setBalance(Number(bal.balance));
-        if (bal.currency) setCurrency(bal.currency);
-        if (bal.loginid) setLoginid(bal.loginid);
-      }
+    const unsubTrading = derivTradingClient.subscribeState((tState) => {
+      if (typeof tState.balance === 'number') setBalance(tState.balance);
+      if (tState.currency) setCurrency(tState.currency);
+      if (tState.accountId) setLoginid(tState.accountId);
     });
 
-    const unsubAuth = derivAuthService.onBalanceChange((b) => {
-      if (b) {
-        setBalance(b.balance);
-        if (b.currency) setCurrency(b.currency);
-        if (b.loginid) setLoginid(b.loginid);
-      }
-    });
-
-    derivWs.connect().then(() => {
-      refreshSymbols();
-    }).catch((err) => {
-      console.warn('[MarketDataContext] Connection initialization error:', err);
-      setIsLoadingSymbols(false);
-    });
+    derivBrowserClient.connect();
+    refreshSymbols();
 
     return () => {
-      unsubStatus();
-      unsubBalance();
-      unsubAuth();
+      unsubBrowser();
+      unsubTrading();
     };
   }, [refreshSymbols]);
 
@@ -451,6 +450,10 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   const dataFreshness = useMemo<DataFreshness>(() => {
     if (connectionState !== 'CONNECTED') return 'DISCONNECTED';
     
+    const symStatus = derivBrowserClient.getSymbolStatus(selectedSymbol);
+    if (symStatus === 'CLOSED') return 'CLOSED';
+    if (symStatus === 'SUSPENDED') return 'SUSPENDED';
+
     const tick = ticks[selectedSymbol];
     if (!tick) return 'UNAVAILABLE';
 
@@ -464,6 +467,8 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const isSymbolStale = useCallback((symbol: string): boolean => {
     if (connectionState !== 'CONNECTED') return true;
+    const symStatus = derivBrowserClient.getSymbolStatus(symbol);
+    if (symStatus === 'CLOSED') return false;
     if (isStaleMap[symbol] !== undefined) return isStaleMap[symbol];
     const lastTime = lastTickReceivedRef.current.get(symbol) || 0;
     return lastTime === 0 || Date.now() - lastTime > FRESHNESS_RECENT_THRESHOLD_MS;
@@ -471,6 +476,9 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const getSymbolFreshness = useCallback((symbol: string): DataFreshness => {
     if (connectionState !== 'CONNECTED') return 'DISCONNECTED';
+    const symStatus = derivBrowserClient.getSymbolStatus(symbol);
+    if (symStatus === 'CLOSED') return 'CLOSED';
+    if (symStatus === 'SUSPENDED') return 'SUSPENDED';
     if (feedStatus[symbol]) return feedStatus[symbol];
     const lastTime = lastTickReceivedRef.current.get(symbol) || 0;
     if (lastTime === 0) return 'UNAVAILABLE';
@@ -508,7 +516,7 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     const granularity = TIMEFRAME_TO_SECONDS[timeframe] || 3600;
 
     try {
-      const fetchedCandles = await derivWs.fetchCandles(symbol, granularity, 200);
+      const fetchedCandles = await derivBrowserClient.getCandles(symbol, granularity, 200);
       if (fetchedCandles && fetchedCandles.length > 0) {
         setCandles((prev) => ({
           ...prev,
@@ -530,7 +538,7 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     }
     if (contracts[symbol]) return contracts[symbol];
     try {
-      const fetched = await derivWs.fetchContractsFor(symbol);
+      const fetched = await derivTradingClient.getContractsFor(symbol);
       setContracts((prev) => ({
         ...prev,
         [symbol]: fetched,
@@ -542,7 +550,7 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   }, [contracts]);
 
   const reconnect = useCallback(() => {
-    derivWs.connect();
+    derivBrowserClient.connect();
   }, []);
 
   const value = useMemo(() => ({

@@ -1334,6 +1334,7 @@ export async function requestDerivAccountOtp(
   url?: string;
   accountId?: string;
   error?: string;
+  statusCode?: number;
 }> {
   const cleanToken =
     cleanString(token);
@@ -1420,6 +1421,7 @@ export async function requestDerivAccountOtp(
       return {
         success: false,
         error: message,
+        statusCode: response.status,
       };
     }
 

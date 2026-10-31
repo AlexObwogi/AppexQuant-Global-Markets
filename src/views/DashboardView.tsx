@@ -37,7 +37,7 @@ import {
 
 export const DashboardView: React.FC = () => {
   const { state, dispatch, selectedAccount } = useGlobalState();
-  const { instruments, ticks, dataFreshness, setSelectedSymbol } = useMarketData();
+  const { instruments, ticks, dataFreshness, connectionState, setSelectedSymbol } = useMarketData();
 
   const handleGoToMarkets = (symbol?: string) => {
     if (symbol) setSelectedSymbol(symbol);
@@ -208,9 +208,9 @@ export const DashboardView: React.FC = () => {
         />
         <MetricCard
           label="Deriv Market Feed"
-          value={dataFreshness === 'LIVE' ? 'Active' : 'Offline'}
-          type={dataFreshness === 'LIVE' ? 'profit' : 'neutral'}
-          statusLabel={dataFreshness === 'LIVE' ? 'Streaming' : 'Connecting'}
+          value={connectionState === 'CONNECTED' ? 'Active' : connectionState === 'CONNECTING' ? 'Connecting' : 'Offline'}
+          type={connectionState === 'CONNECTED' ? 'profit' : 'neutral'}
+          statusLabel={connectionState === 'CONNECTED' ? 'Streaming' : 'Connecting'}
           subtext={`${instruments.length} active markets`}
           icon={<BarChart2 className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />}
         />
@@ -275,8 +275,8 @@ export const DashboardView: React.FC = () => {
               Live Watchlist
             </span>
             <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center space-x-1">
-              <span className={`w-1.5 h-1.5 rounded-full ${dataFreshness === 'LIVE' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
-              <span>{dataFreshness === 'LIVE' ? 'Active' : 'Offline'}</span>
+              <span className={`w-1.5 h-1.5 rounded-full ${connectionState === 'CONNECTED' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+              <span>{connectionState === 'CONNECTED' ? 'Active' : 'Offline'}</span>
             </span>
           </div>
 

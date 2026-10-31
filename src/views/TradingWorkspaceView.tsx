@@ -8,6 +8,8 @@ import { ScenarioEngine } from '../components/analysis/ScenarioEngine.tsx';
 import { AiExplanationPanel } from '../components/analysis/AiExplanationPanel.tsx';
 import { ExecutionCommandDesk } from '../components/eas/ExecutionCommandDesk.tsx';
 import { PositionsPanel } from '../components/trading/PositionsPanel.tsx';
+import { DerivTradeTicket } from '../components/trading/DerivTradeTicket.tsx';
+import { DerivOpenPositions } from '../components/trading/DerivOpenPositions.tsx';
 import { AntiTiltCircuitBreaker } from '../components/risk/AntiTiltCircuitBreaker.tsx';
 import { VoiceStatusToggle } from '../components/trading/VoiceStatusToggle.tsx';
 import { MarketSelectorModal } from '../components/market/MarketSelectorModal.tsx';
@@ -86,9 +88,13 @@ export const TradingWorkspaceView: React.FC = () => {
           <VoiceStatusToggle />
 
           <span className={`px-2.5 py-1 text-[10px] font-mono font-bold rounded-lg border ${
-            dataFreshness === 'LIVE' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+            dataFreshness === 'LIVE'
+              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+              : dataFreshness === 'CLOSED'
+              ? 'bg-slate-500/10 text-slate-400 border-slate-500/20'
+              : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
           }`}>
-            {dataFreshness.toUpperCase()} STREAM
+            {dataFreshness === 'CLOSED' ? 'MARKET CLOSED' : `${dataFreshness.toUpperCase()} STREAM`}
           </span>
         </div>
       </div>
@@ -117,12 +123,13 @@ export const TradingWorkspaceView: React.FC = () => {
           </div>
         </div>
 
-        {/* Right: Execution + Intelligence */}
+        {/* Right: Real Deriv Options Ticket + Open Positions + Auxiliary Simulators */}
         <div className="lg:col-span-4 space-y-3 lg:space-y-4">
+          <DerivTradeTicket onOrderExecuted={(evt) => setConfirmedOrder(evt)} />
+          <DerivOpenPositions />
+
           <AntiTiltCircuitBreaker accountId={verifiedAccountId} currentEquity={currentEquity} />
-          <div className="bg-bg-surface p-3 rounded-2xl border border-border-color shadow-sm">
-            <ExecutionCommandDesk onOrderExecuted={(evt) => setConfirmedOrder(evt)} />
-          </div>
+          
           <div className="bg-bg-surface p-3 rounded-2xl border border-border-color shadow-sm">
             <MarketIntelligencePanel 
               instrument={selectedInstrument} 
@@ -130,9 +137,28 @@ export const TradingWorkspaceView: React.FC = () => {
               dataFreshness={dataFreshness} 
             />
           </div>
+
+          {/* Simulation Modules */}
           <div className="bg-bg-surface p-3 rounded-2xl border border-border-color shadow-sm">
+            <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-border-color">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                Simulation Engine
+              </span>
+              <span className="text-[10px] text-text-secondary">Simulated algorithmic execution</span>
+            </div>
+            <ExecutionCommandDesk onOrderExecuted={(evt) => setConfirmedOrder(evt)} />
+          </div>
+
+          <div className="bg-bg-surface p-3 rounded-2xl border border-border-color shadow-sm">
+            <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-border-color">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                Simulation Positions
+              </span>
+              <span className="text-[10px] text-text-secondary">Simulated paper desk ledger</span>
+            </div>
             <PositionsPanel />
           </div>
+
           <div className="bg-bg-surface p-3 rounded-2xl border border-border-color shadow-sm">
             <AiExplanationPanel instrument={selectedInstrument} candles={activeCandles} />
           </div>

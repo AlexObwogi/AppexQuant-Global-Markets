@@ -461,17 +461,23 @@ export const AccountView: React.FC = () => {
               <div>
                 <span className="text-text-secondary block text-[9px] uppercase font-mono font-bold">Display Name</span>
                 <span className="font-bold text-text-primary text-sm whitespace-normal break-words block">
-                  {state.user?.fullName || state.user?.displayName || '—'}
+                  {state.user?.fullName && !state.user.fullName.startsWith('usr-')
+                    ? state.user.fullName
+                    : meta?.derivAccountId || state.user?.derivAccountId || 'Trader'}
                 </span>
               </div>
               <div>
                 <span className="text-text-secondary block text-[9px] uppercase font-mono font-bold">Email Address</span>
-                <span className="text-text-primary font-mono font-bold">{state.user?.email || '—'}</span>
+                <span className="text-text-primary font-mono font-bold">
+                  {state.user?.email && !state.user.email.includes('@deriv.user') && !state.user.email.startsWith('usr-')
+                    ? state.user.email
+                    : '—'}
+                </span>
               </div>
               <div>
                 <span className="text-text-secondary block text-[9px] uppercase font-mono font-bold">Active Account</span>
-                <Badge variant={state.user?.derivAccountId ? "accent" : "neutral"} size="sm" className="mt-1 font-bold">
-                  {state.user?.derivAccountId || 'Disconnected'}
+                <Badge variant={meta?.connected || state.user?.derivAccountId ? "accent" : "neutral"} size="sm" className="mt-1 font-bold">
+                  {meta?.derivAccountId || state.user?.derivAccountId || (meta?.connected ? 'Connected' : 'Disconnected')}
                 </Badge>
               </div>
             </div>

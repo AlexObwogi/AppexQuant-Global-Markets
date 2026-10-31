@@ -73,11 +73,11 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const activeAccountId = selectedAccount?.id || selectedAccount?.accountNumber || state.user?.derivAccountId || state.user?.loginid;
   const isDemo = state.executionEnvironment === 'DEMO' || activeAccountId?.startsWith('VR');
 
-  // Real-time market data quotes
-  const eurUsdQuote = ticks['frxEURUSD']?.quote || 1.08452;
-  const btcQuote = ticks['cryBTCUSD']?.quote || 91420.50;
-  const vol100Quote = ticks['1HZ100V']?.quote || 4821.10;
-  const goldQuote = ticks['frxXAUUSD']?.quote || 2335.80;
+  // Real-time market data quotes from Deriv
+  const eurUsdTick = ticks['frxEURUSD'];
+  const btcTick = ticks['cryBTCUSD'];
+  const vol100Tick = ticks['R_100'] || ticks['1HZ100V'];
+  const goldTick = ticks['frxXAUUSD'];
 
   return (
     <div className="min-h-screen lg:h-screen w-screen max-w-full overflow-x-hidden lg:overflow-hidden select-none bg-[#15171e] text-[#ffffff] flex flex-col font-sans antialiased relative">
@@ -100,22 +100,42 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           <div className="flex items-center space-x-3 sm:space-x-4 font-mono text-[11px] sm:text-xs text-[#9699a0]">
             <div className="flex items-center space-x-1">
               <span>EUR/USD:</span>
-              <strong className="text-[#00a86b]">{eurUsdQuote.toFixed(5)}</strong>
-              <span className="text-[#00a86b] text-[10px]">(+0.14%)</span>
+              <strong className={eurUsdTick && (eurUsdTick.changePct || 0) < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}>
+                {eurUsdTick?.quote ? eurUsdTick.quote.toFixed(5) : '--'}
+              </strong>
+              {eurUsdTick?.changePct !== undefined && (
+                <span className={`text-[10px] ${eurUsdTick.changePct < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}`}>
+                  ({eurUsdTick.changePct >= 0 ? '+' : ''}{eurUsdTick.changePct.toFixed(2)}%)
+                </span>
+              )}
             </div>
             <div className="flex items-center space-x-1">
               <span>BTC/USD:</span>
-              <strong className="text-[#ff444f]">${btcQuote.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-              <span className="text-[#ff444f] text-[10px]">(-0.82%)</span>
+              <strong className={btcTick && (btcTick.changePct || 0) < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}>
+                {btcTick?.quote ? `$${btcTick.quote.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '--'}
+              </strong>
+              {btcTick?.changePct !== undefined && (
+                <span className={`text-[10px] ${btcTick.changePct < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}`}>
+                  ({btcTick.changePct >= 0 ? '+' : ''}{btcTick.changePct.toFixed(2)}%)
+                </span>
+              )}
             </div>
             <div className="flex items-center space-x-1">
               <span>Volatility 100:</span>
-              <strong className="text-[#00a86b]">{vol100Quote.toFixed(2)}</strong>
-              <span className="text-[#00a86b] text-[10px]">(+1.25%)</span>
+              <strong className={vol100Tick && (vol100Tick.changePct || 0) < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}>
+                {vol100Tick?.quote ? vol100Tick.quote.toFixed(2) : '--'}
+              </strong>
+              {vol100Tick?.changePct !== undefined && (
+                <span className={`text-[10px] ${vol100Tick.changePct < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}`}>
+                  ({vol100Tick.changePct >= 0 ? '+' : ''}{vol100Tick.changePct.toFixed(2)}%)
+                </span>
+              )}
             </div>
             <div className="hidden md:flex items-center space-x-1">
               <span>Gold:</span>
-              <strong className="text-[#00a86b]">${goldQuote.toFixed(2)}</strong>
+              <strong className={goldTick && (goldTick.changePct || 0) < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}>
+                {goldTick?.quote ? `$${goldTick.quote.toFixed(2)}` : '--'}
+              </strong>
             </div>
           </div>
         </div>

@@ -141,7 +141,7 @@ export async function createApp() {
   // Trust proxy: Enable accurate client IP resolution behind Vercel / Cloudflare edge proxies
   app.set('trust proxy', 1);
   const config = loadAppConfig();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Run Cryptographic File Integrity Monitor (FIM) check
   fimMonitor.verifyIntegrity();
@@ -3149,7 +3149,7 @@ process.on('uncaughtException', (err: Error) => {
 });
 
 export async function startServer() {
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
   const app = await createApp();
   const server = http.createServer(app);
 
@@ -3161,13 +3161,22 @@ export async function startServer() {
     logger.warn('[Server] Initial DerivGateway connection notice:', { error: err?.message || String(err) });
   });
 
+  let retryCount = 0;
+  const maxRetries = 5;
+
   server.on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {
-      logger.warn(`[Server] Port ${PORT} is busy, retrying in 1000ms...`);
-      setTimeout(() => {
-        try { server.close(); } catch {}
-        server.listen(PORT, '0.0.0.0');
-      }, 1000);
+      retryCount++;
+      if (retryCount <= maxRetries) {
+        logger.warn(`[Server] Port ${PORT} is busy, retrying (${retryCount}/${maxRetries}) in 1000ms...`);
+        setTimeout(() => {
+          try { server.close(); } catch {}
+          server.listen(PORT, '0.0.0.0');
+        }, 1000);
+      } else {
+        logger.error(`[Server] Port ${PORT} remains in use after ${maxRetries} retries. Exiting to allow clean restart.`);
+        process.exit(1);
+      }
     } else {
       logger.error('[Server] HTTP server error:', err);
     }
@@ -3193,6 +3202,15 @@ export async function startServer() {
   process.once('SIGINT', () => gracefulShutdown('SIGINT'));
 
   return server;
+}
+
+// Default export handler for Vercel / AWS Lambda / Serverless environments
+let appInstance: any = null;
+export default async function handler(req: any, res: any) {
+  if (!appInstance) {
+    appInstance = await createApp();
+  }
+  return appInstance(req, res);
 }
 
 // Auto-start standalone server when run directly as CLI entry point (not when imported as module)

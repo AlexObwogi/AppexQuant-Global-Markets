@@ -17,7 +17,8 @@
   "rewrites": [
     { "source": "/api/deriv/stream", "destination": "/api/deriv/stream.ts" },
     { "source": "/api/(.*)", "destination": "/api/index.ts" },
-    { "source": "/auth/deriv/callback", "destination": "/api/index.ts" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/auth/(.*)", "destination": "/api/index.ts" },
+    { "source": "/callback", "destination": "/api/index.ts" },
+    { "source": "/((?!api/|auth/|callback).*)", "destination": "/index.html" }
   ]
 }

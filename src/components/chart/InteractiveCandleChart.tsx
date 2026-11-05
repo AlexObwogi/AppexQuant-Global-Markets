@@ -823,7 +823,7 @@ export const InteractiveCandleChart: React.FC<InteractiveCandleChartProps> = ({
                 ? 'bg-amber-400'
                 : dataFreshness === 'SUSPENDED'
                 ? 'bg-amber-500'
-                : 'bg-[#ff444f]'
+                : 'bg-sky-400 animate-pulse'
             }`}
           />
           <span className="text-[#94A3B8] font-semibold uppercase">{symbolName}</span>
@@ -832,6 +832,8 @@ export const InteractiveCandleChart: React.FC<InteractiveCandleChartProps> = ({
               ? 'MARKET CLOSED'
               : dataFreshness === 'SUSPENDED'
               ? 'TRADING SUSPENDED'
+              : dataFreshness === 'UNAVAILABLE' || dataFreshness === 'DISCONNECTED'
+              ? 'CONNECTING...'
               : `${dataFreshness} DATA`}
           </span>
         </div>

@@ -7,15 +7,12 @@
 import { DerivActiveSymbol } from './derivTypes.js';
 import { MarketInstrument, InstrumentCategory } from '../../types/market.js';
 
-export const BLACKLISTED_SYMBOLS = new Set<string>([
-  'cryETHUSD',
-]);
+export const BLACKLISTED_SYMBOLS = new Set<string>([]);
 
 export function isSymbolBlacklisted(symbol: string): boolean {
   if (!symbol) return true;
   const clean = symbol.trim();
   if (BLACKLISTED_SYMBOLS.has(clean)) return true;
-  if (clean === 'cryETHUSD') return true;
   return false;
 }
 

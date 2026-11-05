@@ -329,6 +329,18 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
       }
     });
 
+    const unsubSymbols = derivBrowserClient.subscribeSymbols((symbols) => {
+      if (symbols && symbols.length > 0) {
+        const normalized = normalizeDerivActiveSymbols(symbols as any);
+        const available = extractAvailableSymbols(normalized);
+        availableSymbolsRef.current = available;
+        setAvailableSymbols(available);
+        setInstruments(normalized);
+        derivWs.setAvailableSymbols(available);
+        setIsLoadingSymbols(false);
+      }
+    });
+
     const unsubTrading = derivTradingClient.subscribeState((tState) => {
       if (typeof tState.balance === 'number') setBalance(tState.balance);
       if (tState.currency) setCurrency(tState.currency);
@@ -340,31 +352,48 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
 
     return () => {
       unsubBrowser();
+      unsubSymbols();
       unsubTrading();
     };
   }, [refreshSymbols]);
 
   // Central subscription coordinator for verified symbols
-  // Rule: If a fallback instrument exists for UI rendering, it must NEVER automatically subscribe.
-  // Rule: Startup sequence only subscribes after active_symbols returns and availableSymbols.has(symbol) is verified.
   useEffect(() => {
-    // Do not automatically subscribe before active_symbols has loaded authoritative availableSymbols
-    if (availableSymbols.size === 0 || connectionState !== 'CONNECTED') {
+    if (connectionState !== 'CONNECTED') {
       return;
     }
 
-    const validWatchlist = watchlist.filter((sym) => availableSymbols.has(sym));
-    const activeSymbols = instruments
-      .map((i) => i.symbol)
-      .filter((sym) => availableSymbols.has(sym))
-      .slice(0, 10);
-
     const targetSymbols = new Set<string>();
-    if (availableSymbols.has(selectedSymbol)) {
+
+    // Essential header ribbon symbols
+    const essentialRibbon = ['frxEURUSD', 'cryBTCUSD', 'R_100', 'R_50', 'frxXAUUSD'];
+    essentialRibbon.forEach((sym) => {
+      if (availableSymbols.size === 0 || availableSymbols.has(sym)) {
+        targetSymbols.add(sym);
+      }
+    });
+
+    // Currently selected symbol
+    if (selectedSymbol && (availableSymbols.size === 0 || availableSymbols.has(selectedSymbol))) {
       targetSymbols.add(selectedSymbol);
     }
-    validWatchlist.forEach((sym) => targetSymbols.add(sym));
-    activeSymbols.forEach((sym) => targetSymbols.add(sym));
+
+    // Active watchlist symbols
+    watchlist.forEach((sym) => {
+      if (availableSymbols.size === 0 || availableSymbols.has(sym)) {
+        targetSymbols.add(sym);
+      }
+    });
+
+    // Top active symbols from full universe
+    instruments
+      .slice(0, 15)
+      .map((i) => i.symbol)
+      .forEach((sym) => {
+        if (availableSymbols.size === 0 || availableSymbols.has(sym)) {
+          targetSymbols.add(sym);
+        }
+      });
 
     const symbolsToMaintain = Array.from(targetSymbols);
     const cleanups = symbolsToMaintain.map((sym) => subscribeSymbol(sym));

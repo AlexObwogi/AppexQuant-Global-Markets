@@ -78,7 +78,7 @@ export const DerivSyncHydrationGuard: React.FC<DerivSyncHydrationGuardProps> = (
                 <span className="font-bold text-amber-400">{isDemo ? 'DEMO ACCOUNT' : 'REAL ACCOUNT'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Backend Hydration:</span>
+                <span className="text-slate-400">Account Sync:</span>
                 <span className="font-bold text-rose-400">FAILED / RETRY REQUIRED</span>
               </div>
             </div>

@@ -360,8 +360,7 @@ export class DerivBrowserClient {
 
     try {
       const res = await this.sendRequest({
-        active_symbols: 'brief',
-        product_type: 'basic',
+        active_symbols: 'full',
       }, 'active_symbols');
 
       if (res && Array.isArray(res.active_symbols)) {
@@ -379,16 +378,18 @@ export class DerivBrowserClient {
     const nextMap = new Map<string, DerivActiveSymbolItem>();
 
     for (const item of rawList) {
-      if (!item.symbol) continue;
+      const sym = item.symbol || item.underlying_symbol;
+      if (!sym) continue;
+      const displayName = item.display_name || item.underlying_symbol_name || sym;
 
-      const pip = Number(item.pip) || 0.01;
+      const pip = Number(item.pip) || (typeof item.pip_size === 'number' && item.pip_size > 0 ? Math.pow(10, -item.pip_size) : 0.01);
       const pip_size = typeof item.pip_size === 'number'
         ? item.pip_size
         : Math.max(0, Math.round(-Math.log10(pip)));
 
       const symbolItem: DerivActiveSymbolItem = {
-        symbol: item.symbol,
-        display_name: item.display_name || item.symbol,
+        symbol: sym,
+        display_name: displayName,
         market: item.market || 'other',
         market_display_name: item.market_display_name || item.market || 'Market',
         submarket: item.submarket || 'other',
@@ -401,7 +402,7 @@ export class DerivBrowserClient {
         spot_time: item.spot_time ? Number(item.spot_time) : undefined,
       };
 
-      nextMap.set(item.symbol, symbolItem);
+      nextMap.set(sym, symbolItem);
     }
 
     this.activeSymbolsMap = nextMap;
@@ -613,6 +614,11 @@ export class DerivBrowserClient {
 
   private scheduleBatchFlush(): void {
     if (this.animationFrameId !== null) return;
+
+    if (typeof requestAnimationFrame === 'undefined') {
+      this.flushTickBatch();
+      return;
+    }
 
     this.animationFrameId = requestAnimationFrame(() => {
       this.animationFrameId = null;

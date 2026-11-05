@@ -118,19 +118,27 @@ export const MarketsView: React.FC = () => {
                     ? 'bg-color-success/10 text-color-success dark:text-color-success border-color-success/20 dark:border-color-success/25'
                     : dataFreshness === 'RECENT'
                     ? 'bg-[#F0B90B]/10 text-accent-hover dark:text-color-warning border-[#F0B90B]/20 dark:border-[#F0B90B]/25'
-                    : 'bg-color-danger/10 text-color-danger dark:text-color-danger border-color-danger/20 dark:border-color-danger/25'
+                    : dataFreshness === 'CLOSED'
+                    ? 'bg-slate-500/10 text-slate-400 border-slate-500/20'
+                    : 'bg-accent-primary/10 text-accent-primary border-accent-primary/25'
                 }`}
               >
                 <span
                   className={`w-1 h-1 rounded-full ${
-                    dataFreshness === 'LIVE' ? 'bg-color-success animate-pulse' : 'bg-color-danger'
+                    dataFreshness === 'LIVE' ? 'bg-color-success animate-pulse' : dataFreshness === 'CLOSED' ? 'bg-slate-400' : 'bg-accent-primary animate-pulse'
                   }`}
                 />
-                <span>{dataFreshness} DATA</span>
+                <span>
+                  {dataFreshness === 'CLOSED'
+                    ? 'MARKET CLOSED'
+                    : dataFreshness === 'UNAVAILABLE' || dataFreshness === 'DISCONNECTED'
+                    ? 'CONNECTING...'
+                    : `${dataFreshness} DATA`}
+                </span>
               </div>
             </div>
             <p className="text-[11px] text-text-secondary mt-0.5 truncate">
-              Live market-data workspace connected to Deriv WebSocket infrastructure.
+              Multi-asset real-time trading workspace with live pricing.
             </p>
           </div>
         </div>

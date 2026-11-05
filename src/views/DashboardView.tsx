@@ -117,7 +117,7 @@ export const DashboardView: React.FC = () => {
         </div>
       </div>
 
-      {/* Backend Authority Dashboard Connection Banner */}
+      {/* Account Connection Status Banner */}
       <div className="p-3 bg-bg-surface border border-border-color dark:border-[#2B3139] rounded-[4px] flex items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2.5">
           {dashboardState === 'connected' && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />}
@@ -128,7 +128,7 @@ export const DashboardView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <span className="font-mono uppercase font-bold text-[10px] text-text-secondary tracking-wider">
-                Backend Authority Status
+                Account Status
               </span>
               <Badge
                 variant={
@@ -147,9 +147,9 @@ export const DashboardView: React.FC = () => {
               </Badge>
             </div>
             <p className="text-text-primary text-xs font-medium mt-0.5">
-              {dashboardState === 'connected' && `Authenticated (${state.user?.derivAccountId || state.user?.loginid || 'Active'}). Backend is source of truth.`}
-              {dashboardState === 'syncing' && 'Synchronizing account balance and portfolio metadata with backend...'}
-              {dashboardState === 'disconnected' && 'No active account integration. Connect to synchronize real-time balances.'}
+              {dashboardState === 'connected' && `Connected (${state.user?.derivAccountId || state.user?.loginid || 'Active'}). Live trading active.`}
+              {dashboardState === 'syncing' && 'Synchronizing account balance and portfolio...'}
+              {dashboardState === 'disconnected' && 'No active account linked. Connect your account to synchronize real-time balances.'}
               {dashboardState === 'error' && 'Account synchronization failed or session unverified. Re-authentication required.'}
             </p>
           </div>

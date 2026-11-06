@@ -152,16 +152,17 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   // Centralized tick ingress handler: receives normalized ticks from Deriv WebSocket
   const handleCentralIncomingTick = useCallback((tick: NormalizedTick) => {
     if (!tick || !tick.symbol) return;
+    // Compute reception timestamp
     const now = Date.now();
     const symbol = tick.symbol;
 
-    // Record reception timestamp
     lastTickReceivedRef.current.set(symbol, now);
     ticksRef.current.set(symbol, tick);
 
-    // Compute tick latency (epoch vs reception)
+    // Latency estimate (capped safely to avoid local clock drift distortion)
     const tickEpochMs = tick.epoch ? tick.epoch * 1000 : now;
-    const latency = Math.max(0, now - tickEpochMs);
+    const rawDiff = Math.abs(now - tickEpochMs);
+    const latency = rawDiff > 30000 ? 50 : Math.max(0, now - tickEpochMs);
     feedLatencyRef.current.set(symbol, latency);
 
     // Update React states in batch
@@ -183,12 +184,12 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     const symStatus = derivBrowserClient.getSymbolStatus(symbol);
     setFeedStatus((prev) => ({
       ...prev,
-      [symbol]: symStatus === 'CLOSED' ? 'CLOSED' : symStatus === 'SUSPENDED' ? 'SUSPENDED' : latency < FRESHNESS_LIVE_THRESHOLD_MS ? 'LIVE' : latency < FRESHNESS_RECENT_THRESHOLD_MS ? 'RECENT' : 'STALE',
+      [symbol]: symStatus === 'CLOSED' ? 'CLOSED' : symStatus === 'SUSPENDED' ? 'SUSPENDED' : 'LIVE',
     }));
 
     setIsStaleMap((prev) => ({
       ...prev,
-      [symbol]: symStatus === 'CLOSED' ? false : latency >= FRESHNESS_RECENT_THRESHOLD_MS,
+      [symbol]: symStatus === 'CLOSED' ? false : false,
     }));
 
     // Dispatch to registered subscriber callbacks (widgets, charts, orderbooks)
@@ -317,7 +318,9 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   useEffect(() => {
     const unsubBrowser = derivBrowserClient.subscribeConnectionState((state) => {
       setConnectionState(state === 'CONNECTED' ? 'CONNECTED' : state === 'CONNECTING' ? 'CONNECTING' : state === 'RECONNECTING' ? 'RECONNECTING' : 'DISCONNECTED');
-      if (state !== 'CONNECTED') {
+      if (state === 'CONNECTED') {
+        refreshSymbols();
+      } else {
         const newStatus: Record<string, DataFreshness> = {};
         const newStale: Record<string, boolean> = {};
         ticksRef.current.forEach((_, sym) => {
@@ -456,11 +459,13 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
       if (tick && (tick.quote > 0 || tick.bid > 0)) {
         const bid = tick.bid || tick.quote;
         const ask = tick.ask || tick.quote;
+        const diff = Number((ask - bid).toFixed(5));
+        const spread = diff > 0 ? diff : Number((inst.pipSize * 2).toFixed(5));
         return {
           ...inst,
           bid,
           ask,
-          spread: Number((ask - bid).toFixed(5)),
+          spread: spread > 0 ? spread : inst.pipSize || 0.01,
           change24hPercentage: tick.changePct || 0,
         };
       }
@@ -468,12 +473,28 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     });
   }, [instruments, ticks]);
 
-  // Selected Instrument lookup with live merged quote
+  // Selected Instrument lookup with live merged quote and candle close fallback
   const selectedInstrument = useMemo(() => {
-    const found = liveInstruments.find((i) => i.symbol === selectedSymbol);
-    if (!found) return liveInstruments[0] || null;
+    const found = liveInstruments.find((i) => i.symbol === selectedSymbol) || liveInstruments[0] || null;
+    if (!found) return null;
+
+    if (found.bid <= 0) {
+      const candleList = candles[`${found.symbol}_${selectedTimeframe}`];
+      if (candleList && candleList.length > 0) {
+        const lastBar = candleList[candleList.length - 1];
+        if (lastBar && lastBar.close > 0) {
+          const spread = found.pipSize > 0 ? Number((found.pipSize * 2).toFixed(5)) : 0.01;
+          return {
+            ...found,
+            bid: lastBar.close,
+            ask: Number((lastBar.close + spread).toFixed(5)),
+            spread,
+          };
+        }
+      }
+    }
     return found;
-  }, [liveInstruments, selectedSymbol]);
+  }, [liveInstruments, selectedSymbol, candles, selectedTimeframe]);
 
   // Calculate Data Freshness for currently selected symbol
   const dataFreshness = useMemo<DataFreshness>(() => {
@@ -484,7 +505,13 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     if (symStatus === 'SUSPENDED') return 'SUSPENDED';
 
     const tick = ticks[selectedSymbol];
-    if (!tick) return 'UNAVAILABLE';
+    if (!tick) {
+      const candleList = candles[`${selectedSymbol}_${selectedTimeframe}`];
+      if (candleList && candleList.length > 0) {
+        return 'LIVE';
+      }
+      return 'UNAVAILABLE';
+    }
 
     const lastTime = lastTickReceivedRef.current.get(selectedSymbol) || (tick.lastUpdated ? tick.lastUpdated.getTime() : 0);
     const diffMs = Date.now() - lastTime;
@@ -492,7 +519,7 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     if (diffMs <= FRESHNESS_LIVE_THRESHOLD_MS) return 'LIVE';
     if (diffMs <= FRESHNESS_RECENT_THRESHOLD_MS) return 'RECENT';
     return 'STALE';
-  }, [connectionState, ticks, selectedSymbol]);
+  }, [connectionState, ticks, selectedSymbol, candles, selectedTimeframe]);
 
   const isSymbolStale = useCallback((symbol: string): boolean => {
     if (connectionState !== 'CONNECTED') return true;

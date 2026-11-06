@@ -7,6 +7,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { MarketIntelligencePanel } from '../components/market/MarketIntelligencePanel.tsx';
 import { useMarketData } from '../state/MarketDataContext.tsx';
 import { InteractiveCandleChart } from '../components/chart/InteractiveCandleChart.tsx';
+import { DerivTradeTicket } from '../components/trading/DerivTradeTicket.tsx';
+import { CashierModal } from '../components/cashier/CashierModal.tsx';
 import { InstrumentCategory } from '../types/market.ts';
 import {
   Search,
@@ -352,13 +354,27 @@ export const MarketsView: React.FC = () => {
                 </div>
                 <div className="flex items-center space-x-4 mt-1.5 text-xs text-text-secondary font-mono">
                   <div>
-                    Bid: <span className="text-text-primary font-bold">{selectedInstrument.bid > 0 ? selectedInstrument.bid.toFixed(selectedInstrument.bid > 100 ? 2 : 5) : '...'}</span>
+                    Bid: <span className="text-text-primary font-bold">
+                      {selectedInstrument.bid > 0
+                        ? selectedInstrument.bid.toFixed(selectedInstrument.bid > 100 ? 2 : 5)
+                        : activeCandles.length > 0
+                        ? activeCandles[activeCandles.length - 1].close.toFixed(activeCandles[activeCandles.length - 1].close > 100 ? 2 : 5)
+                        : '...'}
+                    </span>
                   </div>
                   <div>
-                    Ask: <span className="text-text-primary font-bold">{selectedInstrument.ask > 0 ? selectedInstrument.ask.toFixed(selectedInstrument.ask > 100 ? 2 : 5) : '...'}</span>
+                    Ask: <span className="text-text-primary font-bold">
+                      {selectedInstrument.ask > 0
+                        ? selectedInstrument.ask.toFixed(selectedInstrument.ask > 100 ? 2 : 5)
+                        : activeCandles.length > 0
+                        ? (activeCandles[activeCandles.length - 1].close + (selectedInstrument.pipSize || 0.0001) * 2).toFixed(activeCandles[activeCandles.length - 1].close > 100 ? 2 : 5)
+                        : '...'}
+                    </span>
                   </div>
                   <div>
-                    Pip Spread: <span className="text-color-warning dark:text-accent-primary font-bold">{selectedInstrument.spread > 0 ? selectedInstrument.spread : '...'}</span>
+                    Pip Spread: <span className="text-color-warning dark:text-accent-primary font-bold">
+                      {selectedInstrument.spread > 0 ? selectedInstrument.spread : Number(((selectedInstrument.pipSize || 0.001) * 2).toFixed(5))}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -367,7 +383,7 @@ export const MarketsView: React.FC = () => {
               <div className="text-right">
                 <div className="text-xl font-mono font-bold text-text-primary dark:text-text-primary">
                   {(() => {
-                    const price = currentTick ? currentTick.quote : selectedInstrument.bid;
+                    const price = currentTick?.quote || selectedInstrument.bid || (activeCandles.length > 0 ? activeCandles[activeCandles.length - 1].close : 0);
                     return price > 0 ? price.toFixed(price > 100 ? 2 : 5) : 'Connecting...';
                   })()}
                 </div>
@@ -395,6 +411,11 @@ export const MarketsView: React.FC = () => {
             dataFreshness={dataFreshness}
             onTimeframeChange={setSelectedTimeframe}
           />
+
+          {/* Direct Options Trade Desk underneath Chart */}
+          <div className="pt-1">
+            <DerivTradeTicket />
+          </div>
         </div>
 
         {/* Right Column: Instrument Details & Safety Action Box (3 Cols on LG) */}

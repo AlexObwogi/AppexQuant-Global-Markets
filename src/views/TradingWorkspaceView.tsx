@@ -113,6 +113,12 @@ export const TradingWorkspaceView: React.FC = () => {
               onTimeframeChange={setSelectedTimeframe}
             />
           </div>
+
+          {/* High-Priority Mobile Trade Ticket (immediately below chart with prominent Rise / Fall buttons) */}
+          <div className="lg:hidden">
+            <DerivTradeTicket onOrderExecuted={(evt) => setConfirmedOrder(evt)} />
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
              <div className="bg-bg-surface p-3 rounded-2xl border border-border-color shadow-sm">
                 <ScenarioEngine instrument={selectedInstrument} />
@@ -125,7 +131,9 @@ export const TradingWorkspaceView: React.FC = () => {
 
         {/* Right: Real Deriv Options Ticket + Open Positions + Auxiliary Simulators */}
         <div className="lg:col-span-4 space-y-3 lg:space-y-4">
-          <DerivTradeTicket onOrderExecuted={(evt) => setConfirmedOrder(evt)} />
+          <div className="hidden lg:block">
+            <DerivTradeTicket onOrderExecuted={(evt) => setConfirmedOrder(evt)} />
+          </div>
           <DerivOpenPositions />
 
           <AntiTiltCircuitBreaker accountId={verifiedAccountId} currentEquity={currentEquity} />

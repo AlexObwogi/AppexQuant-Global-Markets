@@ -126,21 +126,54 @@ function ActiveViewRenderer() {
 }
 
 function AuthUrlErrorConsumer() {
+  const { dispatch } = useGlobalState();
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const authError = params.get('auth_error');
     const msg = params.get('message');
-    if (authError || msg) {
+    const action = params.get('action');
+
+    if (action === 'cashier_completed') {
+      const type = params.get('type') || 'transaction';
+      setSuccessMessage(`Deriv ${type} processed successfully! Your account wallet balance is refreshed.`);
+      dispatch({
+        type: 'ADD_NOTIFICATION',
+        payload: {
+          title: 'Cashier Completed',
+          message: `Deriv ${type} finalized. Returning to live trading desk.`,
+          type: 'success',
+        },
+      });
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (authError || msg) {
       const bannerText = msg || `Authentication notice: ${authError}`;
       setErrorMessage(bannerText);
       window.history.replaceState({}, '', window.location.pathname);
     }
-  }, []);
+  }, [dispatch]);
 
-  if (!errorMessage) return null;
+  if (!errorMessage && !successMessage) return null;
+
+  if (successMessage) {
+    return (
+      <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 px-4 py-3 rounded-lg flex items-center justify-between m-4 text-xs font-medium">
+        <div className="flex items-center space-x-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span>{successMessage}</span>
+        </div>
+        <button
+          onClick={() => setSuccessMessage(null)}
+          className="text-text-muted hover:text-text-primary ml-4 cursor-pointer"
+        >
+          ✕
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-rose-500/10 border border-rose-500/30 text-rose-300 px-4 py-3 rounded-lg flex items-center justify-between m-4 text-xs font-medium">
@@ -150,7 +183,7 @@ function AuthUrlErrorConsumer() {
       </div>
       <button
         onClick={() => setErrorMessage(null)}
-        className="text-text-muted hover:text-text-primary ml-4"
+        className="text-text-muted hover:text-text-primary ml-4 cursor-pointer"
       >
         ✕
       </button>

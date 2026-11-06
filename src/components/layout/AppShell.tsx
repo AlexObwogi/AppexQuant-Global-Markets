@@ -23,7 +23,7 @@ interface AppShellProps {
 
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const { state, dispatch, selectedAccount } = useGlobalState();
-  const { ticks } = useMarketData();
+  const { ticks, instruments } = useMarketData();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [utcTime, setUtcTime] = useState('');
 
@@ -79,6 +79,11 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const vol100Tick = ticks['R_100'] || ticks['1HZ100V'];
   const goldTick = ticks['frxXAUUSD'];
 
+  const eurQuote = eurUsdTick?.quote || instruments.find((i) => i.symbol === 'frxEURUSD')?.bid;
+  const btcQuote = btcTick?.quote || instruments.find((i) => i.symbol === 'cryBTCUSD')?.bid;
+  const vol100Quote = vol100Tick?.quote || instruments.find((i) => i.symbol === 'R_100')?.bid;
+  const goldQuote = goldTick?.quote || instruments.find((i) => i.symbol === 'frxXAUUSD')?.bid;
+
   return (
     <div className="min-h-screen lg:h-screen w-screen max-w-full overflow-x-hidden lg:overflow-hidden select-none bg-[#15171e] text-[#ffffff] flex flex-col font-sans antialiased relative">
       {/* Network & System Status Banners */}
@@ -101,7 +106,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             <div className="flex items-center space-x-1">
               <span>EUR/USD:</span>
               <strong className={eurUsdTick && (eurUsdTick.changePct || 0) < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}>
-                {eurUsdTick?.quote ? eurUsdTick.quote.toFixed(5) : '--'}
+                {eurQuote && eurQuote > 0 ? eurQuote.toFixed(5) : '--'}
               </strong>
               {eurUsdTick?.changePct !== undefined && (
                 <span className={`text-[10px] ${eurUsdTick.changePct < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}`}>
@@ -112,7 +117,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             <div className="flex items-center space-x-1">
               <span>BTC/USD:</span>
               <strong className={btcTick && (btcTick.changePct || 0) < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}>
-                {btcTick?.quote ? `$${btcTick.quote.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '--'}
+                {btcQuote && btcQuote > 0 ? `$${btcQuote.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '--'}
               </strong>
               {btcTick?.changePct !== undefined && (
                 <span className={`text-[10px] ${btcTick.changePct < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}`}>
@@ -123,7 +128,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             <div className="flex items-center space-x-1">
               <span>Volatility 100:</span>
               <strong className={vol100Tick && (vol100Tick.changePct || 0) < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}>
-                {vol100Tick?.quote ? vol100Tick.quote.toFixed(2) : '--'}
+                {vol100Quote && vol100Quote > 0 ? vol100Quote.toFixed(2) : '--'}
               </strong>
               {vol100Tick?.changePct !== undefined && (
                 <span className={`text-[10px] ${vol100Tick.changePct < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}`}>
@@ -134,7 +139,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             <div className="hidden md:flex items-center space-x-1">
               <span>Gold:</span>
               <strong className={goldTick && (goldTick.changePct || 0) < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}>
-                {goldTick?.quote ? `$${goldTick.quote.toFixed(2)}` : '--'}
+                {goldQuote && goldQuote > 0 ? `$${goldQuote.toFixed(2)}` : '--'}
               </strong>
             </div>
           </div>

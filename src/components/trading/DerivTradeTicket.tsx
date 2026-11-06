@@ -13,7 +13,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { derivTradingClient, DerivLiveProposal, MAX_STAKE_REAL } from '../../services/deriv/tradingClient.ts';
 import { useMarketData } from '../../state/MarketDataContext.tsx';
 import { useGlobalState } from '../../state/GlobalStateContext.tsx';
-import { TrendingUp, TrendingDown, Shield, AlertTriangle, CheckCircle2, Loader2, Info } from 'lucide-react';
+import { TrendingUp, TrendingDown, Shield, AlertTriangle, CheckCircle2, Loader2, Info, Wallet } from 'lucide-react';
+import { CashierModal } from '../cashier/CashierModal.tsx';
 
 interface DerivTradeTicketProps {
   onOrderExecuted?: (contract: any) => void;
@@ -89,41 +90,72 @@ export const DerivTradeTicket: React.FC<DerivTradeTicketProps> = ({ onOrderExecu
     };
   }, [fetchProposal, contractType, stake, duration, durationUnit]);
 
-  // Handle Buy Click
-  const handleInitiateTrade = (type: 'CALL' | 'PUT') => {
-    if (isMarketClosed) {
-      setStatusMessage({ text: 'Market is currently closed. Synthetics trade 24/7.', type: 'error' });
-      return;
-    }
+  const [isCashierOpen, setIsCashierOpen] = useState(false);
 
-    if (!liveProposal || liveProposal.ask_price <= 0) {
-      setStatusMessage({ text: 'Waiting for fresh price proposal from Deriv...', type: 'info' });
+  // Handle Buy Click for either Rise (CALL) or Fall (PUT)
+  const handleInitiateTrade = async (type: 'CALL' | 'PUT') => {
+    if (isMarketClosed) {
+      setStatusMessage({ text: 'Market is currently closed. Deriv Synthetics trade 24/7.', type: 'error' });
       return;
     }
 
     // Safety constraint: require explicit modal confirmation on Real accounts
-    if (isReal) {
-      if (stake > MAX_STAKE_REAL) {
-        setStatusMessage({ text: `Maximum real stake is capped at $${MAX_STAKE_REAL} USD for safety.`, type: 'error' });
-        return;
-      }
-      setPendingAction(type);
-      setShowConfirmModal(true);
+    if (isReal && stake > MAX_STAKE_REAL) {
+      setStatusMessage({ text: `Maximum real stake is capped at $${MAX_STAKE_REAL} USD for safety.`, type: 'error' });
       return;
     }
 
-    executeBuy(type);
+    // If active proposal already matches the clicked contract type, execute directly
+    if (liveProposal && liveProposal.ask_price > 0 && contractType === type) {
+      if (isReal) {
+        setPendingAction(type);
+        setShowConfirmModal(true);
+        return;
+      }
+      executeBuyWithProposal(type, liveProposal);
+      return;
+    }
+
+    // Otherwise, immediately fetch fresh proposal for this direction and execute
+    setIsExecutingBuy(true);
+    setStatusMessage({ text: `Requesting live ${type === 'CALL' ? 'Rise' : 'Fall'} price from Deriv...`, type: 'info' });
+
+    try {
+      const prop = await derivTradingClient.requestProposal({
+        symbol: selectedSymbol,
+        contract_type: type,
+        currency,
+        amount: stake,
+        basis: 'stake',
+        duration,
+        duration_unit: durationUnit,
+      });
+
+      setLiveProposal(prop);
+      setContractType(type);
+
+      if (isReal) {
+        setIsExecutingBuy(false);
+        setPendingAction(type);
+        setShowConfirmModal(true);
+        return;
+      }
+
+      await executeBuyWithProposal(type, prop);
+    } catch (err: any) {
+      setIsExecutingBuy(false);
+      setStatusMessage({ text: err.message || 'Proposal unavailable from Deriv for selected parameters', type: 'error' });
+    }
   };
 
-  const executeBuy = async (type: 'CALL' | 'PUT') => {
-    if (!liveProposal) return;
+  const executeBuyWithProposal = async (type: 'CALL' | 'PUT', proposal: DerivLiveProposal) => {
     setIsExecutingBuy(true);
     setStatusMessage(null);
 
     try {
       const result = await derivTradingClient.buy(
-        liveProposal.id,
-        liveProposal.ask_price,
+        proposal.id,
+        proposal.ask_price,
         selectedSymbol,
         type
       );
@@ -161,6 +193,15 @@ export const DerivTradeTicket: React.FC<DerivTradeTicketProps> = ({ onOrderExecu
           <span className="text-[10px] font-mono text-[#9699a0]">({selectedSymbol})</span>
         </div>
         <div className="flex items-center space-x-2">
+          <button
+            type="button"
+            onClick={() => setIsCashierOpen(true)}
+            className="flex items-center space-x-1 px-2 py-0.5 rounded bg-[#00a86b]/15 hover:bg-[#00a86b]/25 border border-[#00a86b]/30 text-[#00a86b] text-[10px] font-bold cursor-pointer transition-colors"
+            title="Open Deriv Cashier & Wallets"
+          >
+            <Wallet className="w-3 h-3" />
+            <span>Cashier</span>
+          </button>
           <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${
             isReal ? 'bg-[#ff444f]/20 text-[#ff444f] border border-[#ff444f]/30' : 'bg-[#00a86b]/20 text-[#00a86b] border border-[#00a86b]/30'
           }`}>
@@ -303,37 +344,45 @@ export const DerivTradeTicket: React.FC<DerivTradeTicketProps> = ({ onOrderExecu
         </div>
       )}
 
-      {/* Deriv Style Dual Action Buttons */}
-      <div className="pt-1">
-        {contractType === 'CALL' ? (
-          <button
-            type="button"
-            disabled={isMarketClosed || isExecutingBuy || !liveProposal}
-            onClick={() => handleInitiateTrade('CALL')}
-            className="w-full py-2.5 px-4 rounded-lg font-bold text-sm bg-[#ff444f] hover:bg-[#ff555f] active:scale-[0.99] text-white transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-lg"
-          >
-            {isExecutingBuy ? (
+      {/* Deriv Style Dual Action Buttons (Rise & Fall ALWAYS both visible simultaneously) */}
+      <div className="grid grid-cols-2 gap-2.5 pt-1">
+        <button
+          type="button"
+          disabled={isMarketClosed || isExecutingBuy}
+          onClick={() => handleInitiateTrade('CALL')}
+          className="py-3 px-3 rounded-xl font-bold text-xs sm:text-sm bg-[#ff444f] hover:bg-[#ff555f] active:scale-[0.98] text-white transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center space-y-1 shadow-lg border border-[#ff555f]/40"
+        >
+          <div className="flex items-center space-x-1.5">
+            {isExecutingBuy && pendingAction === 'CALL' ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <TrendingUp className="w-4 h-4" />
             )}
-            <span>BUY RISE (HIGHER) &bull; ${liveProposal?.ask_price.toFixed(2) || stake}</span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            disabled={isMarketClosed || isExecutingBuy || !liveProposal}
-            onClick={() => handleInitiateTrade('PUT')}
-            className="w-full py-2.5 px-4 rounded-lg font-bold text-sm bg-[#00a86b] hover:bg-[#00ba77] active:scale-[0.99] text-white transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-lg"
-          >
-            {isExecutingBuy ? (
+            <span>BUY RISE</span>
+          </div>
+          <span className="text-[10px] font-mono opacity-90 font-normal">
+            Higher &bull; ${stake}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          disabled={isMarketClosed || isExecutingBuy}
+          onClick={() => handleInitiateTrade('PUT')}
+          className="py-3 px-3 rounded-xl font-bold text-xs sm:text-sm bg-[#00a86b] hover:bg-[#00ba77] active:scale-[0.98] text-white transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center space-y-1 shadow-lg border border-[#00ba77]/40"
+        >
+          <div className="flex items-center space-x-1.5">
+            {isExecutingBuy && pendingAction === 'PUT' ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <TrendingDown className="w-4 h-4" />
             )}
-            <span>BUY FALL (LOWER) &bull; ${liveProposal?.ask_price.toFixed(2) || stake}</span>
-          </button>
-        )}
+            <span>BUY FALL</span>
+          </div>
+          <span className="text-[10px] font-mono opacity-90 font-normal">
+            Lower &bull; ${stake}
+          </span>
+        </button>
       </div>
 
       {/* Real Account Safety Confirmation Modal */}
@@ -354,15 +403,15 @@ export const DerivTradeTicket: React.FC<DerivTradeTicketProps> = ({ onOrderExecu
               </div>
               <div className="flex justify-between">
                 <span className="text-[#9699a0]">Contract:</span>
-                <span className="text-white font-bold">{pendingAction === 'CALL' ? 'Rise' : 'Fall'}</span>
+                <span className="text-white font-bold">{pendingAction === 'CALL' ? 'Rise (Higher)' : 'Fall (Lower)'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#9699a0]">Stake:</span>
-                <span className="text-[#ff444f] font-bold">${liveProposal?.ask_price.toFixed(2)} USD</span>
+                <span className="text-[#ff444f] font-bold">${liveProposal?.ask_price.toFixed(2) || stake} USD</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#9699a0]">Potential Payout:</span>
-                <span className="text-[#00a86b] font-bold">${liveProposal?.payout.toFixed(2)} USD</span>
+                <span className="text-[#00a86b] font-bold">${liveProposal?.payout.toFixed(2) || (stake * 1.95).toFixed(2)} USD</span>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 pt-1">
@@ -376,7 +425,11 @@ export const DerivTradeTicket: React.FC<DerivTradeTicketProps> = ({ onOrderExecu
               <button
                 type="button"
                 disabled={isExecutingBuy}
-                onClick={() => pendingAction && executeBuy(pendingAction)}
+                onClick={() => {
+                  if (pendingAction && liveProposal) {
+                    executeBuyWithProposal(pendingAction, liveProposal);
+                  }
+                }}
                 className="py-2 px-3 rounded-lg bg-[#ff444f] hover:bg-[#ff555f] text-white cursor-pointer font-bold flex items-center justify-center space-x-1"
               >
                 {isExecutingBuy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>Confirm Buy</span>}
@@ -385,6 +438,12 @@ export const DerivTradeTicket: React.FC<DerivTradeTicketProps> = ({ onOrderExecu
           </div>
         </div>
       )}
+
+      {/* Embedded Cashier Modal */}
+      <CashierModal
+        isOpen={isCashierOpen}
+        onClose={() => setIsCashierOpen(false)}
+      />
     </div>
   );
 };

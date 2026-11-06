@@ -9,8 +9,9 @@ import { useApiFetch } from '../../utils/apiFetch.ts';
 import { useMarketData } from '../../state/MarketDataContext.tsx';
 import { EnvironmentSelector } from '../common/EnvironmentSelector.tsx';
 import { ThemeSelector } from '../common/ThemeSelector.tsx';
-import { Menu, User, Eye, EyeOff, Flame, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Menu, User, Eye, EyeOff, Flame, RefreshCw, AlertTriangle, CheckCircle2, Plus, Wallet } from 'lucide-react';
 import { DerivConnectionModal } from '../auth/DerivConnectionModal.tsx';
+import { CashierModal } from '../cashier/CashierModal.tsx';
 import { formatCurrencyValue } from '../../utils/userStatusPresentation.ts';
 
 interface HeaderProps {
@@ -21,6 +22,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
   const { state, dispatch, selectedAccount } = useGlobalState();
   const apiFetch = useApiFetch();
   const [showAdminModal, setShowAdminModal] = useState(false);
+  const [showCashierModal, setShowCashierModal] = useState(false);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
 
   const handleNavigate = (route: AppViewRoute) => {
@@ -177,6 +179,16 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
           </button>
         )}
 
+        {/* PROMINENT DERIV DEPOSIT / CASHIER BUTTON */}
+        <button
+          onClick={() => setShowCashierModal(true)}
+          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-[#00a86b] hover:bg-[#00ba77] active:scale-[0.98] text-white font-bold text-xs shadow-sm transition-all cursor-pointer shrink-0"
+          title="Deposit funds or manage wallets via Deriv Cashier"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>Deposit</span>
+        </button>
+
         {/* ALWAYS VISIBLE THEME SELECTOR */}
         <div className="shrink-0">
           <ThemeSelector />
@@ -198,6 +210,13 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
 
       {showAdminModal && (
         <DerivConnectionModal onClose={() => setShowAdminModal(false)} />
+      )}
+
+      {showCashierModal && (
+        <CashierModal
+          isOpen={showCashierModal}
+          onClose={() => setShowCashierModal(false)}
+        />
       )}
 
     </header>

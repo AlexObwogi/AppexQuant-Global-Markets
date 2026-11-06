@@ -31,8 +31,14 @@ import {
   KeyRound, 
   Link2, 
   Sparkles,
-  Loader2
+  Loader2,
+  Wallet,
+  ArrowDownLeft,
+  ArrowUpRight,
+  ArrowLeftRight,
+  ExternalLink,
 } from 'lucide-react';
+import { CashierModal } from '../components/cashier/CashierModal.tsx';
 
 interface ConnectionMeta {
   connected: boolean;
@@ -66,8 +72,27 @@ export const AccountView: React.FC = () => {
   const [isSwitchingAccount, setIsSwitchingAccount] = useState(false);
   const [apiTokenInput, setApiTokenInput] = useState('');
   const [showTokenInput, setShowTokenInput] = useState(false);
+  const [cashierModalTab, setCashierModalTab] = useState<'deposit' | 'withdrawal' | 'transfer' | 'p2p' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  /**
+   * Constructs the authoritative Deriv Cashier OAuth URL with redirect callback parameters
+   * ensuring users return to AppexQuant post deposit/withdrawal.
+   */
+  const constructDerivCashierOAuthUrl = (action: 'deposit' | 'withdrawal' | 'account-transfer' | 'p2p' = 'deposit') => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const accountId = meta?.derivAccountId || state.user?.derivAccountId || '';
+    const returnUrl = `${origin}/?action=cashier_completed&type=${action}&account=${encodeURIComponent(accountId)}&ts=${Date.now()}`;
+    const appId = (typeof window !== 'undefined' && (localStorage.getItem('deriv_app_id') || localStorage.getItem('deriv_client_id'))) || '1089';
+    const endpoint = action === 'account-transfer' ? 'account-transfer' : action;
+    const url = new URL(`https://app.deriv.com/cashier/${endpoint}`);
+    url.searchParams.set('app_id', appId);
+    url.searchParams.set('redirect_url', returnUrl);
+    url.searchParams.set('redirect_uri', returnUrl);
+    if (accountId) url.searchParams.set('account', accountId);
+    return url.toString();
+  };
 
   const handleSwitchAccount = async (targetLoginid: string) => {
     if (targetLoginid === meta?.derivAccountId) return;
@@ -480,6 +505,36 @@ export const AccountView: React.FC = () => {
                   {meta?.derivAccountId || state.user?.derivAccountId || (meta?.connected ? 'Connected' : 'Disconnected')}
                 </Badge>
               </div>
+
+              {/* Direct Cashier Actions with Return Redirect */}
+              <div className="pt-3 border-t border-border-color/60 space-y-1.5">
+                <span className="text-text-secondary block text-[9px] uppercase font-mono font-bold">Cashier & Funding</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <a
+                    href={constructDerivCashierOAuthUrl('deposit')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-2 rounded-lg bg-[#00a86b] hover:bg-[#00925c] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all"
+                    title="Direct to Deriv Official Cashier Deposit with return redirect"
+                  >
+                    <ArrowDownLeft className="w-3.5 h-3.5" />
+                    <span>Deposit</span>
+                    <ExternalLink className="w-3 h-3 opacity-80" />
+                  </a>
+
+                  <a
+                    href={constructDerivCashierOAuthUrl('withdrawal')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-2 rounded-lg bg-[#ff444f] hover:bg-[#e03b44] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all"
+                    title="Direct to Deriv Official Cashier Withdrawal with return redirect"
+                  >
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                    <span>Withdrawal</span>
+                    <ExternalLink className="w-3 h-3 opacity-80" />
+                  </a>
+                </div>
+              </div>
             </div>
           </Card>
 
@@ -579,6 +634,74 @@ export const AccountView: React.FC = () => {
                       <span className="text-text-primary font-bold text-xs truncate block" title={meta.lastSyncedAt}>
                         {meta.lastSyncedAt ? new Date(meta.lastSyncedAt).toLocaleString() : 'Sync Pending'}
                       </span>
+                    </div>
+                  </div>
+
+                  {/* Deriv Official Cashier & Financial Transactions Hub */}
+                  <div className="p-3 bg-bg-surface border border-border-color rounded-xl space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Wallet className="w-4 h-4 text-[#00a86b]" />
+                        <span className="text-xs font-bold text-text-primary uppercase tracking-wide">
+                          Deriv Cashier & Wallets
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-text-secondary">Official Deriv Gateway</span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <a
+                        href={constructDerivCashierOAuthUrl('deposit')}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2.5 rounded-lg bg-[#00a86b]/15 hover:bg-[#00a86b]/25 border border-[#00a86b]/30 text-[#00a86b] font-bold text-xs flex flex-col items-center justify-center space-y-1 transition-all cursor-pointer"
+                        title="Deposit via Deriv Official Cashier with Return Redirect"
+                      >
+                        <div className="flex items-center gap-1">
+                          <ArrowDownLeft className="w-4 h-4" />
+                          <ExternalLink className="w-3 h-3 opacity-70" />
+                        </div>
+                        <span>Deposit</span>
+                      </a>
+
+                      <a
+                        href={constructDerivCashierOAuthUrl('withdrawal')}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2.5 rounded-lg bg-[#ff444f]/15 hover:bg-[#ff444f]/25 border border-[#ff444f]/30 text-[#ff444f] font-bold text-xs flex flex-col items-center justify-center space-y-1 transition-all cursor-pointer"
+                        title="Withdrawal via Deriv Official Cashier with Return Redirect"
+                      >
+                        <div className="flex items-center gap-1">
+                          <ArrowUpRight className="w-4 h-4" />
+                          <ExternalLink className="w-3 h-3 opacity-70" />
+                        </div>
+                        <span>Withdrawal</span>
+                      </a>
+
+                      <a
+                        href={constructDerivCashierOAuthUrl('account-transfer')}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-400 font-bold text-xs flex flex-col items-center justify-center space-y-1 transition-all cursor-pointer"
+                        title="Transfer via Deriv Official Cashier with Return Redirect"
+                      >
+                        <div className="flex items-center gap-1">
+                          <ArrowLeftRight className="w-4 h-4" />
+                          <ExternalLink className="w-3 h-3 opacity-70" />
+                        </div>
+                        <span>Transfer</span>
+                      </a>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 text-[11px] text-text-secondary">
+                      <span>Need preset deposit guides?</span>
+                      <button
+                        type="button"
+                        onClick={() => setCashierModalTab('deposit')}
+                        className="text-accent-primary hover:underline font-semibold cursor-pointer"
+                      >
+                        Open In-App Cashier Hub
+                      </button>
                     </div>
                   </div>
 
@@ -742,6 +865,14 @@ export const AccountView: React.FC = () => {
           </Card>
         </div>
       </div>
+
+      {cashierModalTab && (
+        <CashierModal
+          isOpen={!!cashierModalTab}
+          defaultTab={cashierModalTab}
+          onClose={() => setCashierModalTab(null)}
+        />
+      )}
     </div>
   );
 };

@@ -14,6 +14,7 @@ import { ThemeMode, applyThemeToDocument } from '../design/theme.ts';
 import { logAuditEvent } from '../observability/audit.ts';
 import { derivAuthService, handleActiveAccountChange } from '../services/deriv/authService.ts';
 import { derivWs } from '../services/deriv/DerivWebSocketManager.ts';
+import { derivBrowserClient } from '../services/deriv/browserClient.ts';
 
 export type AppViewRoute =
   | 'landing'
@@ -413,25 +414,39 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
 
   // Online / Offline window listeners and WebSocket Status Synchronization
   useEffect(() => {
-    const handleWsStatus = (wsState: string) => {
-      if (wsState === 'CONNECTED') {
+    const syncConnectionState = () => {
+      const browserState = derivBrowserClient.getConnectionBadgeState();
+      const wsState = derivWs.getConnectionState();
+
+      if (browserState === 'CONNECTED' || wsState === 'CONNECTED') {
         dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'ONLINE' });
-      } else if (wsState === 'CONNECTING' || wsState === 'RECONNECTING') {
+      } else if (browserState === 'CONNECTING' || browserState === 'RECONNECTING' || wsState === 'CONNECTING' || wsState === 'RECONNECTING') {
         dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'DEGRADED' });
-      } else {
+      } else if (typeof navigator !== 'undefined' && !navigator.onLine) {
         dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'OFFLINE' });
+      } else {
+        dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'DEGRADED' });
       }
     };
 
-    const unsubscribe = derivWs.onStatusChange(handleWsStatus);
-    handleWsStatus(derivWs.getConnectionState());
+    const unsubBrowser = derivBrowserClient.subscribeConnectionState((bState) => {
+      if (bState === 'CONNECTED') {
+        dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'ONLINE' });
+      } else if (bState === 'CONNECTING' || bState === 'RECONNECTING') {
+        dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'DEGRADED' });
+      } else {
+        syncConnectionState();
+      }
+    });
+
+    const unsubWs = derivWs.onStatusChange(() => {
+      syncConnectionState();
+    });
+
+    syncConnectionState();
 
     const handleOnline = () => {
-      if (derivWs.getConnectionState() === 'CONNECTED') {
-        dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'ONLINE' });
-      } else {
-        dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'DEGRADED' });
-      }
+      syncConnectionState();
     };
     const handleOffline = () => {
       dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'OFFLINE' });
@@ -441,7 +456,8 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
     window.addEventListener('offline', handleOffline);
 
     return () => {
-      unsubscribe();
+      unsubBrowser();
+      unsubWs();
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };

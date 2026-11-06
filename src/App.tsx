@@ -139,12 +139,30 @@ function AuthUrlErrorConsumer() {
 
     if (action === 'cashier_completed') {
       const type = params.get('type') || 'transaction';
-      setSuccessMessage(`Deriv ${type} processed successfully! Your account wallet balance is refreshed.`);
+      setSuccessMessage(`Cashier ${type} processed successfully! Your account wallet balance has been updated.`);
+      
+      // Perform immediate balance sync
+      fetch('/api/auth/deriv/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          if (data?.data?.balance !== undefined) {
+            dispatch({
+              type: 'UPDATE_ACCOUNT_BALANCE',
+              payload: {
+                balance: data.data.balance,
+                currency: data.data.currency || 'USD',
+                loginid: data.data.derivAccountId,
+              },
+            });
+          }
+        })
+        .catch(() => {});
+
       dispatch({
         type: 'ADD_NOTIFICATION',
         payload: {
-          title: 'Cashier Completed',
-          message: `Deriv ${type} finalized. Returning to live trading desk.`,
+          title: 'Cashier Transaction Completed',
+          message: `Cashier ${type} finalized. Returning to live trading desk.`,
           type: 'success',
         },
       });

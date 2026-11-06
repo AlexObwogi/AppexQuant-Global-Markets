@@ -637,16 +637,16 @@ export const AccountView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Deriv Official Cashier & Financial Transactions Hub */}
+                  {/* Official Cashier & Financial Transactions Hub */}
                   <div className="p-3 bg-bg-surface border border-border-color rounded-xl space-y-2.5">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         <Wallet className="w-4 h-4 text-[#00a86b]" />
                         <span className="text-xs font-bold text-text-primary uppercase tracking-wide">
-                          Deriv Cashier & Wallets
+                          Cashier & Wallets
                         </span>
                       </div>
-                      <span className="text-[10px] text-text-secondary">Official Deriv Gateway</span>
+                      <span className="text-[10px] text-text-secondary">Official Cashier Gateway</span>
                     </div>
 
                     <div className="grid grid-cols-3 gap-2">
@@ -655,7 +655,7 @@ export const AccountView: React.FC = () => {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="p-2.5 rounded-lg bg-[#00a86b]/15 hover:bg-[#00a86b]/25 border border-[#00a86b]/30 text-[#00a86b] font-bold text-xs flex flex-col items-center justify-center space-y-1 transition-all cursor-pointer"
-                        title="Deposit via Deriv Official Cashier with Return Redirect"
+                        title="Deposit via Official Cashier with Return Redirect"
                       >
                         <div className="flex items-center gap-1">
                           <ArrowDownLeft className="w-4 h-4" />
@@ -669,7 +669,7 @@ export const AccountView: React.FC = () => {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="p-2.5 rounded-lg bg-[#ff444f]/15 hover:bg-[#ff444f]/25 border border-[#ff444f]/30 text-[#ff444f] font-bold text-xs flex flex-col items-center justify-center space-y-1 transition-all cursor-pointer"
-                        title="Withdrawal via Deriv Official Cashier with Return Redirect"
+                        title="Withdrawal via Official Cashier with Return Redirect"
                       >
                         <div className="flex items-center gap-1">
                           <ArrowUpRight className="w-4 h-4" />

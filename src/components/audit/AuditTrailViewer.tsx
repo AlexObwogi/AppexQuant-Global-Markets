@@ -82,6 +82,38 @@ export const AuditTrailViewer: React.FC = () => {
           <Button variant="outline" size="sm" onClick={loadCertificates} className="gap-1.5">
             <RefreshCw className="w-3.5 h-3.5" /> Refresh Ledger
           </Button>
+
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              if (filtered.length === 0) return;
+              const headers = ['Certificate ID', 'Timestamp', 'Type', 'Record ID', 'SHA-256 Hash', 'Previous Hash', 'Issuer', 'Symbol', 'Details'];
+              const rows = filtered.map((c) => [
+                `"${c.certificateId}"`,
+                `"${new Date(c.timestamp).toISOString()}"`,
+                `"${c.type}"`,
+                `"${c.recordId}"`,
+                `"${c.payloadHash}"`,
+                `"${(c as any).prevHash || ''}"`,
+                `"${c.issuer}"`,
+                `"${c.metadata?.symbol || ''}"`,
+                `"${JSON.stringify(c.metadata || {}).replace(/"/g, '""')}"`,
+              ]);
+              const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+              const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.setAttribute('href', url);
+              link.setAttribute('download', `trade_audit_ledger_${new Date().toISOString().slice(0, 10)}.csv`);
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            }}
+            className="gap-1.5 font-bold"
+          >
+            <FileCode className="w-3.5 h-3.5" /> Export CSV
+          </Button>
         </div>
       </div>
 

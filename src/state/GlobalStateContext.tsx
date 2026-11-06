@@ -162,12 +162,14 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
   switch (action.type) {
     case 'UPDATE_ACCOUNT_BALANCE': {
       const { balance, currency, loginid } = action.payload;
+      let matchFound = false;
       const updatedAccounts = state.accounts.map((acc) => {
         const isMatch = loginid
           ? (acc.accountNumber === loginid || acc.id === loginid || acc.id === `acc-${loginid}`)
-          : (acc.id === state.selectedAccountId);
+          : (acc.id === state.selectedAccountId || state.accounts.length === 1);
 
         if (isMatch) {
+          matchFound = true;
           const cur = currency || acc.currency;
           const unrealizedPl = acc.balance.unrealizedPl || 0;
           const equity = balance + unrealizedPl;
@@ -188,6 +190,41 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
         }
         return acc;
       });
+
+      if (!matchFound) {
+        const accId = loginid ? `acc-${loginid}` : state.selectedAccountId || 'acc-primary';
+        const cur = currency || 'USD';
+        const now = new Date().toISOString();
+        const newAcc: TradingAccount = {
+          id: accId,
+          userId: state.user?.id || 'usr-default',
+          brokerId: 'broker-deriv',
+          accountNumber: loginid || 'Primary',
+          accountName: loginid || 'Primary Account',
+          type: loginid?.startsWith('VR') ? 'DEMO' : 'REAL',
+          currency: cur,
+          server: 'Deriv-Server',
+          isPrimary: true,
+          isConnected: true,
+          balance: {
+            balance,
+            equity: balance,
+            freeMargin: balance,
+            margin: 0,
+            marginLevel: 0,
+            unrealizedPl: 0,
+            currency: cur,
+          },
+          createdAt: now,
+          updatedAt: now,
+        };
+        return {
+          ...state,
+          accounts: [...state.accounts, newAcc],
+          selectedAccountId: state.selectedAccountId || accId,
+        };
+      }
+
       return {
         ...state,
         accounts: updatedAccounts,

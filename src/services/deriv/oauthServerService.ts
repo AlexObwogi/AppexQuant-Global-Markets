@@ -1173,12 +1173,13 @@ export async function discoverDerivAccountsViaWebSocket(
           const auth = data.authorize;
           const rawAccountList = Array.isArray(auth.account_list) ? auth.account_list : [];
           
+          const primaryBalance = parseNumber(auth.balance);
           const accounts: DerivAccountProfileData[] = rawAccountList
             .map((item: any) => normalizeAccount({
               ...item,
               email: auth.email,
               fullname: auth.fullname,
-              balance: item.loginid === auth.loginid ? (typeof auth.balance === 'number' ? auth.balance : Number(auth.balance) || 0) : 0,
+              balance: item.loginid === auth.loginid ? parseNumber(item.balance ?? primaryBalance) : parseNumber(item.balance ?? 0),
               currency: item.currency || 'USD',
               scopes: auth.scopes,
             }))
@@ -1187,7 +1188,7 @@ export async function discoverDerivAccountsViaWebSocket(
           const primaryFromAuth = normalizeAccount({
             loginid: auth.loginid,
             currency: auth.currency || 'USD',
-            balance: typeof auth.balance === 'number' ? auth.balance : Number(auth.balance) || 0,
+            balance: primaryBalance,
             email: auth.email,
             fullname: auth.fullname,
             is_virtual: auth.is_virtual ? 1 : 0,

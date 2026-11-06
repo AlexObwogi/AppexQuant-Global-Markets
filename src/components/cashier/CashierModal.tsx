@@ -67,23 +67,48 @@ export const CashierModal: React.FC<CashierModalProps> = ({
   const derivAccountId = derivTradingClient.getCurrentAccountId() || state.user?.derivAccountId || state.session.userId || 'Demo Account';
   const isReal = derivTradingClient.isRealAccount() || derivAccountId.startsWith('CR');
 
-  // Construct return URL with completion callback
-  const getReturnUrl = (action: string) => {
-    if (typeof window === 'undefined') return 'https://app.deriv.com';
-    const origin = window.location.origin;
-    return `${origin}/?action=cashier_completed&type=${action}&account=${encodeURIComponent(derivAccountId)}&ts=${Date.now()}`;
-  };
+  const handleOpenCashier = async (tab: 'deposit' | 'withdrawal' | 'transfer' | 'p2p') => {
+    // 1. Immediately open placeholder window to prevent popup blocker interception
+    const targetWin = typeof window !== 'undefined' ? window.open('about:blank', '_blank') : null;
 
-  const cashierUrls = {
-    deposit: `https://app.deriv.com/cashier/deposit?redirect_url=${encodeURIComponent(getReturnUrl('deposit'))}`,
-    withdrawal: `https://app.deriv.com/cashier/withdrawal?redirect_url=${encodeURIComponent(getReturnUrl('withdrawal'))}`,
-    transfer: `https://app.deriv.com/cashier/account-transfer?redirect_url=${encodeURIComponent(getReturnUrl('transfer'))}`,
-    p2p: `https://app.deriv.com/cashier/p2p?redirect_url=${encodeURIComponent(getReturnUrl('p2p'))}`,
-  };
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const returnUrl = `${origin}/?action=cashier_completed&type=${tab}&account=${encodeURIComponent(derivAccountId)}&ts=${Date.now()}`;
+    const appId = (typeof window !== 'undefined' && (localStorage.getItem('deriv_app_id') || localStorage.getItem('deriv_client_id'))) || '1089';
+    const endpoint = tab === 'transfer' ? 'account-transfer' : tab;
 
-  const handleOpenCashier = (tab: 'deposit' | 'withdrawal' | 'transfer' | 'p2p') => {
-    const url = cashierUrls[tab];
-    window.open(url, '_blank', 'noopener,noreferrer');
+    // Direct fallback URL with explicit app_id and redirect parameters
+    const fallbackUrl = `https://app.deriv.com/cashier/${endpoint}?app_id=${encodeURIComponent(appId)}&redirect_url=${encodeURIComponent(returnUrl)}&redirect_uri=${encodeURIComponent(returnUrl)}${derivAccountId ? `&account=${encodeURIComponent(derivAccountId)}` : ''}`;
+
+    try {
+      const res = await apiFetch('/api/auth/deriv/cashier-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: tab,
+          accountId: derivAccountId,
+          returnUrl,
+        }),
+      }).catch(() => null);
+
+      if (res && res.ok) {
+        const json = await res.json().catch(() => null);
+        const resolvedUrl = json?.data?.url;
+        if (resolvedUrl) {
+          if (targetWin) {
+            targetWin.location.href = resolvedUrl;
+          } else {
+            window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
+          }
+          return;
+        }
+      }
+    } catch {}
+
+    if (targetWin) {
+      targetWin.location.href = fallbackUrl;
+    } else {
+      window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
+    }
   };
 
   const handleManualBalanceRefresh = async () => {
@@ -316,21 +341,36 @@ export const CashierModal: React.FC<CashierModalProps> = ({
 
               {/* Supported Payment Channels */}
               <div className="grid grid-cols-3 gap-2.5">
-                <div className="bg-[#15171e] border border-[#2a2e39] p-3 rounded-xl flex flex-col items-center text-center space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleOpenCashier('deposit')}
+                  className="bg-[#15171e] hover:bg-[#1c1f26] border border-[#2a2e39] hover:border-[#00a86b]/40 p-3 rounded-xl flex flex-col items-center text-center space-y-1.5 transition-all cursor-pointer"
+                  title="Deposit using Cards & e-Wallets"
+                >
                   <CreditCard className="w-5 h-5 text-emerald-400" />
                   <span className="text-[11px] font-bold text-white">Cards & Wallets</span>
                   <span className="text-[9px] text-[#9699a0]">Visa, MC, Skrill, Neteller</span>
-                </div>
-                <div className="bg-[#15171e] border border-[#2a2e39] p-3 rounded-xl flex flex-col items-center text-center space-y-1.5">
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenCashier('deposit')}
+                  className="bg-[#15171e] hover:bg-[#1c1f26] border border-[#2a2e39] hover:border-amber-500/40 p-3 rounded-xl flex flex-col items-center text-center space-y-1.5 transition-all cursor-pointer"
+                  title="Deposit using Crypto (USDT, SOL, BTC, ETH)"
+                >
                   <Coins className="w-5 h-5 text-amber-400" />
                   <span className="text-[11px] font-bold text-white">Cryptocurrency</span>
                   <span className="text-[9px] text-[#9699a0]">USDT, SOL, BTC, ETH</span>
-                </div>
-                <div className="bg-[#15171e] border border-[#2a2e39] p-3 rounded-xl flex flex-col items-center text-center space-y-1.5">
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenCashier('deposit')}
+                  className="bg-[#15171e] hover:bg-[#1c1f26] border border-[#2a2e39] hover:border-sky-500/40 p-3 rounded-xl flex flex-col items-center text-center space-y-1.5 transition-all cursor-pointer"
+                  title="Deposit using Instant Bank Transfer"
+                >
                   <Building2 className="w-5 h-5 text-sky-400" />
                   <span className="text-[11px] font-bold text-white">Bank Transfer</span>
                   <span className="text-[9px] text-[#9699a0]">Instant Local Banking</span>
-                </div>
+                </button>
               </div>
 
               {/* Security & Return Assurance */}

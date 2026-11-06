@@ -117,6 +117,8 @@ import {
   fetchUserDerivBalanceAsync,
   reconnectUserDerivAsync,
   requestDerivAccountOtp,
+  requestDerivCashierUrl,
+  getUserWalletsAsync,
 } from './src/services/deriv/oauthServerService.ts';
 import { getDerivOAuthClientId } from './src/services/oauthService.ts';
 import { isValidDerivAccountId } from './src/services/deriv/syncStateMachine.ts';
@@ -1780,6 +1782,58 @@ export async function createApp() {
     } catch (err: any) {
       logger.error('Deriv OTP generation error', { message: err?.message || 'Unknown error' });
       res.status(500).json(createErrorResponse(err?.message || 'Failed to request Deriv OTP', 'DERIV_OTP_ERROR'));
+    }
+  });
+
+  // Authenticated Deriv Cashier Direct URL endpoint (Phase 5 Cashier Flow)
+  app.post(['/api/auth/deriv/cashier-url', '/api/deriv/cashier-url'], async (req: Request, res: Response) => {
+    try {
+      const s = req.sessionUser;
+      const userId = s?.derivAccountId || s?.userId || 'GUEST_USER';
+      const parsedCookies = parseCookies(req.headers.cookie);
+
+      let tokenToUse: string | undefined = undefined;
+      if (s?.encryptedDerivToken) {
+        try { tokenToUse = decryptSensitiveData(s.encryptedDerivToken); } catch {}
+      }
+      if (!tokenToUse && parsedCookies['deriv_token_enc']) {
+        try { tokenToUse = decryptSensitiveData(parsedCookies['deriv_token_enc']); } catch {}
+      }
+      if (!tokenToUse && userId) {
+        const record = getDerivConnectionRecord(userId);
+        if (record?.accessToken && !record.accessToken.startsWith('usr-')) {
+          tokenToUse = record.accessToken;
+        }
+      }
+
+      const { action = 'deposit', accountId, returnUrl } = req.body || {};
+      const targetAccountId = accountId || s?.derivAccountId;
+
+      const result = await requestDerivCashierUrl(
+        userId,
+        action,
+        tokenToUse,
+        targetAccountId,
+        returnUrl
+      );
+
+      res.json(createSuccessResponse(result));
+    } catch (err: any) {
+      logger.error('Deriv cashier URL request error', { message: err?.message || 'Unknown error' });
+      res.status(500).json(createErrorResponse(err?.message || 'Failed to generate cashier URL', 'CASHIER_URL_ERROR'));
+    }
+  });
+
+  // Local Wallet Monitoring Endpoint (USD, USDT, BTC, ETH, SOL)
+  app.all(['/api/auth/deriv/wallets', '/api/deriv/wallets'], async (req: Request, res: Response) => {
+    try {
+      const s = req.sessionUser;
+      const userId = s?.derivAccountId || s?.userId || 'GUEST_USER';
+      const walletData = await getUserWalletsAsync(userId);
+      res.json(createSuccessResponse(walletData));
+    } catch (err: any) {
+      logger.error('Deriv wallet monitoring query error', { message: err?.message || 'Unknown error' });
+      res.status(500).json(createErrorResponse(err?.message || 'Failed to fetch wallet balances', 'WALLET_MONITOR_ERROR'));
     }
   });
 

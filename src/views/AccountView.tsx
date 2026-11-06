@@ -39,6 +39,8 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { CashierModal } from '../components/cashier/CashierModal.tsx';
+import { CryptoWalletMonitor } from '../components/account/CryptoWalletMonitor.tsx';
+import { CryptoPortfolioDonutChart } from '../components/account/CryptoPortfolioDonutChart.tsx';
 
 interface ConnectionMeta {
   connected: boolean;
@@ -92,6 +94,43 @@ export const AccountView: React.FC = () => {
     url.searchParams.set('redirect_uri', returnUrl);
     if (accountId) url.searchParams.set('account', accountId);
     return url.toString();
+  };
+
+  const handleLaunchCashier = async (action: 'deposit' | 'withdrawal' | 'account-transfer' | 'p2p' = 'deposit') => {
+    const normalizedAction = action === 'account-transfer' ? 'transfer' : action;
+    const targetWin = typeof window !== 'undefined' ? window.open('about:blank', '_blank') : null;
+
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const accountId = meta?.derivAccountId || state.user?.derivAccountId || '';
+    const returnUrl = `${origin}/?action=cashier_completed&type=${normalizedAction}&account=${encodeURIComponent(accountId)}&ts=${Date.now()}`;
+    const appId = (typeof window !== 'undefined' && (localStorage.getItem('deriv_app_id') || localStorage.getItem('deriv_client_id'))) || '1089';
+    const endpoint = action === 'account-transfer' ? 'account-transfer' : action;
+    const fallbackUrl = `https://app.deriv.com/cashier/${endpoint}?app_id=${encodeURIComponent(appId)}&redirect_url=${encodeURIComponent(returnUrl)}&redirect_uri=${encodeURIComponent(returnUrl)}${accountId ? `&account=${encodeURIComponent(accountId)}` : ''}`;
+
+    try {
+      const res = await apiFetch('/api/auth/deriv/cashier-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: normalizedAction,
+          accountId,
+          returnUrl,
+        }),
+      }).catch(() => null);
+
+      if (res && res.ok) {
+        const json = await res.json().catch(() => null);
+        const resolvedUrl = json?.data?.url;
+        if (resolvedUrl) {
+          if (targetWin) targetWin.location.href = resolvedUrl;
+          else window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
+          return;
+        }
+      }
+    } catch {}
+
+    if (targetWin) targetWin.location.href = fallbackUrl;
+    else window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
   };
 
   const handleSwitchAccount = async (targetLoginid: string) => {
@@ -473,6 +512,12 @@ export const AccountView: React.FC = () => {
         <StatusIndicator status={state.connectionStatus} />
       </div>
 
+      {/* Real-time Crypto Portfolio Donut Chart Asset Allocation */}
+      <CryptoPortfolioDonutChart />
+
+      {/* Multi-Asset Crypto & Fiat Local Wallet Monitor with Polling Service */}
+      <CryptoWalletMonitor onLaunchCashier={handleLaunchCashier} />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Left Column: User Profile & Role Switcher */}
         <div className="lg:col-span-1 space-y-4">
@@ -510,29 +555,25 @@ export const AccountView: React.FC = () => {
               <div className="pt-3 border-t border-border-color/60 space-y-1.5">
                 <span className="text-text-secondary block text-[9px] uppercase font-mono font-bold">Cashier & Funding</span>
                 <div className="grid grid-cols-2 gap-2">
-                  <a
-                    href={constructDerivCashierOAuthUrl('deposit')}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-2 rounded-lg bg-[#00a86b] hover:bg-[#00925c] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all"
+                  <button
+                    onClick={() => handleLaunchCashier('deposit')}
+                    className="px-3 py-2 rounded-lg bg-[#00a86b] hover:bg-[#00925c] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
                     title="Direct to Deriv Official Cashier Deposit with return redirect"
                   >
                     <ArrowDownLeft className="w-3.5 h-3.5" />
                     <span>Deposit</span>
                     <ExternalLink className="w-3 h-3 opacity-80" />
-                  </a>
+                  </button>
 
-                  <a
-                    href={constructDerivCashierOAuthUrl('withdrawal')}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-2 rounded-lg bg-[#ff444f] hover:bg-[#e03b44] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all"
+                  <button
+                    onClick={() => handleLaunchCashier('withdrawal')}
+                    className="px-3 py-2 rounded-lg bg-[#ff444f] hover:bg-[#e03b44] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
                     title="Direct to Deriv Official Cashier Withdrawal with return redirect"
                   >
                     <ArrowUpRight className="w-3.5 h-3.5" />
                     <span>Withdrawal</span>
                     <ExternalLink className="w-3 h-3 opacity-80" />
-                  </a>
+                  </button>
                 </div>
               </div>
             </div>
@@ -650,10 +691,8 @@ export const AccountView: React.FC = () => {
                     </div>
 
                     <div className="grid grid-cols-3 gap-2">
-                      <a
-                        href={constructDerivCashierOAuthUrl('deposit')}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => handleLaunchCashier('deposit')}
                         className="p-2.5 rounded-lg bg-[#00a86b]/15 hover:bg-[#00a86b]/25 border border-[#00a86b]/30 text-[#00a86b] font-bold text-xs flex flex-col items-center justify-center space-y-1 transition-all cursor-pointer"
                         title="Deposit via Official Cashier with Return Redirect"
                       >
@@ -662,12 +701,10 @@ export const AccountView: React.FC = () => {
                           <ExternalLink className="w-3 h-3 opacity-70" />
                         </div>
                         <span>Deposit</span>
-                      </a>
+                      </button>
 
-                      <a
-                        href={constructDerivCashierOAuthUrl('withdrawal')}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => handleLaunchCashier('withdrawal')}
                         className="p-2.5 rounded-lg bg-[#ff444f]/15 hover:bg-[#ff444f]/25 border border-[#ff444f]/30 text-[#ff444f] font-bold text-xs flex flex-col items-center justify-center space-y-1 transition-all cursor-pointer"
                         title="Withdrawal via Official Cashier with Return Redirect"
                       >
@@ -676,12 +713,10 @@ export const AccountView: React.FC = () => {
                           <ExternalLink className="w-3 h-3 opacity-70" />
                         </div>
                         <span>Withdrawal</span>
-                      </a>
+                      </button>
 
-                      <a
-                        href={constructDerivCashierOAuthUrl('account-transfer')}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => handleLaunchCashier('account-transfer')}
                         className="p-2.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-400 font-bold text-xs flex flex-col items-center justify-center space-y-1 transition-all cursor-pointer"
                         title="Transfer via Deriv Official Cashier with Return Redirect"
                       >
@@ -690,7 +725,7 @@ export const AccountView: React.FC = () => {
                           <ExternalLink className="w-3 h-3 opacity-70" />
                         </div>
                         <span>Transfer</span>
-                      </a>
+                      </button>
                     </div>
 
                     <div className="flex items-center justify-between pt-1 text-[11px] text-text-secondary">

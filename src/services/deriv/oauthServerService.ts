@@ -3430,3 +3430,234 @@ export async function reconnectUserDerivAsync(
   }
   return syncUserDerivAsync(cleanUserId);
 }
+
+/**
+ * Request an authenticated Cashier URL directly from Deriv Options API via WebSocket or construct
+ * authoritative OAuth Cashier fallback URLs with app_id and return_url.
+ */
+export async function requestDerivCashierUrl(
+  userId: string,
+  action: 'deposit' | 'withdrawal' | 'transfer' | 'p2p' = 'deposit',
+  token?: string,
+  accountId?: string,
+  returnUrl?: string
+): Promise<{
+  success: boolean;
+  url: string;
+  action: string;
+  provider?: string;
+  error?: string;
+}> {
+  const cleanUserId = cleanString(userId);
+  const cleanToken = cleanString(token);
+  const cleanAccountId = cleanString(accountId);
+
+  const appId = (process.env.DERIV_CLIENT_ID || getDerivOAuthConfig().appId || getDerivOAuthConfig().clientId || '1089').trim();
+  const origin = returnUrl || 'https://appex-quant-global-markets.vercel.app';
+  const callbackUrl = `${origin}/?action=cashier_completed&type=${action}&account=${encodeURIComponent(cleanAccountId || cleanUserId)}&ts=${Date.now()}`;
+
+  // Mapping of internal action to Deriv WebSocket cashier API action
+  const derivAction = action === 'withdrawal' ? 'withdraw' : (action === 'transfer' ? 'account_transfer' : action);
+
+  // If we have an active access token, try to request official session cashier URL over Deriv WS
+  const tokenToUse = cleanToken || (cleanUserId ? getDerivConnectionRecord(cleanUserId)?.accessToken : undefined);
+
+  if (tokenToUse && isUsableToken(tokenToUse) && !tokenToUse.startsWith('usr-')) {
+    try {
+      const wsUrl = `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`;
+      const ws = new NodeWebSocket(wsUrl);
+
+      const cashierUrlPromise = new Promise<{ success: boolean; url?: string; error?: string }>((resolve) => {
+        const timer = setTimeout(() => {
+          try { ws.close(); } catch {}
+          resolve({ success: false, error: 'Timeout requesting Deriv WS cashier URL' });
+        }, 5000);
+
+        ws.on('open', () => {
+          ws.send(JSON.stringify({ authorize: tokenToUse, req_id: 1 }));
+        });
+
+        ws.on('message', (data: any) => {
+          try {
+            const parsed = JSON.parse(data.toString());
+            if (parsed.req_id === 1) {
+              if (parsed.error) {
+                clearTimeout(timer);
+                try { ws.close(); } catch {}
+                resolve({ success: false, error: parsed.error.message });
+              } else if (parsed.msg_type === 'authorize') {
+                // Sent authorized cashier request
+                ws.send(JSON.stringify({
+                  cashier: derivAction,
+                  provider: 'doughflow',
+                  verification_code: '',
+                  req_id: 2
+                }));
+              }
+            } else if (parsed.req_id === 2) {
+              clearTimeout(timer);
+              try { ws.close(); } catch {}
+              if (parsed.cashier) {
+                const fetchedUrl = typeof parsed.cashier === 'string' ? parsed.cashier : parsed.cashier?.url;
+                if (fetchedUrl) {
+                  resolve({ success: true, url: fetchedUrl });
+                } else {
+                  resolve({ success: false, error: 'No cashier URL in Deriv response' });
+                }
+              } else if (parsed.error) {
+                resolve({ success: false, error: parsed.error.message });
+              } else {
+                resolve({ success: false, error: 'Failed to retrieve cashier URL' });
+              }
+            }
+          } catch {}
+        });
+
+        ws.on('error', (err: any) => {
+          clearTimeout(timer);
+          try { ws.close(); } catch {}
+          resolve({ success: false, error: err?.message || 'WebSocket connection error' });
+        });
+      });
+
+      const res = await cashierUrlPromise;
+      if (res.success && res.url) {
+        return {
+          success: true,
+          url: res.url,
+          action,
+          provider: 'deriv_ws',
+        };
+      }
+    } catch (wsErr: any) {
+      logger.warn('[DerivCashier] WS request failed, using authoritative OAuth cashier fallback URL', { error: wsErr?.message });
+    }
+  }
+
+  // Authoritative Fallback Cashier URLs with explicit app_id, return_url, and account
+  let fallbackUrl = '';
+  switch (action) {
+    case 'deposit':
+      fallbackUrl = `https://app.deriv.com/cashier/deposit?app_id=${encodeURIComponent(appId)}&redirect_url=${encodeURIComponent(callbackUrl)}&redirect_uri=${encodeURIComponent(callbackUrl)}`;
+      break;
+    case 'withdrawal':
+      fallbackUrl = `https://app.deriv.com/cashier/withdrawal?app_id=${encodeURIComponent(appId)}&redirect_url=${encodeURIComponent(callbackUrl)}&redirect_uri=${encodeURIComponent(callbackUrl)}`;
+      break;
+    case 'transfer':
+      fallbackUrl = `https://app.deriv.com/cashier/account-transfer?app_id=${encodeURIComponent(appId)}&redirect_url=${encodeURIComponent(callbackUrl)}&redirect_uri=${encodeURIComponent(callbackUrl)}`;
+      break;
+    case 'p2p':
+      fallbackUrl = `https://app.deriv.com/cashier/p2p?app_id=${encodeURIComponent(appId)}&redirect_url=${encodeURIComponent(callbackUrl)}&redirect_uri=${encodeURIComponent(callbackUrl)}`;
+      break;
+    default:
+      fallbackUrl = `https://app.deriv.com/cashier/deposit?app_id=${encodeURIComponent(appId)}&redirect_url=${encodeURIComponent(callbackUrl)}&redirect_uri=${encodeURIComponent(callbackUrl)}`;
+  }
+
+  if (cleanAccountId) {
+    fallbackUrl += `&account=${encodeURIComponent(cleanAccountId)}`;
+  }
+
+  return {
+    success: true,
+    url: fallbackUrl,
+    action,
+    provider: 'deriv_app_fallback',
+  };
+}
+
+export interface WalletItem {
+  id: string;
+  currency: string;
+  symbol: string;
+  name: string;
+  loginid: string;
+  balance: number;
+  usdValue: number;
+  accountType: 'real' | 'demo' | 'crypto';
+  icon: string;
+  isVirtual: boolean;
+  lastUpdated: string;
+}
+
+/**
+ * Retrieves multi-asset wallet balances (USD, USDT, BTC, ETH, SOL) for local monitoring.
+ */
+export async function getUserWalletsAsync(userId: string): Promise<{
+  success: boolean;
+  wallets: WalletItem[];
+  totalUsdValue: number;
+  lastSyncedAt: string;
+}> {
+  const cleanUserId = cleanString(userId);
+  const meta = cleanUserId ? await getUserDerivConnectionAsync(cleanUserId) : null;
+  const record = cleanUserId ? getDerivConnectionRecord(cleanUserId) : null;
+  const accountList = record?.accountList || [];
+
+  const now = new Date().toISOString();
+
+  // Base supported assets in Deriv wallet suite with current valuation benchmarks
+  const supportedCurrencies = [
+    { currency: 'USD', name: 'USD Options Wallet', symbol: '$', icon: '💲', defaultBalance: meta?.balance || 0, usdRate: 1 },
+    { currency: 'USDT', name: 'Tether (USDT) Crypto Wallet', symbol: '₮', icon: '₮', defaultBalance: 0, usdRate: 1 },
+    { currency: 'BTC', name: 'Bitcoin (BTC) Crypto Wallet', symbol: '₿', icon: '₿', defaultBalance: 0, usdRate: 92450 },
+    { currency: 'ETH', name: 'Ethereum (ETH) Crypto Wallet', symbol: 'Ξ', icon: 'Ξ', defaultBalance: 0, usdRate: 3450 },
+    { currency: 'SOL', name: 'Solana (SOL) Crypto Wallet', symbol: '◎', icon: '◎', defaultBalance: 0, usdRate: 185 },
+  ];
+
+  const walletMap = new Map<string, WalletItem>();
+
+  for (const c of supportedCurrencies) {
+    const isPrimaryCurrency = c.currency === (meta?.currency || 'USD');
+    const bal = isPrimaryCurrency && typeof meta?.balance === 'number' ? meta.balance : c.defaultBalance;
+    walletMap.set(c.currency, {
+      id: `wallet-${c.currency.toLowerCase()}`,
+      currency: c.currency,
+      symbol: c.symbol,
+      name: c.name,
+      loginid: meta?.derivAccountId || cleanUserId || 'GUEST',
+      balance: bal,
+      usdValue: bal * c.usdRate,
+      accountType: meta?.accountType === 'demo' ? 'demo' : 'real',
+      icon: c.icon,
+      isVirtual: meta?.accountType === 'demo',
+      lastUpdated: now,
+    });
+  }
+
+  if (accountList.length > 0) {
+    for (const acc of accountList) {
+      if (!acc.currency) continue;
+      const cur = acc.currency.toUpperCase();
+      const isPrimary = acc.loginid === meta?.derivAccountId;
+
+      if (isPrimary && typeof meta?.balance === 'number') {
+        const rate = cur === 'BTC' ? 92450 : (cur === 'ETH' ? 3450 : (cur === 'SOL' ? 185 : 1));
+        walletMap.set(cur, {
+          id: `wallet-${acc.loginid}`,
+          currency: cur,
+          symbol: cur === 'USDT' ? '₮' : (cur === 'BTC' ? '₿' : (cur === 'ETH' ? 'Ξ' : (cur === 'SOL' ? '◎' : '$'))),
+          name: `${cur} Trading Wallet`,
+          loginid: acc.loginid,
+          balance: meta.balance,
+          usdValue: meta.balance * rate,
+          accountType: acc.is_virtual ? 'demo' : 'real',
+          icon: cur === 'USDT' ? '₮' : (cur === 'BTC' ? '₿' : (cur === 'ETH' ? 'Ξ' : (cur === 'SOL' ? '◎' : '💲'))),
+          isVirtual: Boolean(acc.is_virtual),
+          lastUpdated: now,
+        });
+      }
+    }
+  }
+
+  const wallets = Array.from(walletMap.values());
+  const totalUsdValue = wallets.reduce((acc, w) => acc + w.usdValue, 0);
+
+  return {
+    success: true,
+    wallets,
+    totalUsdValue,
+    lastSyncedAt: now,
+  };
+}
+
+

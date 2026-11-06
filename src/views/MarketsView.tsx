@@ -1,6 +1,7 @@
 /**
  * AppexQuant Markets Global - Phase 2 Live Market Analysis Workspace
  * Integrates Deriv live WebSocket tick streaming, active symbols discovery, and interactive charting.
+ * Enhanced with expandable market detail views, sparkline visuals, bid/ask spread stats, and place trade execution.
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -8,21 +9,16 @@ import { MarketIntelligencePanel } from '../components/market/MarketIntelligence
 import { useMarketData } from '../state/MarketDataContext.tsx';
 import { InteractiveCandleChart } from '../components/chart/InteractiveCandleChart.tsx';
 import { DerivTradeTicket } from '../components/trading/DerivTradeTicket.tsx';
-import { CashierModal } from '../components/cashier/CashierModal.tsx';
+import { MarketDetailRow } from '../components/market/MarketDetailRow.tsx';
 import { InstrumentCategory } from '../types/market.ts';
 import {
   Search,
   Star,
   BarChart2,
-  TrendingUp,
-  TrendingDown,
   RefreshCw,
-  ShieldAlert,
-  Info,
-  Sliders,
-  ExternalLink,
-  Layers,
-  Zap,
+  SlidersHorizontal,
+  X,
+  Filter,
 } from 'lucide-react';
 
 export const MarketsView: React.FC = () => {
@@ -53,6 +49,7 @@ export const MarketsView: React.FC = () => {
   // Mobile View Tab state
   const [mobileTab, setMobileTab] = useState<'LIST' | 'CHART' | 'DETAILS'>('CHART');
   const [activeListTab, setActiveListTab] = useState<'ALL' | 'WATCHLIST'>('ALL');
+  const [sortOption, setSortOption] = useState<'DEFAULT' | 'CHANGE_DESC' | 'CHANGE_ASC' | 'NAME_ASC' | 'SPREAD_ASC'>('DEFAULT');
 
   const categories: Array<{ id: InstrumentCategory | 'ALL'; label: string }> = [
     { id: 'ALL', label: 'All Markets' },
@@ -71,9 +68,18 @@ export const MarketsView: React.FC = () => {
     }
   }, [selectedSymbol, selectedTimeframe, fetchCandles, fetchContractsFor]);
 
-  // Filter instruments by category, list tab, and search query
+  // Compute category instrument count lookup
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { ALL: instruments.length };
+    instruments.forEach((inst) => {
+      counts[inst.category] = (counts[inst.category] || 0) + 1;
+    });
+    return counts;
+  }, [instruments]);
+
+  // Filter instruments by category, list tab, and search query, with sort applied
   const filteredInstruments = useMemo(() => {
-    return instruments.filter((i) => {
+    let result = instruments.filter((i) => {
       // List tab filter
       if (activeListTab === 'WATCHLIST' && !watchlist.includes(i.symbol)) {
         return false;
@@ -82,7 +88,7 @@ export const MarketsView: React.FC = () => {
       if (selectedCategory !== 'ALL' && i.category !== selectedCategory) {
         return false;
       }
-      // Search query
+      // Search query filter
       if (searchQuery.trim() !== '') {
         const q = searchQuery.toLowerCase();
         return (
@@ -93,11 +99,32 @@ export const MarketsView: React.FC = () => {
       }
       return true;
     });
-  }, [instruments, selectedCategory, activeListTab, watchlist, searchQuery]);
+
+    // Apply sorting
+    if (sortOption !== 'DEFAULT') {
+      result = [...result].sort((a, b) => {
+        const tickA = ticks[a.symbol];
+        const tickB = ticks[b.symbol];
+
+        const pctA = tickA ? tickA.changePct : a.change24hPercentage;
+        const pctB = tickB ? tickB.changePct : b.change24hPercentage;
+
+        const spreadA = tickA && tickA.ask && tickA.bid ? tickA.ask - tickA.bid : a.spread || 0.0001;
+        const spreadB = tickB && tickB.ask && tickB.bid ? tickB.ask - tickB.bid : b.spread || 0.0001;
+
+        if (sortOption === 'CHANGE_DESC') return pctB - pctA;
+        if (sortOption === 'CHANGE_ASC') return pctA - pctB;
+        if (sortOption === 'SPREAD_ASC') return spreadA - spreadB;
+        if (sortOption === 'NAME_ASC') return a.name.localeCompare(b.name);
+        return 0;
+      });
+    }
+
+    return result;
+  }, [instruments, selectedCategory, activeListTab, watchlist, searchQuery, sortOption, ticks]);
 
   const activeCandles = useMemo(() => candles[`${selectedSymbol}_${selectedTimeframe}`] || [], [candles, selectedSymbol, selectedTimeframe]);
   const currentTick = ticks[selectedSymbol];
-  const activeContracts = contracts[selectedSymbol] || [];
 
   return (
     <div className="space-y-4 max-w-[1600px] mx-auto flex flex-col flex-1 w-full max-w-full overflow-x-hidden min-w-0">
@@ -145,17 +172,42 @@ export const MarketsView: React.FC = () => {
           </div>
         </div>
 
-        {/* Right: Search Bar & Connection Actions */}
-        <div className="flex items-center space-x-2 w-full lg:w-auto">
-          <div className="relative w-full lg:w-64">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-text-secondary dark:text-text-secondary" />
+        {/* Right: Search Bar, Sort & Connection Actions */}
+        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+          {/* Search Input with Clear Button */}
+          <div className="relative w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-text-secondary" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search symbol (e.g. EURUSD, R_100)..."
-              className="w-full h-8 bg-bg-main border border-border-color dark:border-[#2B3139] focus:border-accent-primary text-xs text-text-primary pl-8 pr-2.5 py-1.5 rounded-[4px] outline-none transition-colors"
+              className="w-full h-8 bg-bg-main border border-border-color dark:border-[#2B3139] focus:border-accent-primary text-xs text-text-primary pl-8 pr-7 py-1.5 rounded-[4px] outline-none transition-colors"
             />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-2 text-text-secondary hover:text-text-primary"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Sort Selector Dropdown */}
+          <div className="flex items-center space-x-1.5 bg-bg-main border border-border-color dark:border-[#2B3139] px-2 h-8 rounded-[4px]">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-text-secondary shrink-0" />
+            <select
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value as any)}
+              className="bg-transparent text-xs font-mono font-bold text-text-primary outline-none cursor-pointer"
+            >
+              <option value="DEFAULT">Sort: Default</option>
+              <option value="CHANGE_DESC">24h Gainers</option>
+              <option value="CHANGE_ASC">24h Losers</option>
+              <option value="SPREAD_ASC">Tightest Spread</option>
+              <option value="NAME_ASC">Symbol (A-Z)</option>
+            </select>
           </div>
 
           <button
@@ -163,27 +215,38 @@ export const MarketsView: React.FC = () => {
             className="p-2 bg-bg-main border border-border-color hover:bg-bg-secondary dark:border-[#2B3139] dark:hover:bg-[#2B3139] text-text-secondary hover:text-text-primary dark:hover:text-text-primary rounded-[4px] transition-colors cursor-pointer shrink-0"
             title="Reconnect Deriv Stream"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${connectionState === 'CONNECTING' ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${connectionState === 'CONNECTING' || connectionState === 'RECONNECTING' ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
 
-      {/* Category Tabs Filter Bar */}
+      {/* Category Tabs Filter Bar with Count Badges */}
       <div className="w-full overflow-x-auto scrollbar-none pb-1">
         <div className="flex items-center space-x-1.5 min-w-max">
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setSelectedCategory(cat.id)}
-              className={`px-3 py-1.5 rounded-[4px] text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
-                selectedCategory === cat.id
-                  ? 'bg-[#F0B90B] text-text-primary dark:bg-accent-primary dark:text-bg-secondary'
-                  : 'bg-bg-surface text-text-secondary border border-border-color dark:border-[#2B3139] hover:text-text-primary dark:hover:text-text-primary'
-              }`}
-            >
-              {cat.label}
-            </button>
-          ))}
+          <Filter className="w-3.5 h-3.5 text-text-secondary shrink-0 ml-1" />
+          {categories.map((cat) => {
+            const count = categoryCounts[cat.id] || 0;
+            const isSelected = selectedCategory === cat.id;
+
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`px-3 py-1.5 rounded-[4px] text-xs font-bold whitespace-nowrap transition-colors cursor-pointer flex items-center space-x-1.5 ${
+                  isSelected
+                    ? 'bg-[#F0B90B] text-text-primary dark:bg-accent-primary dark:text-bg-secondary'
+                    : 'bg-bg-surface text-text-secondary border border-border-color dark:border-[#2B3139] hover:text-text-primary'
+                }`}
+              >
+                <span>{cat.label}</span>
+                <span className={`px-1.5 py-0.2 text-[9px] font-mono rounded-full ${
+                  isSelected ? 'bg-black/20 text-text-primary dark:text-bg-secondary font-extrabold' : 'bg-bg-secondary text-text-secondary'
+                }`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -217,9 +280,9 @@ export const MarketsView: React.FC = () => {
 
       {/* Main 3-Column Workspace Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 items-start">
-        {/* Left Column: Watchlist & Instrument Selector (4 Cols on LG) */}
+        {/* Left Column: Watchlist & Expandable Instrument List (4 Cols on LG) */}
         <div
-          className={`lg:col-span-3 space-y-3 bg-bg-surface border border-border-color dark:border-[#2B3139] p-3 rounded-[4px] h-[650px] flex flex-col ${
+          className={`lg:col-span-4 space-y-3 bg-bg-surface border border-border-color dark:border-[#2B3139] p-3 rounded-[4px] h-[680px] flex flex-col ${
             mobileTab !== 'LIST' ? 'hidden lg:flex' : 'flex'
           }`}
         >
@@ -248,92 +311,47 @@ export const MarketsView: React.FC = () => {
                 <span>Favorites ({watchlist.length})</span>
               </button>
             </div>
+            <span className="text-[10px] text-text-secondary font-mono font-bold">
+              {filteredInstruments.length} Listed
+            </span>
           </div>
 
-          {/* Instrument List Scrollable Container */}
+          {/* Instrument List Scrollable Container with Expandable MarketDetailRow items */}
           <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
             {isLoadingSymbols ? (
-              <div className="py-12 text-center text-xs text-text-secondary dark:text-text-secondary">
+              <div className="py-12 text-center text-xs text-text-secondary">
                 Loading active Deriv symbol universe...
               </div>
             ) : filteredInstruments.length === 0 ? (
-              <div className="py-12 text-center text-xs text-text-secondary dark:text-text-secondary">
-                No matching instruments found.
+              <div className="py-12 text-center text-xs text-text-secondary">
+                No matching instruments found for query.
               </div>
             ) : (
               filteredInstruments.map((inst) => {
                 const isSelected = inst.symbol === selectedSymbol;
                 const isFav = watchlist.includes(inst.symbol);
-                const tick = ticks[inst.symbol];
-
-                const bid = tick ? tick.bid : inst.bid;
-                const ask = tick ? tick.ask : inst.ask;
-                const pct = tick ? tick.changePct : inst.change24hPercentage;
 
                 return (
-                  <div
+                  <MarketDetailRow
                     key={inst.symbol}
-                    onClick={() => {
+                    instrument={inst}
+                    isSelected={isSelected}
+                    isFav={isFav}
+                    onSelect={() => {
                       setSelectedSymbol(inst.symbol);
                       setMobileTab('CHART');
                     }}
-                    className={`p-2 rounded-[2px] border transition-all cursor-pointer flex items-center justify-between ${
-                      isSelected
-                        ? 'bg-accent-primary/10 border-accent-primary dark:bg-accent-primary/10 dark:border-accent-primary'
-                        : 'bg-bg-main dark:bg-[#0B0E11]/40 border-border-color dark:border-[#2B3139] hover:border-accent-primary/30'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleWatchlist(inst.symbol);
-                        }}
-                        className="p-0.5 text-text-muted dark:text-[#474F59] hover:text-color-warning cursor-pointer"
-                      >
-                        <Star
-                          className={`w-3.5 h-3.5 ${
-                            isFav ? 'text-color-warning fill-[#F0B90B]' : ''
-                          }`}
-                        />
-                      </button>
-                      <div>
-                        <div className="font-bold text-xs text-text-primary flex items-center space-x-1.5">
-                          <span>{inst.name}</span>
-                        </div>
-                        <div className="text-[10px] text-text-secondary font-mono">
-                          {inst.symbol}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <div className="text-xs font-mono font-bold text-text-primary dark:text-text-primary">
-                        {bid > 0 ? bid.toFixed(bid > 100 ? 2 : 5) : '...'}
-                      </div>
-                      <div
-                        className={`text-[10px] font-mono font-semibold flex items-center justify-end space-x-0.5 ${
-                          pct >= 0 ? 'text-emerald-600 dark:text-[#22C55E]' : 'text-rose-600 dark:text-[#EF4444]'
-                        }`}
-                      >
-                        {pct >= 0 ? (
-                          <TrendingUp className="w-3 h-3" />
-                        ) : (
-                          <TrendingDown className="w-3 h-3" />
-                        )}
-                        <span>{pct >= 0 ? '+' : ''}{pct.toFixed(2)}%</span>
-                      </div>
-                    </div>
-                  </div>
+                    onToggleWatchlist={() => toggleWatchlist(inst.symbol)}
+                  />
                 );
               })
             )}
           </div>
         </div>
 
-        {/* Center Column: Selected Symbol Header & Interactive Chart (6 Cols on LG) */}
+        {/* Center Column: Selected Symbol Header & Interactive Chart (5 Cols on LG) */}
         <div
-          className={`lg:col-span-6 space-y-3 ${
+          className={`lg:col-span-5 space-y-3 ${
             mobileTab !== 'CHART' ? 'hidden lg:block' : 'block'
           }`}
         >
@@ -418,7 +436,7 @@ export const MarketsView: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column: Instrument Details & Safety Action Box (3 Cols on LG) */}
+        {/* Right Column: Instrument Details & Intelligence Panel (3 Cols on LG) */}
         <div
           className={`lg:col-span-3 space-y-3 ${
             mobileTab !== 'DETAILS' ? 'hidden lg:block' : 'block'

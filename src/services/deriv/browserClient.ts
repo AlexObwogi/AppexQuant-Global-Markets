@@ -232,9 +232,16 @@ export class DerivBrowserClient {
   private scheduleReconnect(): void {
     if (this.reconnectTimer || this.isExplicitClose) return;
 
+    // Pause reconnect attempts if device is offline
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      console.warn('[DerivBrowserClient] Device is offline. Deferring WebSocket reconnect until network returns.');
+      this.setConnectionState('DISCONNECTED');
+      return;
+    }
+
     // Exponential backoff between 1s and 30s with jitter
-    const baseDelay = Math.min(30000, 1000 * Math.pow(1.5, this.reconnectAttempts));
-    const jitter = Math.random() * 1000;
+    const baseDelay = Math.min(30000, 1000 * Math.pow(1.6, this.reconnectAttempts));
+    const jitter = Math.random() * 1200;
     const delay = Math.round(baseDelay + jitter);
 
     this.reconnectAttempts++;
@@ -244,6 +251,21 @@ export class DerivBrowserClient {
       this.reconnectTimer = null;
       this.connect();
     }, delay);
+  }
+
+  public forceReconnect(): void {
+    this.reconnectAttempts = 0;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch {}
+      this.ws = null;
+    }
+    this.connect();
   }
 
   private startPing(): void {
@@ -267,7 +289,21 @@ export class DerivBrowserClient {
   }
 
   private setupVisibilityListeners(): void {
-    if (typeof document === 'undefined') return;
+    if (typeof window === 'undefined') return;
+
+    // Auto-reconnect immediately on network restoration
+    window.addEventListener('online', () => {
+      console.log('[DerivBrowserClient] Network online restored. Reconnecting socket immediately...');
+      this.reconnectAttempts = 0;
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        this.connect();
+      }
+    });
+
+    window.addEventListener('offline', () => {
+      console.warn('[DerivBrowserClient] Network dropped (offline event).');
+      this.setConnectionState('DISCONNECTED');
+    });
 
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
@@ -286,6 +322,7 @@ export class DerivBrowserClient {
           this.hiddenTabTimer = null;
         }
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+          this.reconnectAttempts = 0;
           this.connect();
         }
       }

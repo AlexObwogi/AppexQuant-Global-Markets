@@ -70,6 +70,14 @@ export interface MarketDataContextType {
   unsubscribeSymbol: (symbol: string, callback?: (tick: NormalizedTick) => void) => void;
   reconnect: () => void;
   refreshSymbols: () => Promise<void>;
+  placeTrade: (params: {
+    symbol: string;
+    contractType?: string;
+    amount: number;
+    duration?: number;
+    durationUnit?: 't' | 's' | 'm' | 'h' | 'd';
+    basis?: 'stake' | 'payout';
+  }) => Promise<any>;
 }
 
 const WATCHLIST_STORAGE_KEY = 'apx_watchlist_v1';
@@ -606,8 +614,57 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
   }, [contracts]);
 
   const reconnect = useCallback(() => {
-    derivBrowserClient.connect();
-  }, []);
+    derivBrowserClient.forceReconnect();
+    refreshSymbols();
+  }, [refreshSymbols]);
+
+  const placeTrade = useCallback(async (params: {
+    symbol: string;
+    contractType?: string;
+    amount: number;
+    duration?: number;
+    durationUnit?: 't' | 's' | 'm' | 'h' | 'd';
+    basis?: 'stake' | 'payout';
+  }) => {
+    const symbol = params.symbol;
+    const contractType = params.contractType || 'CALL';
+    const amount = params.amount || 10;
+    const duration = params.duration || 5;
+    const durationUnit = params.durationUnit || 't';
+    const basis = params.basis || 'stake';
+    const curr = currency || 'USD';
+
+    // 1. Ensure trading socket connection if active user session is present
+    const accountId = loginid || derivTradingClient.getCurrentAccountId() || (typeof window !== 'undefined' ? localStorage.getItem('deriv_account_id') : null);
+    if (accountId && !derivTradingClient.isConnected()) {
+      await derivTradingClient.connect(accountId);
+    }
+
+    // 2. Request live contract proposal via WebSocket
+    const proposal = await derivTradingClient.requestProposal({
+      symbol,
+      contract_type: contractType,
+      currency: curr,
+      amount,
+      basis,
+      duration,
+      duration_unit: durationUnit,
+    });
+
+    if (!proposal || !proposal.id) {
+      throw new Error('No valid contract proposal returned by Deriv WebSocket.');
+    }
+
+    // 3. Trigger WebSocket buy order request
+    const buyResult = await derivTradingClient.buy(
+      proposal.id,
+      proposal.ask_price || amount,
+      symbol,
+      contractType
+    );
+
+    return buyResult;
+  }, [currency, loginid]);
 
   const value = useMemo(() => ({
     instruments: liveInstruments,
@@ -650,6 +707,7 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     unsubscribeSymbol,
     reconnect,
     refreshSymbols,
+    placeTrade,
   }), [
     liveInstruments,
     availableSymbols,
@@ -689,6 +747,7 @@ export const MarketDataProvider: React.FC<{ children: ReactNode }> = ({ children
     unsubscribeSymbol,
     reconnect,
     refreshSymbols,
+    placeTrade,
   ]);
 
   return (

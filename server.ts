@@ -136,12 +136,24 @@ const isSafePath = (p?: string): boolean => !!p && /^\/(?![\/\\])/.test(p);
 const escapeHtml = (s: string): string => String(s || '').replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c));
 
+function resolvePort(): number {
+  const portIndex = process.argv.indexOf('--port');
+  if (portIndex !== -1 && process.argv[portIndex + 1]) {
+    const parsed = Number(process.argv[portIndex + 1]);
+    if (parsed > 0) return parsed;
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    return 3000;
+  }
+  return Number(process.env.PORT) || 3000;
+}
+
 export async function createApp() {
   const app = express();
   // Trust proxy: Enable accurate client IP resolution behind Vercel / Cloudflare edge proxies
   app.set('trust proxy', 1);
   const config = loadAppConfig();
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = resolvePort();
 
   // Run Cryptographic File Integrity Monitor (FIM) check
   fimMonitor.verifyIntegrity();
@@ -3149,7 +3161,7 @@ process.on('uncaughtException', (err: Error) => {
 });
 
 export async function startServer() {
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = resolvePort();
   const app = await createApp();
   const server = http.createServer(app);
 

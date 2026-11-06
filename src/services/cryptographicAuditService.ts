@@ -159,6 +159,7 @@ export async function generateTradeExecutionCertificate(
     verificationUrl: `/api/v1/audit/${certificateId}`,
     isVerified: true,
     tamperDetected: false,
+    status: 'COMPLETED',
     metadata: {
       symbol: trade.symbol,
       pnl: trade.pnl,
@@ -201,6 +202,7 @@ export async function generateChallengePassCertificate(
     verificationUrl: `/api/v1/audit/${certificateId}`,
     isVerified: true,
     tamperDetected: false,
+    status: 'COMPLETED',
     metadata: {
       traderId: challenge.traderId,
       phase: challenge.phase,
@@ -243,6 +245,7 @@ export async function generateSignalOutcomeCertificate(
     verificationUrl: `/api/v1/audit/${certificateId}`,
     isVerified: true,
     tamperDetected: false,
+    status: 'COMPLETED',
     metadata: {
       symbol: signal.symbol,
       pnl: signal.realizedPnl,
@@ -303,6 +306,7 @@ export async function verifyCertificate(
       ...cert,
       tamperDetected: !valid,
       isVerified: valid,
+      status: valid ? (cert.status || 'COMPLETED') : 'FAILED',
     },
   };
 }
@@ -317,7 +321,7 @@ export function getAllCertificates(): ProofOfExecutionCertificate[] {
 
 // Seed initial verifiable certificates for live audit exploration
 (async function seedCertificates() {
-  await generateTradeExecutionCertificate({
+  const c1 = await generateTradeExecutionCertificate({
     tradeId: 'TRD-998241',
     orderId: 'ORD-7712-DERIV',
     symbol: 'R_100',
@@ -334,8 +338,27 @@ export function getAllCertificates(): ProofOfExecutionCertificate[] {
     slippagePips: 0.1,
     brokerTicket: 'TK-8891238',
   });
+  c1.status = 'COMPLETED';
 
-  await generateChallengePassCertificate({
+  const c2 = await generateTradeExecutionCertificate({
+    tradeId: 'TRD-998305',
+    orderId: 'ORD-7718-DERIV',
+    symbol: 'frxEURUSD',
+    action: 'BUY',
+    volume: 1.0,
+    entryPrice: 1.0850,
+    closePrice: 1.0850,
+    pnl: 0,
+    openTimestamp: new Date(Date.now() - 60000 * 3).toISOString(),
+    closeTimestamp: new Date(Date.now()).toISOString(),
+    followerAccountId: 'ACC-CR-90812',
+    executionLatencyMs: 18,
+    slippagePips: 0,
+    brokerTicket: 'TK-8891402',
+  });
+  c2.status = 'PENDING';
+
+  const c3 = await generateChallengePassCertificate({
     challengeId: 'PROP-EVAL-55012',
     accountId: 'ACC-PROP-10K-09',
     traderId: 'USR-ALEX-728',
@@ -348,8 +371,9 @@ export function getAllCertificates(): ProofOfExecutionCertificate[] {
     rulesCompliant: true,
     passedTimestamp: new Date(Date.now() - 86400000).toISOString(),
   });
+  c3.status = 'COMPLETED';
 
-  await generateSignalOutcomeCertificate({
+  const c4 = await generateSignalOutcomeCertificate({
     signalId: 'SIG-VOL75-004',
     modelIdentifier: 'AppexQuant-VolPulse-v4.1',
     symbol: '1HZ75V',
@@ -364,4 +388,25 @@ export function getAllCertificates(): ProofOfExecutionCertificate[] {
     generatedTimestamp: new Date(Date.now() - 86400000 * 2).toISOString(),
     settledTimestamp: new Date(Date.now() - 86400000 * 2 + 7200000).toISOString(),
   });
+  c4.status = 'COMPLETED';
+
+  const c5 = await generateTradeExecutionCertificate({
+    tradeId: 'TRD-997102',
+    orderId: 'ORD-7601-ERR',
+    symbol: 'cryBTCUSD',
+    action: 'SELL',
+    volume: 0.1,
+    entryPrice: 68500,
+    closePrice: 68500,
+    pnl: -25.0,
+    openTimestamp: new Date(Date.now() - 86400000 * 3).toISOString(),
+    closeTimestamp: new Date(Date.now() - 86400000 * 3 + 1000).toISOString(),
+    followerAccountId: 'ACC-CR-90812',
+    executionLatencyMs: 850,
+    slippagePips: 12.4,
+    brokerTicket: 'TK-8889912',
+  });
+  c5.status = 'FAILED';
+  c5.tamperDetected = true;
+  c5.isVerified = false;
 })();

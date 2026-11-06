@@ -67,6 +67,7 @@ export interface ProofOfExecutionCertificate {
   verificationUrl: string;
   isVerified: boolean;
   tamperDetected: boolean;
+  status?: 'COMPLETED' | 'PENDING' | 'FAILED';
   metadata: {
     symbol?: string;
     pnl?: number;

@@ -119,6 +119,10 @@ import {
   requestDerivAccountOtp,
   requestDerivCashierUrl,
   getUserWalletsAsync,
+  getUserTransactionsAsync,
+  getUserWalletsSummaryAsync,
+  getWalletExchangeRateAsync,
+  executeWalletTransferAsync,
 } from './src/services/deriv/oauthServerService.ts';
 import { getDerivOAuthClientId } from './src/services/oauthService.ts';
 import { isValidDerivAccountId } from './src/services/deriv/syncStateMachine.ts';
@@ -1837,6 +1841,87 @@ export async function createApp() {
     }
   });
 
+  // Task 3.1: GET /api/wallet/summary
+  app.get('/api/wallet/summary', async (req: Request, res: Response) => {
+    try {
+      const s = req.sessionUser;
+      const userId = s?.derivAccountId || s?.userId || 'GUEST_USER';
+      const authHeader = req.headers.authorization;
+      const tokenFromHeader = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+      const result = await getUserWalletsSummaryAsync(userId, tokenFromHeader);
+      res.status(result.statusCode).json(result.statusCode === 200 ? createSuccessResponse(result.data) : createErrorResponse(result.error || 'Failed to fetch wallet summary', result.code || 'WALLET_SUMMARY_ERROR'));
+    } catch (err: any) {
+      logger.error('Wallet summary endpoint error', { message: err?.message });
+      res.status(500).json(createErrorResponse('Internal error fetching wallet summary', 'SERVER_ERROR'));
+    }
+  });
+
+  // Task 4.1: GET /api/wallet/exchange-rate
+  app.get('/api/wallet/exchange-rate', async (req: Request, res: Response) => {
+    try {
+      const s = req.sessionUser;
+      const userId = s?.derivAccountId || s?.userId || 'GUEST_USER';
+      const fromCurrency = String(req.query.from || req.query.from_currency || 'USD');
+      const toCurrency = String(req.query.to || req.query.to_currency || 'USD');
+      const authHeader = req.headers.authorization;
+      const tokenFromHeader = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+      const result = await getWalletExchangeRateAsync(userId, fromCurrency, toCurrency, tokenFromHeader);
+      if (result.success) {
+        res.json(createSuccessResponse({ exchangeRate: result.exchangeRate, rateToken: result.rateToken }));
+      } else {
+        res.status(400).json(createErrorResponse(result.error || 'Failed to fetch exchange rate', 'EXCHANGE_RATE_ERROR'));
+      }
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Internal error fetching exchange rate', 'SERVER_ERROR'));
+    }
+  });
+
+  // Task 4.2: POST /api/wallet/transfer
+  app.post('/api/wallet/transfer', async (req: Request, res: Response) => {
+    try {
+      const s = req.sessionUser;
+      const userId = s?.derivAccountId || s?.userId || 'GUEST_USER';
+      const { fromId, toId, amount, requestId, fromCurrency, toCurrency, exchangeRate, rateToken } = req.body || {};
+      const authHeader = req.headers.authorization;
+      const tokenFromHeader = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+      const result = await executeWalletTransferAsync({
+        userId,
+        token: tokenFromHeader,
+        fromId,
+        toId,
+        amount,
+        requestId,
+        fromCurrency,
+        toCurrency,
+        exchangeRate,
+        rateToken,
+      });
+      if (result.success) {
+        res.json(createSuccessResponse({ transferId: result.transferId }));
+      } else {
+        res.status(result.statusCode || 400).json(createErrorResponse(result.error || 'Transfer failed', result.code || 'TRANSFER_ERROR'));
+      }
+    } catch (err: any) {
+      res.status(500).json(createErrorResponse('Internal error executing transfer', 'SERVER_ERROR'));
+    }
+  });
+
+  // Historical Cashier Transactions Endpoint (Deposits, Withdrawals, Transfers)
+  app.all(['/api/auth/deriv/statement', '/api/deriv/statement', '/api/auth/deriv/transactions'], async (req: Request, res: Response) => {
+    try {
+      const s = req.sessionUser;
+      const userId = s?.derivAccountId || s?.userId || 'GUEST_USER';
+      const limit = Number(req.query.limit || req.body?.limit) || 50;
+      const actionFilter = String(req.query.action || req.query.type || req.body?.action || 'all');
+
+      const txData = await getUserTransactionsAsync(userId, limit, actionFilter);
+      res.json(createSuccessResponse(txData));
+    } catch (err: any) {
+      logger.error('Deriv transactions query error', { message: err?.message || 'Unknown error' });
+      res.status(500).json(createErrorResponse(err?.message || 'Failed to fetch historical transactions', 'TRANSACTION_FETCH_ERROR'));
+    }
+  });
+
   // Best-effort Trade Audit Logging endpoint (Session required)
   app.post('/api/trade/audit', async (req: Request, res: Response) => {
     try {
@@ -1899,7 +1984,7 @@ export async function createApp() {
       const scopes = connectionRecord?.scopes || [];
       if (!scopes.includes('account_manage') && !scopes.includes('admin')) {
         return res.status(403).json(createErrorResponse(
-          'Open a demo account on Deriv, then log in again.',
+          'Reconnect to Deriv to enable demo accounts',
           'INSUFFICIENT_SCOPE_FOR_DEMO'
         ));
       }

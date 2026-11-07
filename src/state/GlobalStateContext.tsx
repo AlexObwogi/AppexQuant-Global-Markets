@@ -247,7 +247,7 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
 
       const p = action.payload;
       const primaryAccountId = p.loginid || p.id;
-      const isDemo = p.accountType === 'demo' || primaryAccountId.startsWith('VR');
+      const isDemo = p.accountType === 'demo';
       const currency = p.currency || p.preferences?.currency || 'USD';
       const balanceNum = typeof p.balance === 'number' ? p.balance : 0;
 
@@ -258,7 +258,7 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
 
       const updatedAccounts: TradingAccount[] = accountItems.map((item: any) => {
         const itemLoginid = item.loginid || primaryAccountId;
-        const itemIsDemo = item.is_virtual === 1 || item.account_type === 'demo' || itemLoginid.startsWith('VR');
+        const itemIsDemo = item.is_virtual === 1 || item.is_virtual === true || item.account_type === 'demo';
         const itemCurrency = item.currency || currency;
         const isPrimary = itemLoginid === primaryAccountId;
         const itemBalance = isPrimary ? balanceNum : 0;
@@ -288,8 +288,21 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
         };
       });
 
-      const currentTargetType = state.executionEnvironment === 'LIVE' ? 'REAL' : 'DEMO';
-      const matchedAcc = updatedAccounts.find((a) => a.type === currentTargetType) || updatedAccounts.find((a) => a.id === `acc-${primaryAccountId}`) || updatedAccounts[0];
+      const matchedAcc = updatedAccounts.find((a) => a.accountNumber === primaryAccountId) || updatedAccounts[0];
+
+      if (matchedAcc) {
+        const sessionType = matchedAcc.type === 'REAL' ? 'real' : 'demo';
+        const accountListTypes = updatedAccounts.map((a) => ({
+          idPrefix: a.accountNumber.slice(0, 3),
+          type: a.type === 'REAL' ? 'real' : 'demo',
+        }));
+        console.log('[ACCOUNT_MODE]', {
+          sessionType,
+          accountListTypes,
+          uiMode: sessionType,
+          otpPath: sessionType,
+        });
+      }
 
       return {
         ...state,

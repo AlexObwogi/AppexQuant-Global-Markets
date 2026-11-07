@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Card } from '../ui/Card.tsx';
 import { Badge } from '../ui/Badge.tsx';
+import { openCashier } from '../../services/deriv/cashierHandoff.ts';
 
 interface CryptoWalletMonitorProps {
   onLaunchCashier: (action: 'deposit' | 'withdrawal' | 'account-transfer' | 'p2p') => void;
@@ -154,71 +155,90 @@ export const CryptoWalletMonitor: React.FC<CryptoWalletMonitorProps> = ({ onLaun
       </div>
 
       {/* Grid of Individual Wallets */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {walletData.wallets.map((w: WalletItem) => (
-          <div
-            key={w.id}
-            className="p-3.5 bg-bg-surface border border-border-color hover:border-[#00a86b]/40 rounded-xl space-y-3 transition-all shadow-xs"
+      {walletData.wallets.length === 0 ? (
+        <div className="p-8 text-center bg-bg-surface border border-border-color rounded-xl space-y-3">
+          <Coins className="w-10 h-10 text-text-secondary mx-auto opacity-50" />
+          <p className="text-sm font-semibold text-text-primary">
+            No wallets yet. Fund your wallet on Deriv
+          </p>
+          <p className="text-xs text-text-secondary max-w-sm mx-auto">
+            You can create and manage crypto and fiat wallets on Deriv. Deposits and withdrawals are completed securely on Deriv cashier.
+          </p>
+          <button
+            onClick={() => openCashier('deposit')}
+            className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-[#00a86b] hover:bg-[#00ba77] text-white font-bold text-xs transition-all cursor-pointer shadow-md"
           >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <span className="text-lg">{w.icon}</span>
-                <div>
-                  <span className="text-xs font-bold text-text-primary block leading-none">
-                    {w.currency}
-                  </span>
-                  <span className="text-[10px] text-text-secondary mt-0.5 block">
-                    {w.name}
-                  </span>
+            <ArrowDownLeft className="w-4 h-4" />
+            <span>Fund Wallet on Deriv</span>
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {walletData.wallets.map((w: WalletItem) => (
+            <div
+              key={w.id}
+              className="p-3.5 bg-bg-surface border border-border-color hover:border-[#00a86b]/40 rounded-xl space-y-3 transition-all shadow-xs"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <span className="text-lg">{w.icon}</span>
+                  <div>
+                    <span className="text-xs font-bold text-text-primary block leading-none">
+                      {w.currency}
+                    </span>
+                    <span className="text-[10px] text-text-secondary mt-0.5 block">
+                      {w.name}
+                    </span>
+                  </div>
                 </div>
+
+                <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  {w.isVirtual ? 'DEMO' : 'ACTIVE'}
+                </span>
               </div>
 
-              <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                {w.isVirtual ? 'DEMO' : 'ACTIVE'}
-              </span>
+              <div className="pt-1 border-t border-border-color/40">
+                <span className="text-sm sm:text-base font-bold font-mono text-text-primary block">
+                  {formatBalance(w.balance, w.symbol, w.currency)}
+                </span>
+                <span className="text-[10px] font-mono text-text-secondary">
+                  USD Value: {formatUsdValuation(w.usdValue)}
+                </span>
+              </div>
+
+              {/* Per-Wallet Action Controls */}
+              <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-border-color/40 text-[10px]">
+                <button
+                  onClick={() => openCashier('deposit')}
+                  className="py-1.5 px-2 rounded-lg bg-[#00a86b]/15 hover:bg-[#00a86b]/25 border border-[#00a86b]/30 text-[#00a86b] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                  title={`Deposit ${w.currency}`}
+                >
+                  <ArrowDownLeft className="w-3 h-3" />
+                  <span>Deposit</span>
+                </button>
+
+                <button
+                  onClick={() => openCashier('withdraw')}
+                  className="py-1.5 px-2 rounded-lg bg-[#ff444f]/15 hover:bg-[#ff444f]/25 border border-[#ff444f]/30 text-[#ff444f] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                  title={`Withdraw ${w.currency}`}
+                >
+                  <ArrowUpRight className="w-3 h-3" />
+                  <span>Withdraw</span>
+                </button>
+
+                <button
+                  onClick={() => onLaunchCashier('account-transfer')}
+                  className="py-1.5 px-2 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-400 font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                  title={`Transfer ${w.currency}`}
+                >
+                  <ArrowLeftRight className="w-3 h-3" />
+                  <span>Transfer</span>
+                </button>
+              </div>
             </div>
-
-            <div className="pt-1 border-t border-border-color/40">
-              <span className="text-sm sm:text-base font-bold font-mono text-text-primary block">
-                {formatBalance(w.balance, w.symbol, w.currency)}
-              </span>
-              <span className="text-[10px] font-mono text-text-secondary">
-                USD Value: {formatUsdValuation(w.usdValue)}
-              </span>
-            </div>
-
-            {/* Per-Wallet Action Controls */}
-            <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-border-color/40 text-[10px]">
-              <button
-                onClick={() => onLaunchCashier('deposit')}
-                className="py-1.5 px-2 rounded-lg bg-[#00a86b]/15 hover:bg-[#00a86b]/25 border border-[#00a86b]/30 text-[#00a86b] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
-                title={`Deposit ${w.currency}`}
-              >
-                <ArrowDownLeft className="w-3 h-3" />
-                <span>Deposit</span>
-              </button>
-
-              <button
-                onClick={() => onLaunchCashier('withdrawal')}
-                className="py-1.5 px-2 rounded-lg bg-[#ff444f]/15 hover:bg-[#ff444f]/25 border border-[#ff444f]/30 text-[#ff444f] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
-                title={`Withdraw ${w.currency}`}
-              >
-                <ArrowUpRight className="w-3 h-3" />
-                <span>Withdraw</span>
-              </button>
-
-              <button
-                onClick={() => onLaunchCashier('account-transfer')}
-                className="py-1.5 px-2 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-400 font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
-                title={`Transfer ${w.currency}`}
-              >
-                <ArrowLeftRight className="w-3 h-3" />
-                <span>Transfer</span>
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </Card>
   );
 };

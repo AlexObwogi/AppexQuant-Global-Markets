@@ -79,29 +79,24 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
   const isBalanceHidden = state.isBalanceHidden;
   const balanceValue = selectedAccount ? selectedAccount.balance.balance : 0;
 
-  // Real Connection Status Logic
+  // Account Connection Badge Logic
   const isAuthenticated = state.session.isAuthenticated;
-  const env = state.executionEnvironment;
-  const derivAcct = state.user?.derivAccountId || state.session.userId;
-  const accountType = state.user?.accountType || (derivAcct?.startsWith('VR') ? 'demo' : 'real');
+  const activeAcc = selectedAccount || state.accounts[0];
+  const isReal = activeAcc ? activeAcc.type === 'REAL' : false;
 
   let statusText = 'OFFLINE';
   let badgeClass = 'bg-rose-500/10 text-rose-400 border-rose-500/30';
   let dotClass = 'bg-rose-500';
 
-  if (isAuthenticated) {
-    if (env === 'PAPER') {
-      statusText = 'PAPER';
-      badgeClass = 'bg-purple-500/10 text-purple-400 border-purple-500/30';
-      dotClass = 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.7)] animate-pulse';
-    } else if (accountType === 'demo' || env === 'DEMO') {
-      statusText = 'DEMO';
-      badgeClass = 'bg-amber-500/10 text-amber-400 border-amber-500/30';
-      dotClass = 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.7)] animate-pulse';
-    } else {
+  if (isAuthenticated && activeAcc) {
+    if (isReal) {
       statusText = 'LIVE';
-      badgeClass = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
-      dotClass = 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.7)] animate-pulse';
+      badgeClass = 'bg-rose-500/10 text-rose-400 border-rose-500/30';
+      dotClass = 'bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.7)] animate-pulse';
+    } else {
+      statusText = 'DEMO';
+      badgeClass = 'bg-sky-500/10 text-sky-400 border-sky-500/30';
+      dotClass = 'bg-sky-500 shadow-[0_0_8px_rgba(56,189,248,0.7)] animate-pulse';
     }
   }
 

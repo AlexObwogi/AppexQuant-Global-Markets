@@ -2,16 +2,16 @@
  * AppexQuant Markets Global - Cashier & Wallet Hub
  * 
  * Secure interface for Deposits, Withdrawals, Inter-Wallet Transfers, and P2P:
- * - Links directly to official PCI-DSS compliant cashier portals
- * - Passes redirect_url with callback parameter so users seamlessly return to AppexQuant
- * - Supports Real and Demo account balance refreshing
- * - Smooth inter-wallet transfers across USD, USDT, SOL, BTC, ETH, and MT5 accounts
+ * - Direct handoff to official Deriv cashier portals via openCashier
+ * - Native inter-wallet transfers with explicit rate check and confirm dialog
+ * - Compliant with Deriv terms (no custom deposit inputs or deposit proxying)
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGlobalState } from '../../state/GlobalStateContext.tsx';
 import { useMarketData } from '../../state/MarketDataContext.tsx';
 import { derivTradingClient } from '../../services/deriv/tradingClient.ts';
+import { openCashier } from '../../services/deriv/cashierHandoff.ts';
 import { apiFetch } from '../../utils/apiFetch.ts';
 import {
   Wallet,
@@ -23,18 +23,25 @@ import {
   CreditCard,
   Building2,
   Coins,
-  CheckCircle2,
   RefreshCw,
   X,
   AlertCircle,
   ArrowRight,
   Loader2,
+  Check,
 } from 'lucide-react';
 
 interface CashierModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultTab?: 'deposit' | 'withdrawal' | 'transfer' | 'p2p';
+}
+
+interface UserAccountItem {
+  id: string;
+  currency: string;
+  label: string;
+  balance: number;
 }
 
 export const CashierModal: React.FC<CashierModalProps> = ({
@@ -46,16 +53,73 @@ export const CashierModal: React.FC<CashierModalProps> = ({
   const { balance: marketBalance, currency: marketCurrency, reconnect } = useMarketData();
 
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdrawal' | 'transfer' | 'p2p'>(defaultTab);
-  const [selectedPreset, setSelectedPreset] = useState<number>(50);
-  const [customAmount, setCustomAmount] = useState<string>('50');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Inter-wallet transfer state
-  const [sourceWallet, setSourceWallet] = useState<string>('USD_OPTIONS');
-  const [destWallet, setDestWallet] = useState<string>('USDT_CRYPTO');
-  const [transferAmount, setTransferAmount] = useState<string>('10');
-  const [isTransferring, setIsTransferring] = useState(false);
-  const [transferMessage, setTransferMessage] = useState<string | null>(null);
+  // Transfer state
+  const [userAccounts, setUserAccounts] = useState<UserAccountItem[]>([]);
+  const [sourceId, setSourceId] = useState<string>('');
+  const [destId, setDestId] = useState<string>('');
+  const [amount, setAmount] = useState<string>('10');
+  const [isRateLoading, setIsRateLoading] = useState<boolean>(false);
+  const [exchangeRate, setExchangeRate] = useState<number | null>(null);
+  const [rateToken, setRateToken] = useState<string | null>(null);
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [transferUnavailable, setTransferUnavailable] = useState<boolean>(false);
+  const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
+  const [isExecutingTransfer, setIsExecutingTransfer] = useState<boolean>(false);
+  const [transferSuccessMsg, setTransferSuccessMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
+
+  // Load real accounts for transfers
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let isMounted = true;
+    apiFetch('/api/wallet/summary')
+      .then((res) => res.json())
+      .then((json) => {
+        if (!isMounted || !json?.data) return;
+        const list: UserAccountItem[] = [];
+
+        if (Array.isArray(json.data.wallets)) {
+          json.data.wallets.forEach((w: any) => {
+            list.push({
+              id: w.id,
+              currency: (w.currency || 'USD').toUpperCase(),
+              label: `${w.currency || 'USD'} Wallet (${w.id})`,
+              balance: Number(w.balance || 0),
+            });
+          });
+        }
+
+        if (Array.isArray(json.data.tradingAccounts)) {
+          json.data.tradingAccounts.forEach((t: any) => {
+            list.push({
+              id: t.loginid,
+              currency: (t.currency || 'USD').toUpperCase(),
+              label: `${t.isVirtual ? 'Demo' : 'Real'} Options Account (${t.loginid})`,
+              balance: Number(t.balance || 0),
+            });
+          });
+        }
+
+        setUserAccounts(list);
+        if (list.length >= 2) {
+          setSourceId(list[0].id);
+          setDestId(list[1].id);
+        } else if (list.length === 1) {
+          setSourceId(list[0].id);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -66,50 +130,6 @@ export const CashierModal: React.FC<CashierModalProps> = ({
   const currentCurrency = marketCurrency || selectedAccount?.balance?.currency || 'USD';
   const derivAccountId = derivTradingClient.getCurrentAccountId() || state.user?.derivAccountId || state.session.userId || 'Demo Account';
   const isReal = derivTradingClient.isRealAccount() || derivAccountId.startsWith('CR');
-
-  const handleOpenCashier = async (tab: 'deposit' | 'withdrawal' | 'transfer' | 'p2p') => {
-    // 1. Immediately open placeholder window to prevent popup blocker interception
-    const targetWin = typeof window !== 'undefined' ? window.open('about:blank', '_blank') : null;
-
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const returnUrl = `${origin}/?action=cashier_completed&type=${tab}&account=${encodeURIComponent(derivAccountId)}&ts=${Date.now()}`;
-    const appId = (typeof window !== 'undefined' && (localStorage.getItem('deriv_app_id') || localStorage.getItem('deriv_client_id'))) || '1089';
-    const endpoint = tab === 'transfer' ? 'account-transfer' : tab;
-
-    // Direct fallback URL with explicit app_id and redirect parameters
-    const fallbackUrl = `https://app.deriv.com/cashier/${endpoint}?app_id=${encodeURIComponent(appId)}&redirect_url=${encodeURIComponent(returnUrl)}&redirect_uri=${encodeURIComponent(returnUrl)}${derivAccountId ? `&account=${encodeURIComponent(derivAccountId)}` : ''}`;
-
-    try {
-      const res = await apiFetch('/api/auth/deriv/cashier-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: tab,
-          accountId: derivAccountId,
-          returnUrl,
-        }),
-      }).catch(() => null);
-
-      if (res && res.ok) {
-        const json = await res.json().catch(() => null);
-        const resolvedUrl = json?.data?.url;
-        if (resolvedUrl) {
-          if (targetWin) {
-            targetWin.location.href = resolvedUrl;
-          } else {
-            window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
-          }
-          return;
-        }
-      }
-    } catch {}
-
-    if (targetWin) {
-      targetWin.location.href = fallbackUrl;
-    } else {
-      window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
-    }
-  };
 
   const handleManualBalanceRefresh = async () => {
     setIsRefreshing(true);
@@ -150,31 +170,100 @@ export const CashierModal: React.FC<CashierModalProps> = ({
     }
   };
 
-  const walletOptions = [
-    { id: 'USD_OPTIONS', label: 'USD Options Trading Wallet', icon: '💲' },
-    { id: 'USDT_CRYPTO', label: 'Tether (USDT) Crypto Wallet', icon: '₮' },
-    { id: 'SOL_CRYPTO', label: 'Solana (SOL) Wallet', icon: '◎' },
-    { id: 'BTC_CRYPTO', label: 'Bitcoin (BTC) Wallet', icon: '₿' },
-    { id: 'ETH_CRYPTO', label: 'Ethereum (ETH) Wallet', icon: 'Ξ' },
-    { id: 'MT5_SYNTHETIC', label: 'Deriv MT5 Synthetic Account', icon: '📊' },
-    { id: 'MT5_FINANCIAL', label: 'Deriv MT5 Financial Account', icon: '📈' },
-  ];
+  const fromAcc = userAccounts.find((a) => a.id === sourceId);
+  const toAcc = userAccounts.find((a) => a.id === destId);
+  const needsExchangeRate = fromAcc && toAcc && fromAcc.currency !== toAcc.currency;
 
-  const handleExecuteWalletTransfer = async () => {
-    setIsTransferring(true);
-    setTransferMessage(null);
-    try {
-      // Open official transfer portal with return redirect
-      handleOpenCashier('transfer');
-      setTransferMessage(`Transfer initiated from ${sourceWallet} to ${destWallet}. Complete on portal and click 'Sync Balance'.`);
-    } catch {
-      setTransferMessage('Failed to initialize transfer window.');
-    } finally {
-      setIsTransferring(false);
+  const handlePrepareTransfer = async () => {
+    setTransferError(null);
+    setTransferUnavailable(false);
+    setTransferSuccessMsg(null);
+
+    const numAmt = Number(amount);
+    if (isNaN(numAmt) || numAmt <= 0) {
+      setTransferError('Please enter a valid transfer amount.');
+      return;
+    }
+    if (numAmt < 1 || numAmt > 10000) {
+      setTransferError('Deriv limits transfers between 1 and 10,000 USD equivalent (max 10 transfers per day).');
+      return;
+    }
+    if (!sourceId || !destId || sourceId === destId) {
+      setTransferError('Please select two distinct accounts for transfer.');
+      return;
+    }
+
+    if (needsExchangeRate) {
+      setIsRateLoading(true);
+      try {
+        const res = await apiFetch(`/api/wallet/exchange-rate?from=${fromAcc.currency}&to=${toAcc.currency}`);
+        const json = await res.json();
+        if (json?.data?.exchangeRate) {
+          setExchangeRate(json.data.exchangeRate);
+          setRateToken(json.data.rateToken || null);
+          setShowConfirmModal(true);
+        } else {
+          setTransferError(json?.error?.message || 'Failed to fetch cross-currency exchange rate from Deriv.');
+        }
+      } catch (err: any) {
+        setTransferError('Network error fetching exchange rate.');
+      } finally {
+        setIsRateLoading(false);
+      }
+    } else {
+      setExchangeRate(1.0);
+      setRateToken(null);
+      setShowConfirmModal(true);
     }
   };
 
-  const presets = [20, 50, 100, 250, 500];
+  const handleConfirmTransfer = async () => {
+    setIsExecutingTransfer(true);
+    setTransferError(null);
+    try {
+      const requestId = crypto.randomUUID();
+      const res = await apiFetch('/api/wallet/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromId: sourceId,
+          toId: destId,
+          amount: Number(amount),
+          requestId,
+          fromCurrency: fromAcc?.currency,
+          toCurrency: toAcc?.currency,
+          exchangeRate: exchangeRate || undefined,
+          rateToken: rateToken || undefined,
+        }),
+      });
+
+      const json = await res.json();
+      if (res.ok && json?.data?.transferId) {
+        setShowConfirmModal(false);
+        setTransferSuccessMsg(`Transfer completed successfully! (ID: ${json.data.transferId})`);
+        handleManualBalanceRefresh();
+      } else {
+        setShowConfirmModal(false);
+        if (res.status === 403 || res.status === 404 || json?.error?.code === 'TRANSFER_UNAVAILABLE') {
+          setTransferUnavailable(true);
+          setTransferError(json?.error?.message || 'Native transfer is unavailable for this app registration.');
+        } else {
+          setTransferError(json?.error?.message || 'Transfer was rejected by Deriv.');
+        }
+      }
+    } catch (err: any) {
+      setShowConfirmModal(false);
+      setTransferError('Failed to execute transfer.');
+    } finally {
+      setIsExecutingTransfer(false);
+    }
+  };
+
+  const calculatedReceiveAmount = () => {
+    const numAmt = Number(amount) || 0;
+    if (!needsExchangeRate || !exchangeRate) return numAmt;
+    return numAmt * exchangeRate;
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-xs select-none">
@@ -189,7 +278,7 @@ export const CashierModal: React.FC<CashierModalProps> = ({
             <div>
               <div className="flex items-center space-x-2">
                 <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                  Cashier & Wallets
+                  Cashier &amp; Wallets
                 </h2>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider ${
                   isReal
@@ -295,99 +384,43 @@ export const CashierModal: React.FC<CashierModalProps> = ({
           {/* DEPOSIT TAB */}
           {activeTab === 'deposit' && (
             <div className="space-y-4">
-              <div className="bg-[#15171e] p-3.5 rounded-xl border border-[#2a2e39] space-y-2">
-                <span className="text-xs font-semibold text-white block">
-                  Select Quick Deposit Amount
+              <div className="bg-[#15171e] p-4 rounded-xl border border-[#2a2e39] space-y-3">
+                <span className="text-sm font-bold text-white block">
+                  Fund Your Account
                 </span>
-                <div className="grid grid-cols-5 gap-2">
-                  {presets.map((amt) => (
-                    <button
-                      key={amt}
-                      type="button"
-                      onClick={() => {
-                        setSelectedPreset(amt);
-                        setCustomAmount(String(amt));
-                      }}
-                      className={`py-2 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
-                        Number(customAmount) === amt
-                          ? 'bg-[#00a86b] text-white shadow-md'
-                          : 'bg-[#1c1f26] border border-[#2a2e39] text-[#9699a0] hover:text-white hover:border-[#00a86b]/40'
-                      }`}
-                    >
-                      ${amt}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="pt-2">
-                  <label className="text-[11px] text-[#9699a0] block mb-1">
-                    Or Enter Custom Amount ({currentCurrency}):
-                  </label>
-                  <div className="flex items-center bg-[#1c1f26] border border-[#2a2e39] rounded-lg px-3 py-2">
-                    <span className="text-[#9699a0] font-mono mr-2">$</span>
-                    <input
-                      type="number"
-                      min={10}
-                      step={10}
-                      value={customAmount}
-                      onChange={(e) => setCustomAmount(e.target.value)}
-                      placeholder="50"
-                      className="w-full bg-transparent font-mono text-sm text-white font-bold outline-none"
-                    />
-                    <span className="text-[#9699a0] text-xs font-mono">{currentCurrency}</span>
+                <p className="text-xs text-[#9699a0] leading-relaxed">
+                  Deposits are handled directly on official Deriv Cashier. Choose from Credit/Debit Cards, E-Wallets, Bank Transfers, and Cryptocurrency.
+                </p>
+                
+                <div className="grid grid-cols-3 gap-2.5 pt-1">
+                  <div className="p-3 bg-[#1c1f26] rounded-lg border border-[#2a2e39] text-center space-y-1">
+                    <CreditCard className="w-5 h-5 text-emerald-400 mx-auto" />
+                    <span className="text-[11px] font-bold text-white block">Cards &amp; E-Wallets</span>
+                  </div>
+                  <div className="p-3 bg-[#1c1f26] rounded-lg border border-[#2a2e39] text-center space-y-1">
+                    <Coins className="w-5 h-5 text-amber-400 mx-auto" />
+                    <span className="text-[11px] font-bold text-white block">Crypto Wallets</span>
+                  </div>
+                  <div className="p-3 bg-[#1c1f26] rounded-lg border border-[#2a2e39] text-center space-y-1">
+                    <Building2 className="w-5 h-5 text-sky-400 mx-auto" />
+                    <span className="text-[11px] font-bold text-white block">Bank Transfers</span>
                   </div>
                 </div>
               </div>
 
-              {/* Supported Payment Channels */}
-              <div className="grid grid-cols-3 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => handleOpenCashier('deposit')}
-                  className="bg-[#15171e] hover:bg-[#1c1f26] border border-[#2a2e39] hover:border-[#00a86b]/40 p-3 rounded-xl flex flex-col items-center text-center space-y-1.5 transition-all cursor-pointer"
-                  title="Deposit using Cards & e-Wallets"
-                >
-                  <CreditCard className="w-5 h-5 text-emerald-400" />
-                  <span className="text-[11px] font-bold text-white">Cards & Wallets</span>
-                  <span className="text-[9px] text-[#9699a0]">Visa, MC, Skrill, Neteller</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleOpenCashier('deposit')}
-                  className="bg-[#15171e] hover:bg-[#1c1f26] border border-[#2a2e39] hover:border-amber-500/40 p-3 rounded-xl flex flex-col items-center text-center space-y-1.5 transition-all cursor-pointer"
-                  title="Deposit using Crypto (USDT, SOL, BTC, ETH)"
-                >
-                  <Coins className="w-5 h-5 text-amber-400" />
-                  <span className="text-[11px] font-bold text-white">Cryptocurrency</span>
-                  <span className="text-[9px] text-[#9699a0]">USDT, SOL, BTC, ETH</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleOpenCashier('deposit')}
-                  className="bg-[#15171e] hover:bg-[#1c1f26] border border-[#2a2e39] hover:border-sky-500/40 p-3 rounded-xl flex flex-col items-center text-center space-y-1.5 transition-all cursor-pointer"
-                  title="Deposit using Instant Bank Transfer"
-                >
-                  <Building2 className="w-5 h-5 text-sky-400" />
-                  <span className="text-[11px] font-bold text-white">Bank Transfer</span>
-                  <span className="text-[9px] text-[#9699a0]">Instant Local Banking</span>
-                </button>
-              </div>
-
-              {/* Security & Return Assurance */}
-              <div className="bg-[#00a86b]/10 border border-[#00a86b]/20 p-3 rounded-xl flex items-start space-x-2.5 text-xs text-[#9699a0]">
+              <div className="bg-[#00a86b]/10 border border-[#00a86b]/20 p-3.5 rounded-xl flex items-start space-x-2.5 text-xs text-[#9699a0]">
                 <ShieldCheck className="w-4 h-4 text-[#00a86b] shrink-0 mt-0.5" />
                 <div className="leading-relaxed">
-                  <strong className="text-white">Seamless Redirect Flow:</strong> You will be securely directed to the certified cashier to complete your deposit. Once finalized, you are automatically redirected back here with your fresh balance to execute live trades.
+                  <strong className="text-white">Official Gateway Handoff:</strong> When you complete your deposit on Deriv Cashier, you will be returned back here with your fresh balance updated automatically.
                 </div>
               </div>
 
-              {/* Primary Action Button */}
               <button
                 type="button"
-                onClick={() => handleOpenCashier('deposit')}
-                className="w-full py-3 px-4 rounded-xl font-bold text-sm bg-[#00a86b] hover:bg-[#00ba77] active:scale-[0.99] text-white transition-all cursor-pointer shadow-lg flex items-center justify-center space-x-2"
+                onClick={() => openCashier('deposit')}
+                className="w-full py-3.5 px-4 rounded-xl font-bold text-sm bg-[#00a86b] hover:bg-[#00ba77] active:scale-[0.99] text-white transition-all cursor-pointer shadow-lg flex items-center justify-center space-x-2"
               >
-                <span>Deposit (${customAmount || '50'})</span>
+                <span>Deposit</span>
                 <ExternalLink className="w-4 h-4" />
               </button>
             </div>
@@ -396,39 +429,32 @@ export const CashierModal: React.FC<CashierModalProps> = ({
           {/* WITHDRAWAL TAB */}
           {activeTab === 'withdrawal' && (
             <div className="space-y-4">
-              <div className="bg-[#15171e] p-3.5 rounded-xl border border-[#2a2e39] space-y-3">
-                <span className="text-xs font-semibold text-white block">
-                  Withdrawal Conditions
+              <div className="bg-[#15171e] p-4 rounded-xl border border-[#2a2e39] space-y-3">
+                <span className="text-sm font-bold text-white block">
+                  Withdraw Funds
                 </span>
-                <div className="flex justify-between items-center text-xs font-mono py-1 border-b border-[#2a2e39]">
-                  <span className="text-[#9699a0]">Available for Payout:</span>
+                <p className="text-xs text-[#9699a0] leading-relaxed">
+                  Withdrawals are completed securely via Deriv Cashier using 2FA or email authentication tokens.
+                </p>
+                <div className="flex justify-between items-center text-xs font-mono py-1 border-t border-[#2a2e39] pt-2">
+                  <span className="text-[#9699a0]">Available Balance:</span>
                   <span className="text-white font-bold">${currentBalance.toFixed(2)} {currentCurrency}</span>
-                </div>
-                <div className="flex justify-between items-center text-xs font-mono py-1 border-b border-[#2a2e39]">
-                  <span className="text-[#9699a0]">Authentication:</span>
-                  <span className="text-emerald-400 font-bold flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> 2FA Verified
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-xs font-mono py-1">
-                  <span className="text-[#9699a0]">Processing Speed:</span>
-                  <span className="text-white">Instant - 24 Hours</span>
                 </div>
               </div>
 
               <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl flex items-start space-x-2.5 text-xs text-[#9699a0]">
                 <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                 <div className="leading-relaxed">
-                  <strong className="text-white">Safety Verification:</strong> Email token or 2FA confirmation required to finalize withdrawal. You will complete verification and return to the site automatically.
+                  <strong className="text-white">Secure Cashier Redirect:</strong> Complete authorization on Deriv's secure verification page to process payout.
                 </div>
               </div>
 
               <button
                 type="button"
-                onClick={() => handleOpenCashier('withdrawal')}
-                className="w-full py-3 px-4 rounded-xl font-bold text-sm bg-[#ff444f] hover:bg-[#ff555f] active:scale-[0.99] text-white transition-all cursor-pointer shadow-lg flex items-center justify-center space-x-2"
+                onClick={() => openCashier('withdraw')}
+                className="w-full py-3.5 px-4 rounded-xl font-bold text-sm bg-[#ff444f] hover:bg-[#ff555f] active:scale-[0.99] text-white transition-all cursor-pointer shadow-lg flex items-center justify-center space-x-2"
               >
-                <span>Request Withdrawal</span>
+                <span>Withdraw</span>
                 <ExternalLink className="w-4 h-4" />
               </button>
             </div>
@@ -440,108 +466,136 @@ export const CashierModal: React.FC<CashierModalProps> = ({
               <div className="bg-[#15171e] p-3.5 rounded-xl border border-[#2a2e39] space-y-3 text-xs">
                 <div className="flex justify-between items-center">
                   <span className="font-semibold text-white block">
-                    Inter-Wallet & Account Transfers
+                    Native Inter-Wallet Transfer
                   </span>
                   <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded font-mono">
                     Zero Fees • Instant
                   </span>
                 </div>
                 <p className="text-[#9699a0] leading-relaxed">
-                  Transfer funds seamlessly between your USD Options wallet, MT5 accounts, and specialized Crypto wallets (Tether USDT, Solana SOL, Bitcoin BTC, Ethereum ETH).
+                  Transfer funds between your authorized Deriv wallets and trading accounts.
                 </p>
 
-                {/* Source & Destination Wallet Selectors */}
-                <div className="space-y-2.5 pt-1">
-                  <div>
-                    <label className="text-[10px] font-mono text-[#9699a0] uppercase block mb-1">
-                      From Source Wallet / Account
-                    </label>
-                    <select
-                      value={sourceWallet}
-                      onChange={(e) => setSourceWallet(e.target.value)}
-                      className="w-full bg-[#1c1f26] border border-[#2a2e39] rounded-lg p-2.5 text-xs font-mono text-white font-bold outline-none"
-                    >
-                      {walletOptions.map((opt) => (
-                        <option key={opt.id} value={opt.id}>
-                          {opt.icon} {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                {/* Limits Hint */}
+                <div className="p-2 bg-[#1c1f26] rounded-lg border border-[#2a2e39] text-[11px] font-mono text-[#9699a0]">
+                  Deriv Limits: <strong className="text-white">1 to 10,000 USD</strong> equivalent per transfer (max 10 transfers/day).
+                </div>
 
-                  <div className="flex justify-center my-1">
-                    <div className="w-8 h-8 rounded-full bg-[#2a2e39] flex items-center justify-center text-sky-400">
-                      <ArrowLeftRight className="w-4 h-4" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-mono text-[#9699a0] uppercase block mb-1">
-                      To Destination Wallet / Account
-                    </label>
-                    <select
-                      value={destWallet}
-                      onChange={(e) => setDestWallet(e.target.value)}
-                      className="w-full bg-[#1c1f26] border border-[#2a2e39] rounded-lg p-2.5 text-xs font-mono text-white font-bold outline-none"
-                    >
-                      {walletOptions.map((opt) => (
-                        <option key={opt.id} value={opt.id} disabled={opt.id === sourceWallet}>
-                          {opt.icon} {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Transfer Amount */}
-                  <div>
-                    <div className="flex justify-between items-center text-[10px] font-mono text-[#9699a0] mb-1">
-                      <span>Transfer Amount ($ USD)</span>
-                      <div className="flex space-x-1">
-                        {['25%', '50%', '75%', '100%'].map((pct) => (
-                          <button
-                            key={pct}
-                            type="button"
-                            onClick={() => {
-                              const factor = Number(pct.replace('%', '')) / 100;
-                              setTransferAmount((currentBalance * factor).toFixed(2));
-                            }}
-                            className="px-1.5 py-0.5 rounded bg-[#2a2e39] hover:bg-sky-500/20 text-[#9699a0] hover:text-sky-400 text-[9px] font-bold"
-                          >
-                            {pct}
-                          </button>
+                {userAccounts.length > 0 ? (
+                  <div className="space-y-3 pt-1">
+                    <div>
+                      <label className="text-[10px] font-mono text-[#9699a0] uppercase block mb-1">
+                        From Account / Wallet
+                      </label>
+                      <select
+                        value={sourceId}
+                        onChange={(e) => setSourceId(e.target.value)}
+                        className="w-full bg-[#1c1f26] border border-[#2a2e39] rounded-lg p-2.5 text-xs font-mono text-white font-bold outline-none"
+                      >
+                        {userAccounts.map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            {acc.label} — Balance: {acc.currency} {acc.balance.toFixed(2)}
+                          </option>
                         ))}
+                      </select>
+                    </div>
+
+                    <div className="flex justify-center my-1">
+                      <div className="w-8 h-8 rounded-full bg-[#2a2e39] flex items-center justify-center text-sky-400">
+                        <ArrowLeftRight className="w-4 h-4" />
                       </div>
                     </div>
-                    <input
-                      type="number"
-                      min="1"
-                      value={transferAmount}
-                      onChange={(e) => setTransferAmount(e.target.value)}
-                      className="w-full bg-[#1c1f26] border border-[#2a2e39] rounded-lg p-2.5 text-xs font-mono text-white font-bold outline-none focus:border-sky-400"
-                      placeholder="Amount to transfer"
-                    />
+
+                    <div>
+                      <label className="text-[10px] font-mono text-[#9699a0] uppercase block mb-1">
+                        To Account / Wallet
+                      </label>
+                      <select
+                        value={destId}
+                        onChange={(e) => setDestId(e.target.value)}
+                        className="w-full bg-[#1c1f26] border border-[#2a2e39] rounded-lg p-2.5 text-xs font-mono text-white font-bold outline-none"
+                      >
+                        {userAccounts.map((acc) => (
+                          <option key={acc.id} value={acc.id} disabled={acc.id === sourceId}>
+                            {acc.label} — Balance: {acc.currency} {acc.balance.toFixed(2)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center text-[10px] font-mono text-[#9699a0] mb-1">
+                        <span>Transfer Amount ({fromAcc?.currency || 'USD'})</span>
+                        <div className="flex space-x-1">
+                          {['25%', '50%', '75%', '100%'].map((pct) => (
+                            <button
+                              key={pct}
+                              type="button"
+                              onClick={() => {
+                                const avail = fromAcc?.balance || 0;
+                                const factor = Number(pct.replace('%', '')) / 100;
+                                setAmount((avail * factor).toFixed(2));
+                              }}
+                              className="px-1.5 py-0.5 rounded bg-[#2a2e39] hover:bg-sky-500/20 text-[#9699a0] hover:text-sky-400 text-[9px] font-bold cursor-pointer"
+                            >
+                              {pct}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10000"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        className="w-full bg-[#1c1f26] border border-[#2a2e39] rounded-lg p-2.5 text-xs font-mono text-white font-bold outline-none focus:border-sky-400"
+                        placeholder="10"
+                      />
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <p className="text-xs text-[#9699a0] italic py-2">
+                    Loading accounts...
+                  </p>
+                )}
               </div>
 
-              {transferMessage && (
-                <div className="p-3 bg-sky-500/10 border border-sky-500/30 rounded-xl text-sky-300 text-xs font-mono leading-relaxed">
-                  {transferMessage}
+              {transferError && (
+                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs font-mono leading-relaxed space-y-2">
+                  <p>{transferError}</p>
+                  {transferUnavailable && (
+                    <button
+                      type="button"
+                      onClick={() => openCashier('transfer')}
+                      className="px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs transition-colors cursor-pointer inline-flex items-center space-x-1.5"
+                    >
+                      <span>Transfer on Deriv</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {transferSuccessMsg && (
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs font-mono flex items-center space-x-2">
+                  <Check className="w-4 h-4 shrink-0" />
+                  <span>{transferSuccessMsg}</span>
                 </div>
               )}
 
               <button
                 type="button"
-                disabled={isTransferring}
-                onClick={handleExecuteWalletTransfer}
-                className="w-full py-3 px-4 rounded-xl font-bold text-sm bg-sky-500 hover:bg-sky-600 active:scale-[0.99] text-white transition-all cursor-pointer shadow-lg flex items-center justify-center space-x-2"
+                disabled={isRateLoading || !sourceId || !destId || sourceId === destId}
+                onClick={handlePrepareTransfer}
+                className="w-full py-3.5 px-4 rounded-xl font-bold text-sm bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white transition-all cursor-pointer shadow-lg flex items-center justify-center space-x-2"
               >
-                {isTransferring ? (
+                {isRateLoading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <ArrowRight className="w-4 h-4" />
                 )}
-                <span>Transfer Between Wallets</span>
+                <span>Review &amp; Execute Transfer</span>
               </button>
             </div>
           )}
@@ -549,14 +603,14 @@ export const CashierModal: React.FC<CashierModalProps> = ({
           {/* P2P TAB */}
           {activeTab === 'p2p' && (
             <div className="space-y-4">
-              <div className="bg-[#15171e] p-3.5 rounded-xl border border-[#2a2e39] space-y-3 text-xs">
-                <span className="font-semibold text-white block">
-                  Peer-to-Peer (P2P) Exchange
+              <div className="bg-[#15171e] p-4 rounded-xl border border-[#2a2e39] space-y-3 text-xs">
+                <span className="font-semibold text-white block text-sm">
+                  Peer-to-Peer (P2P) Cashier
                 </span>
                 <p className="text-[#9699a0] leading-relaxed">
-                  Exchange local currency and mobile money directly with verified local traders in your region using escrow protection.
+                  Buy or sell USD directly using local payment methods with escrow protection on Deriv P2P.
                 </p>
-                <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
+                <div className="grid grid-cols-2 gap-2 text-[11px] font-mono pt-1">
                   <div className="p-2.5 bg-[#1c1f26] rounded-lg border border-[#2a2e39]">
                     <span className="text-[#9699a0] block">Escrow Security</span>
                     <span className="text-emerald-400 font-bold">100% Protected</span>
@@ -570,17 +624,17 @@ export const CashierModal: React.FC<CashierModalProps> = ({
 
               <button
                 type="button"
-                onClick={() => handleOpenCashier('p2p')}
-                className="w-full py-3 px-4 rounded-xl font-bold text-sm bg-amber-500 hover:bg-amber-600 active:scale-[0.99] text-black font-bold transition-all cursor-pointer shadow-lg flex items-center justify-center space-x-2"
+                onClick={() => openCashier('p2p')}
+                className="w-full py-3.5 px-4 rounded-xl font-bold text-sm bg-amber-500 hover:bg-amber-600 text-black font-bold transition-all cursor-pointer shadow-lg flex items-center justify-center space-x-2"
               >
-                <span>Launch P2P Exchange</span>
+                <span>Launch P2P</span>
                 <ExternalLink className="w-4 h-4" />
               </button>
             </div>
           )}
         </div>
 
-        {/* Modal Footer with "I Have Finished" Direct Callback */}
+        {/* Modal Footer */}
         <div className="p-3.5 bg-[#15171e] border-t border-[#2a2e39] flex items-center justify-between">
           <span className="text-[11px] text-[#9699a0] flex items-center gap-1.5">
             <ShieldCheck className="w-4 h-4 text-[#00a86b]" />
@@ -593,7 +647,7 @@ export const CashierModal: React.FC<CashierModalProps> = ({
               onClick={handleManualBalanceRefresh}
               className="px-3 py-1.5 rounded-lg border border-[#2a2e39] hover:border-emerald-500/40 text-xs font-semibold text-white bg-[#1c1f26] hover:bg-[#2a2e39] transition-colors cursor-pointer flex items-center space-x-1"
             >
-              <span>I Finished &bull; Refresh Balance</span>
+              <span>Refresh Balance</span>
             </button>
             <button
               type="button"
@@ -606,6 +660,78 @@ export const CashierModal: React.FC<CashierModalProps> = ({
         </div>
 
       </div>
+
+      {/* Explicit Transfer Confirmation Dialog Modal (HARD SAFETY RULE) */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <div className="bg-[#15171e] border border-[#2a2e39] rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-[#2a2e39]">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="w-5 h-5 text-amber-400" />
+                <h3 className="text-base font-bold text-white">Confirm Money Transfer</h3>
+              </div>
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="text-[#9699a0] hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-[#1c1f26] p-3.5 rounded-xl border border-[#2a2e39] space-y-2.5 text-xs font-mono">
+              <div className="flex justify-between py-1 border-b border-[#2a2e39]">
+                <span className="text-[#9699a0]">From Account:</span>
+                <span className="text-white font-bold">{fromAcc?.label}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-[#2a2e39]">
+                <span className="text-[#9699a0]">To Account:</span>
+                <span className="text-white font-bold">{toAcc?.label}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-[#2a2e39]">
+                <span className="text-[#9699a0]">Transfer Amount:</span>
+                <span className="text-amber-400 font-bold">{amount} {fromAcc?.currency}</span>
+              </div>
+              {needsExchangeRate && (
+                <div className="flex justify-between py-1 border-b border-[#2a2e39]">
+                  <span className="text-[#9699a0]">Exchange Rate:</span>
+                  <span className="text-sky-400 font-bold">1 {fromAcc?.currency} = {exchangeRate} {toAcc?.currency}</span>
+                </div>
+              )}
+              <div className="flex justify-between py-1">
+                <span className="text-[#9699a0]">Destination Receive:</span>
+                <span className="text-emerald-400 font-bold">{calculatedReceiveAmount().toFixed(4)} {toAcc?.currency}</span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-[#9699a0] leading-relaxed">
+              Real money transfer. By clicking confirm, this amount will be immediately deducted from your source wallet on Deriv.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="py-2.5 rounded-xl border border-[#2a2e39] text-xs font-bold text-[#9699a0] hover:text-white transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isExecutingTransfer}
+                onClick={handleConfirmTransfer}
+                className="py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs transition-colors cursor-pointer flex items-center justify-center space-x-1.5"
+              >
+                {isExecutingTransfer ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )}
+                <span>Confirm &amp; Execute</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -32,13 +32,7 @@ export class WalletPollingService {
   private pollingIntervalMs = 15000; // 15s default
   private isPolling = false;
   private lastData: WalletDataResponse = {
-    wallets: [
-      { id: 'wallet-usd', currency: 'USD', symbol: '$', name: 'USD Options Wallet', loginid: 'Demo Account', balance: 0, usdValue: 0, accountType: 'demo', icon: '💲', isVirtual: true, lastUpdated: new Date().toISOString() },
-      { id: 'wallet-usdt', currency: 'USDT', symbol: '₮', name: 'Tether (USDT) Crypto', loginid: 'Demo Account', balance: 0, usdValue: 0, accountType: 'crypto', icon: '₮', isVirtual: false, lastUpdated: new Date().toISOString() },
-      { id: 'wallet-btc', currency: 'BTC', symbol: '₿', name: 'Bitcoin (BTC) Crypto', loginid: 'Demo Account', balance: 0, usdValue: 0, accountType: 'crypto', icon: '₿', isVirtual: false, lastUpdated: new Date().toISOString() },
-      { id: 'wallet-eth', currency: 'ETH', symbol: 'Ξ', name: 'Ethereum (ETH) Crypto', loginid: 'Demo Account', balance: 0, usdValue: 0, accountType: 'crypto', icon: 'Ξ', isVirtual: false, lastUpdated: new Date().toISOString() },
-      { id: 'wallet-sol', currency: 'SOL', symbol: '◎', name: 'Solana (SOL) Crypto', loginid: 'Demo Account', balance: 0, usdValue: 0, accountType: 'crypto', icon: '◎', isVirtual: false, lastUpdated: new Date().toISOString() },
-    ],
+    wallets: [],
     totalUsdValue: 0,
     lastSyncedAt: new Date().toISOString(),
   };
@@ -88,6 +82,76 @@ export class WalletPollingService {
 
   public async fetchWallets(): Promise<WalletDataResponse> {
     try {
+      // Primary: Call /api/wallet/summary (Task 3.1)
+      const resSummary = await apiFetch('/api/wallet/summary', { method: 'GET' }).catch(() => null);
+      if (resSummary && resSummary.ok) {
+        const json = await resSummary.json().catch(() => null);
+        if (json?.data) {
+          const rawWallets: any[] = json.data.wallets || [];
+          const tradingAccounts: any[] = json.data.tradingAccounts || [];
+
+          const symbolMap: Record<string, { symbol: string; icon: string }> = {
+            USD: { symbol: '$', icon: '💲' },
+            USDT: { symbol: '₮', icon: '₮' },
+            BTC: { symbol: '₿', icon: '₿' },
+            ETH: { symbol: 'Ξ', icon: 'Ξ' },
+            SOL: { symbol: '◎', icon: '◎' },
+            EUR: { symbol: '€', icon: '€' },
+            GBP: { symbol: '£', icon: '£' },
+            AUD: { symbol: 'A$', icon: 'A$' },
+          };
+
+          const mappedWallets: WalletItem[] = rawWallets.map((w: any) => {
+            const curr = String(w.currency || 'USD').toUpperCase();
+            const sm = symbolMap[curr] || { symbol: curr, icon: '💼' };
+            return {
+              id: w.id || `wallet-${curr}`,
+              currency: curr,
+              symbol: sm.symbol,
+              name: `${curr} Wallet`,
+              loginid: w.id || curr,
+              balance: Number(w.balance || 0),
+              usdValue: typeof w.usdValue === 'number' ? w.usdValue : Number(w.balance || 0),
+              accountType: w.accountType === 'crypto' || ['BTC','ETH','USDT','SOL'].includes(curr) ? 'crypto' : 'real',
+              icon: sm.icon,
+              isVirtual: false,
+              lastUpdated: new Date().toISOString(),
+            };
+          });
+
+          // Also map trading accounts if any
+          const mappedTrading: WalletItem[] = tradingAccounts.map((t: any) => {
+            const curr = String(t.currency || 'USD').toUpperCase();
+            const sm = symbolMap[curr] || { symbol: '$', icon: '📈' };
+            return {
+              id: t.loginid,
+              currency: curr,
+              symbol: sm.symbol,
+              name: t.isVirtual ? 'Options Demo Account' : 'Options Real Account',
+              loginid: t.loginid,
+              balance: Number(t.balance || 0),
+              usdValue: Number(t.balance || 0),
+              accountType: t.isVirtual ? 'demo' : 'real',
+              icon: sm.icon,
+              isVirtual: Boolean(t.isVirtual),
+              lastUpdated: new Date().toISOString(),
+            };
+          });
+
+          const combined = [...mappedWallets, ...mappedTrading];
+          const totalUsd = combined.reduce((acc, item) => acc + (item.usdValue || 0), 0);
+
+          this.lastData = {
+            wallets: combined,
+            totalUsdValue: totalUsd,
+            lastSyncedAt: json.data.lastSyncedAt || new Date().toISOString(),
+          };
+          this.notify();
+          return this.lastData;
+        }
+      }
+
+      // Fallback: /api/auth/deriv/wallets
       const res = await apiFetch('/api/auth/deriv/wallets', { method: 'GET' }).catch(() => null);
       if (res && res.ok) {
         const json = await res.json().catch(() => null);

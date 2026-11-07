@@ -41,6 +41,7 @@ import {
 import { CashierModal } from '../components/cashier/CashierModal.tsx';
 import { CryptoWalletMonitor } from '../components/account/CryptoWalletMonitor.tsx';
 import { CryptoPortfolioDonutChart } from '../components/account/CryptoPortfolioDonutChart.tsx';
+import { TransactionHistoryTable } from '../components/account/TransactionHistoryTable.tsx';
 
 interface ConnectionMeta {
   connected: boolean;
@@ -517,6 +518,9 @@ export const AccountView: React.FC = () => {
 
       {/* Multi-Asset Crypto & Fiat Local Wallet Monitor with Polling Service */}
       <CryptoWalletMonitor onLaunchCashier={handleLaunchCashier} />
+
+      {/* Historical Paginated Cashier Transactions Statement Table */}
+      <TransactionHistoryTable />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Left Column: User Profile & Role Switcher */}

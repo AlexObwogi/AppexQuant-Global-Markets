@@ -14,6 +14,7 @@ import { MoreDrawer } from './MoreDrawer.tsx';
 import { OfflineBanner } from '../common/OfflineBanner.tsx';
 import { SystemFailSafeBanner } from '../common/SystemFailSafeBanner.tsx';
 import { PWAInstallBanner } from '../common/PWAInstallBanner.tsx';
+import { CashierBanner } from '../cashier/CashierBanner.tsx';
 import { ConnectionStatus } from '../common/ConnectionStatus.tsx';
 import { X } from 'lucide-react';
 
@@ -90,6 +91,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       <OfflineBanner />
       <SystemFailSafeBanner />
       <PWAInstallBanner />
+      <CashierBanner />
 
       {/* Adaptive Header (Houses brand, environment selector, balance toggle, theme & profile) */}
       <Header onToggleMobileDrawer={() => setIsMoreOpen(true)} />

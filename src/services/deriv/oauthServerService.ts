@@ -32,6 +32,7 @@ import {
   syncUserToSupabase,
   syncDerivConnectionToSupabase,
 } from '../../lib/supabase.ts';
+import { getCashierUrl } from '../../config/derivLinks.ts';
 
 import { dbQueries } from '../../lib/db/prisma.ts';
 
@@ -3562,28 +3563,8 @@ export async function requestDerivCashierUrl(
     }
   }
 
-  // Authoritative Fallback Cashier URLs with explicit app_id, return_url, and account
-  let fallbackUrl = '';
-  switch (action) {
-    case 'deposit':
-      fallbackUrl = `https://app.deriv.com/cashier/deposit?app_id=${encodeURIComponent(appId)}&redirect_url=${encodeURIComponent(callbackUrl)}&redirect_uri=${encodeURIComponent(callbackUrl)}`;
-      break;
-    case 'withdrawal':
-      fallbackUrl = `https://app.deriv.com/cashier/withdrawal?app_id=${encodeURIComponent(appId)}&redirect_url=${encodeURIComponent(callbackUrl)}&redirect_uri=${encodeURIComponent(callbackUrl)}`;
-      break;
-    case 'transfer':
-      fallbackUrl = `https://app.deriv.com/cashier/account-transfer?app_id=${encodeURIComponent(appId)}&redirect_url=${encodeURIComponent(callbackUrl)}&redirect_uri=${encodeURIComponent(callbackUrl)}`;
-      break;
-    case 'p2p':
-      fallbackUrl = `https://app.deriv.com/cashier/p2p?app_id=${encodeURIComponent(appId)}&redirect_url=${encodeURIComponent(callbackUrl)}&redirect_uri=${encodeURIComponent(callbackUrl)}`;
-      break;
-    default:
-      fallbackUrl = `https://app.deriv.com/cashier/deposit?app_id=${encodeURIComponent(appId)}&redirect_url=${encodeURIComponent(callbackUrl)}&redirect_uri=${encodeURIComponent(callbackUrl)}`;
-  }
-
-  if (cleanAccountId) {
-    fallbackUrl += `&account=${encodeURIComponent(cleanAccountId)}`;
-  }
+  // Return generic user-agnostic cashier URL per security rules
+  const fallbackUrl = getCashierUrl(action === 'withdrawal' ? 'withdraw' : action === 'transfer' ? 'transfer' : action === 'p2p' ? 'p2p' : 'deposit');
 
   return {
     success: true,

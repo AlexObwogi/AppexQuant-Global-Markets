@@ -22,7 +22,7 @@ interface DerivTradeTicketProps {
 
 export const DerivTradeTicket: React.FC<DerivTradeTicketProps> = ({ onOrderExecuted }) => {
   const { selectedSymbol, selectedInstrument, currency: marketCurrency, dataFreshness } = useMarketData();
-  const { state } = useGlobalState();
+  const { state, selectedAccount } = useGlobalState();
 
   const [contractType, setContractType] = useState<'CALL' | 'PUT'>('CALL');
   const [stake, setStake] = useState<number>(5);
@@ -38,10 +38,11 @@ export const DerivTradeTicket: React.FC<DerivTradeTicketProps> = ({ onOrderExecu
 
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isReal = derivTradingClient.isRealAccount();
+  const activeAcc = selectedAccount || state.accounts[0];
+  const isReal = derivTradingClient.isRealAccount() || activeAcc?.type === 'REAL' || state.executionEnvironment === 'LIVE' || (derivTradingClient.getCurrentAccountId() ? !derivTradingClient.getCurrentAccountId()?.startsWith('VR') : false);
   const isMarketClosed = dataFreshness === 'CLOSED';
-  const currency = derivTradingClient.getCurrency() || marketCurrency || 'USD';
-  const accountId = derivTradingClient.getCurrentAccountId() || state.user?.derivAccountId || 'Demo Account';
+  const currency = derivTradingClient.getCurrency() || activeAcc?.currency || marketCurrency || 'USD';
+  const accountId = derivTradingClient.getCurrentAccountId() || activeAcc?.accountNumber || state.user?.derivAccountId || (isReal ? 'CR-Primary' : 'Demo Account');
 
   // Listen for live proposal stream updates
   useEffect(() => {

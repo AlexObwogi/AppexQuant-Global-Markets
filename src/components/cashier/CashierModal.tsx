@@ -12,6 +12,7 @@ import { useGlobalState } from '../../state/GlobalStateContext.tsx';
 import { useMarketData } from '../../state/MarketDataContext.tsx';
 import { derivTradingClient } from '../../services/deriv/tradingClient.ts';
 import { openCashier } from '../../services/deriv/cashierHandoff.ts';
+import { walletPollingService, WalletDataResponse } from '../../services/walletPollingService.ts';
 import { apiFetch } from '../../utils/apiFetch.ts';
 import {
   Wallet,
@@ -69,6 +70,15 @@ export const CashierModal: React.FC<CashierModalProps> = ({
   const [isExecutingTransfer, setIsExecutingTransfer] = useState<boolean>(false);
   const [transferSuccessMsg, setTransferSuccessMsg] = useState<string | null>(null);
 
+  const [walletData, setWalletData] = useState<WalletDataResponse>(walletPollingService.getLastData());
+
+  useEffect(() => {
+    const unsub = walletPollingService.subscribe((data) => {
+      setWalletData(data);
+    });
+    return unsub;
+  }, []);
+
   useEffect(() => {
     setActiveTab(defaultTab);
   }, [defaultTab]);
@@ -123,13 +133,18 @@ export const CashierModal: React.FC<CashierModalProps> = ({
 
   if (!isOpen) return null;
 
-  const currentBalance = typeof marketBalance === 'number'
-    ? marketBalance
-    : selectedAccount?.balance?.balance ?? 0;
-  
-  const currentCurrency = marketCurrency || selectedAccount?.balance?.currency || 'USD';
-  const derivAccountId = derivTradingClient.getCurrentAccountId() || state.user?.derivAccountId || state.session.userId || 'Demo Account';
-  const isReal = derivTradingClient.isRealAccount() || derivAccountId.startsWith('CR');
+  const activeAcc = selectedAccount || state.accounts[0];
+  const derivAccountId = derivTradingClient.getCurrentAccountId() || activeAcc?.accountNumber || state.user?.derivAccountId || state.session.userId || 'Primary Account';
+  const isReal = derivTradingClient.isRealAccount() || activeAcc?.type === 'REAL' || state.executionEnvironment === 'LIVE' || derivAccountId.startsWith('CR') || !derivAccountId.startsWith('VR');
+
+  const matchingWallet = walletData.wallets.find((w) => w.loginid === derivAccountId || w.id === activeAcc?.id) ||
+                         walletData.wallets.find((w) => w.balance > 0) ||
+                         walletData.wallets[0];
+
+  const currentBalance = (activeAcc?.balance?.balance !== undefined && activeAcc.balance.balance > 0)
+    ? activeAcc.balance.balance
+    : (matchingWallet?.balance ?? (typeof marketBalance === 'number' && marketBalance > 0 ? marketBalance : selectedAccount?.balance?.balance ?? 0));
+  const currentCurrency = matchingWallet?.currency || activeAcc?.currency || marketCurrency || selectedAccount?.balance?.currency || 'USD';
 
   const handleManualBalanceRefresh = async () => {
     setIsRefreshing(true);
@@ -389,7 +404,7 @@ export const CashierModal: React.FC<CashierModalProps> = ({
                   Fund Your Account
                 </span>
                 <p className="text-xs text-[#9699a0] leading-relaxed">
-                  Deposits are handled directly on official Deriv Cashier. Choose from Credit/Debit Cards, E-Wallets, Bank Transfers, and Cryptocurrency.
+                  On Deriv: Home -&gt; Wallet -&gt; Deposit.
                 </p>
                 
                 <div className="grid grid-cols-3 gap-2.5 pt-1">
@@ -434,7 +449,7 @@ export const CashierModal: React.FC<CashierModalProps> = ({
                   Withdraw Funds
                 </span>
                 <p className="text-xs text-[#9699a0] leading-relaxed">
-                  Withdrawals are completed securely via Deriv Cashier using 2FA or email authentication tokens.
+                  On Deriv: Home -&gt; Wallet -&gt; Withdraw. Deriv will email you a verification link; open it on this same device. Withdrawals can take time.
                 </p>
                 <div className="flex justify-between items-center text-xs font-mono py-1 border-t border-[#2a2e39] pt-2">
                   <span className="text-[#9699a0]">Available Balance:</span>
@@ -454,7 +469,7 @@ export const CashierModal: React.FC<CashierModalProps> = ({
                 onClick={() => openCashier('withdraw')}
                 className="w-full py-3.5 px-4 rounded-xl font-bold text-sm bg-[#ff444f] hover:bg-[#ff555f] active:scale-[0.99] text-white transition-all cursor-pointer shadow-lg flex items-center justify-center space-x-2"
               >
-                <span>Withdraw</span>
+                <span>Open Deriv to withdraw</span>
                 <ExternalLink className="w-4 h-4" />
               </button>
             </div>

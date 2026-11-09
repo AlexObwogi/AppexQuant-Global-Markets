@@ -63,15 +63,14 @@ export class DerivWebSocketManager {
   private setupWindowListeners(): void {
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => {
-        if (this.connectionState !== 'CONNECTED' && !this.isExplicitDisconnect) {
-          console.log('[DerivWS-Client] Network online detected. Triggering immediate reconnection to backend gateway...');
-          if (this.reconnectTimer) {
-            clearTimeout(this.reconnectTimer);
-            this.reconnectTimer = null;
-          }
-          this.reconnectAttempts = 0;
-          this.connect().catch(() => {});
+        console.log('[DerivWS-Client] Network online detected. Triggering immediate reconnection to backend gateway...');
+        if (this.reconnectTimer) {
+          clearTimeout(this.reconnectTimer);
+          this.reconnectTimer = null;
         }
+        this.reconnectAttempts = 0;
+        this.isExplicitDisconnect = false;
+        this.connect().catch(() => {});
       });
 
       window.addEventListener('offline', () => {

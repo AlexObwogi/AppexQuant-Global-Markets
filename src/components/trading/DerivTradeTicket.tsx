@@ -39,16 +39,33 @@ export const DerivTradeTicket: React.FC<DerivTradeTicketProps> = ({ onOrderExecu
 
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const activeAcc = selectedAccount || state.accounts[0];
-  const isReal = activeAcc ? activeAcc.type === 'REAL' : (state.executionEnvironment === 'LIVE' || derivTradingClient.isRealAccount());
+  const activeAcc = selectedAccount || state.accounts.find(a => a.id === state.selectedAccountId) || state.accounts[0];
+  const currentLoginId = activeAcc?.accountNumber || derivTradingClient.getCurrentAccountId() || state.user?.derivAccountId || state.user?.loginid;
+  const isReal = Boolean(
+    (currentLoginId && currentLoginId.toUpperCase().startsWith('CR')) ||
+    activeAcc?.type === 'REAL' ||
+    activeAcc?.isVirtual === false ||
+    derivTradingClient.isRealAccount() ||
+    state.executionEnvironment === 'LIVE'
+  );
   const isMarketClosed = dataFreshness === 'CLOSED';
   const currency = derivTradingClient.getCurrency() || activeAcc?.currency || marketCurrency || 'USD';
-  const accountId = activeAcc?.accountNumber || derivTradingClient.getCurrentAccountId() || state.user?.derivAccountId || (isReal ? 'CR-Primary' : 'Demo Account');
+  const accountId = currentLoginId || (isReal ? 'CR-Primary' : 'Demo Account');
 
   // Ensure trading socket connection is active on mount or account change
   useEffect(() => {
-    derivTradingClient.ensureConnected(activeAcc?.accountNumber || undefined).catch(() => {});
-  }, [activeAcc?.accountNumber]);
+    derivTradingClient.ensureConnected(currentLoginId || undefined).catch(() => {});
+  }, [currentLoginId]);
+
+  // Listen for trading socket state updates
+  useEffect(() => {
+    const unsub = derivTradingClient.subscribeState((st) => {
+      if (st.isConnected) {
+        setStatusMessage((prev) => (prev?.type === 'error' && prev.text.toLowerCase().includes('socket') ? null : prev));
+      }
+    });
+    return () => unsub();
+  }, []);
 
   // Listen for live proposal stream updates
   useEffect(() => {

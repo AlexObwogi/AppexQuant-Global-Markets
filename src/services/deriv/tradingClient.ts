@@ -95,6 +95,10 @@ export class DerivTradingClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private isConnecting = false;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 50;
+  private baseReconnectDelayMs = 1000;
+  private maxReconnectDelayMs = 15000;
 
   // Rate Limiting Tracker for Trading Operations
   private sentTradingMessages: { timestamp: number; type: string }[] = [];
@@ -138,6 +142,12 @@ export class DerivTradingClient {
   }
 
   public isRealAccount(): boolean {
+    if (this.currentAccountId && this.currentAccountId.toUpperCase().startsWith('CR')) {
+      return true;
+    }
+    if (this.currentAccountId && (this.currentAccountId.toUpperCase().startsWith('VR') || this.currentAccountId.toUpperCase().startsWith('VRTC'))) {
+      return false;
+    }
     return this.isReal;
   }
 
@@ -304,6 +314,7 @@ export class DerivTradingClient {
 
   private handleOpen(): void {
     this.isConnecting = false;
+    this.reconnectAttempts = 0;
     this.startPing();
     this.notifyState();
 
@@ -378,21 +389,37 @@ export class DerivTradingClient {
     this.isConnecting = false;
     this.notifyState();
 
-    if (!this.isExplicitClose && this.currentAccountId) {
+    if (!this.isExplicitClose) {
       this.scheduleReconnect();
     }
   }
 
   private scheduleReconnect(): void {
-    if (this.reconnectTimer || this.isExplicitClose || !this.currentAccountId) return;
+    if (this.reconnectTimer || this.isExplicitClose) return;
+
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.warn(`[DerivTradingClient] Max reconnect attempts (${this.maxReconnectAttempts}) reached. Resting reconnect loop.`);
+      return;
+    }
+
+    this.reconnectAttempts++;
+    const jitter = Math.floor(Math.random() * 500);
+    const exponentialDelay = Math.min(
+      this.baseReconnectDelayMs * Math.pow(2, Math.max(0, this.reconnectAttempts - 1)),
+      this.maxReconnectDelayMs
+    );
+    const delay = exponentialDelay + jitter;
+
+    console.log(`[DerivTradingClient] Auto-reconnecting trading socket in ${delay}ms (Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      if (this.currentAccountId && !this.isExplicitClose) {
-        // Must request a FRESH OTP on reconnect
-        this.connect(this.currentAccountId);
+      if (!this.isExplicitClose) {
+        this.connect(this.currentAccountId || undefined).catch((err) => {
+          console.warn('[DerivTradingClient] Reconnect attempt failed:', err?.message || err);
+        });
       }
-    }, 3000);
+    }, delay);
   }
 
   private startPing(): void {
@@ -418,7 +445,29 @@ export class DerivTradingClient {
   public async sendRequest<T = any>(payload: Record<string, any>, type = 'trade_req'): Promise<T> {
     if (!this.isConnected()) {
       try {
-        await this.ensureConnected();
+        await this.ensureConnected(this.currentAccountId || undefined);
+      } catch {}
+    }
+
+    // Wait briefly if connection is in-flight
+    if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
+      await new Promise<void>((resolve) => {
+        const check = setInterval(() => {
+          if (!this.ws || this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CLOSED) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 100);
+        setTimeout(() => {
+          clearInterval(check);
+          resolve();
+        }, 3000);
+      });
+    }
+
+    if (!this.isConnected()) {
+      try {
+        await this.connect(this.currentAccountId || undefined);
       } catch {}
     }
 
@@ -431,7 +480,7 @@ export class DerivTradingClient {
           this.pendingRequests.delete(req_id);
           reject(new Error(`Trading request timeout for ${type} (req_id: ${req_id})`));
         }
-      }, 10000);
+      }, 12000);
 
       this.pendingRequests.set(req_id, { resolve, reject, timer, type });
 

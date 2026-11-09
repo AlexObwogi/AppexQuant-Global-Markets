@@ -21,9 +21,10 @@ import {
   Award,
   Cpu,
   RefreshCw,
+  Wallet,
 } from 'lucide-react';
 import { ProofOfExecutionCertificate } from '../../types/cryptoAudit.ts';
-import { getAllCertificates, verifyCertificate } from '../../services/cryptographicAuditService.ts';
+import { getAllCertificates, verifyCertificate, fetchDerivHistory } from '../../services/cryptographicAuditService.ts';
 import { ProofOfExecutionModal } from './ProofOfExecutionModal.tsx';
 import { Button } from '../ui/Button.tsx';
 
@@ -34,13 +35,22 @@ export const AuditTrailViewer: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     loadCertificates();
   }, []);
 
-  const loadCertificates = () => {
-    setCertificates(getAllCertificates());
+  const loadCertificates = async () => {
+    setIsLoading(true);
+    try {
+      await fetchDerivHistory();
+    } catch (err) {
+      console.warn('[AuditTrailViewer] fetchDerivHistory sync notice:', err);
+    } finally {
+      setCertificates(getAllCertificates());
+      setIsLoading(false);
+    }
   };
 
   const getCertStatus = (c: ProofOfExecutionCertificate): 'COMPLETED' | 'PENDING' | 'FAILED' => {
@@ -121,8 +131,9 @@ export const AuditTrailViewer: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={loadCertificates} className="gap-1.5">
-            <RefreshCw className="w-3.5 h-3.5" /> Refresh Ledger
+          <Button variant="outline" size="sm" onClick={loadCertificates} disabled={isLoading} className="gap-1.5">
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-primary' : ''}`} />
+            <span>{isLoading ? 'Syncing...' : 'Refresh Ledger'}</span>
           </Button>
 
           <Button
@@ -204,6 +215,7 @@ export const AuditTrailViewer: React.FC = () => {
           {[
             { id: 'ALL', label: 'All Audits' },
             { id: 'TRADE_EXECUTION', label: 'Trades', icon: TrendingUp },
+            { id: 'LEDGER_SETTLEMENT', label: 'Cashier & Funding', icon: Wallet },
             { id: 'CHALLENGE_PHASE_PASS', label: 'Prop Passes', icon: Award },
             { id: 'AI_SIGNAL_OUTCOME', label: 'AI Signals', icon: Cpu },
           ].map((tab) => (
@@ -236,6 +248,7 @@ export const AuditTrailViewer: React.FC = () => {
               <div className="flex items-start gap-3.5 min-w-0">
                 <div className="p-2 rounded-lg bg-surface-secondary text-primary border border-border-subtle mt-0.5 shrink-0">
                   {cert.type === 'TRADE_EXECUTION' && <TrendingUp className="w-4 h-4" />}
+                  {cert.type === 'LEDGER_SETTLEMENT' && <Wallet className="w-4 h-4 text-emerald-400" />}
                   {cert.type === 'CHALLENGE_PHASE_PASS' && <Award className="w-4 h-4 text-amber-400" />}
                   {cert.type === 'AI_SIGNAL_OUTCOME' && <Cpu className="w-4 h-4 text-cyan-400" />}
                 </div>

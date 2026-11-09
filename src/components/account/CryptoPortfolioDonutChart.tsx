@@ -3,8 +3,7 @@
  * Visualizes real-time asset allocation percentages for BTC, ETH, USDT, SOL, and USD wallets.
  */
 
-import React, { useState, useEffect } from 'react';
-import { walletPollingService, WalletDataResponse, WalletItem } from '../../services/walletPollingService.ts';
+import React, { useState } from 'react';
 import { useGlobalState } from '../../state/GlobalStateContext.tsx';
 import { Card } from '../ui/Card.tsx';
 import { Badge } from '../ui/Badge.tsx';
@@ -34,18 +33,10 @@ const ASSET_COLORS: Record<string, string> = {
 export const CryptoPortfolioDonutChart: React.FC = () => {
   const { state } = useGlobalState();
   const isBalanceHidden = state.isBalanceHidden;
-  const [walletData, setWalletData] = useState<WalletDataResponse>(walletPollingService.getLastData());
   const [activeAsset, setActiveAsset] = useState<string | null>(null);
 
-  useEffect(() => {
-    const unsub = walletPollingService.subscribe((data) => {
-      setWalletData(data);
-    });
-    return unsub;
-  }, []);
-
-  // Compute allocations
-  const totalVal = walletData.totalUsdValue;
+  // Compute allocations directly from authoritative global wallet state
+  const totalVal = state.totalUsdValue;
   
   // Benchmark fallback allocation weights if total value is 0 (so chart always renders nicely)
   const defaultWeights: Record<string, number> = {
@@ -58,7 +49,7 @@ export const CryptoPortfolioDonutChart: React.FC = () => {
   const circumference = 2 * Math.PI * 40; // R = 40 => Circumference ~ 251.327
   let cumulativePercentage = 0;
 
-  const allocations: AssetAllocation[] = walletData.wallets
+  const allocations: AssetAllocation[] = state.wallets
     .filter((w) => ['BTC', 'ETH', 'USDT', 'SOL', 'USD'].includes(w.currency))
     .map((w) => {
       let pct = 0;

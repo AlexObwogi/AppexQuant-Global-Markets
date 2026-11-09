@@ -21,6 +21,7 @@ export interface TradingAccount {
   accountNumber: string;
   accountName: string;
   type: AccountType;
+  isVirtual?: boolean;
   currency: string;
   server: string;
   isPrimary: boolean;

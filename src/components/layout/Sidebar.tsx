@@ -47,6 +47,9 @@ export const navItems: NavItem[] = [
   { id: 'analytics', label: 'Portfolio & Analytics', icon: <PieChart className="w-4 h-4" />, group: 'core' },
 
   // Group 2: Intelligence & Strategy Hub
+  { id: 'bot-builder', label: 'Quantis Bot Studio', icon: <Bot className="w-4 h-4 text-cyan-400" />, group: 'resources', badge: 'IDE' },
+  { id: 'academy', label: 'Quantis FX Academy', icon: <GraduationCap className="w-4 h-4 text-cyan-400" />, group: 'resources', badge: 'Learn' },
+  { id: 'marketplace', label: 'Quantis Marketplace', icon: <DollarSign className="w-4 h-4 text-emerald-400" />, group: 'resources', badge: 'New' },
   { id: 'audit', label: 'Trade History & Audit', icon: <ShieldCheck className="w-4 h-4" />, group: 'resources' },
   { id: 'risk-calculator', label: 'Risk & Lot Calculator', icon: <LineChart className="w-4 h-4" />, group: 'resources' },
   { id: 'creator-portal', label: 'Creator Revenue Portal', icon: <DollarSign className="w-4 h-4" />, group: 'resources' },

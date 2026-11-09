@@ -3,7 +3,7 @@
  * Single Source of Truth for Auth, Accounts, Markets, Connection, Risk, Flags, and Theme.
  */
 
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { UserProfile, AuthSession } from '../types/user.ts';
 import { TradingAccount } from '../types/account.ts';
 import { ConnectionStatus, InstrumentCategory, MarketInstrument } from '../types/market.ts';
@@ -15,6 +15,36 @@ import { logAuditEvent } from '../observability/audit.ts';
 import { derivAuthService, handleActiveAccountChange } from '../services/deriv/authService.ts';
 import { derivWs } from '../services/deriv/DerivWebSocketManager.ts';
 import { derivBrowserClient } from '../services/deriv/browserClient.ts';
+import { derivTradingClient } from '../services/deriv/tradingClient.ts';
+import { walletPollingService, WalletItem } from '../services/walletPollingService.ts';
+
+/**
+ * Derives whether an account is Virtual (Demo) or Real strictly from Deriv API parameters.
+ * Deriv API convention: is_virtual: 1 (Demo), 0 (Real).
+ */
+export function isDerivAccountVirtual(item: any): boolean {
+  if (!item) return false;
+  if (item.is_virtual === 1 || item.is_virtual === true) return true;
+  if (item.is_virtual === 0 || item.is_virtual === false) return false;
+  if (item.isVirtual === true) return true;
+  if (item.isVirtual === false) return false;
+  if (typeof item.account_type === 'string') {
+    const t = item.account_type.toLowerCase();
+    if (t === 'demo' || t === 'virtual') return true;
+    if (t === 'real') return false;
+  }
+  if (typeof item.accountType === 'string') {
+    const t = item.accountType.toLowerCase();
+    if (t === 'demo' || t === 'virtual') return true;
+    if (t === 'real') return false;
+  }
+  if (typeof item.type === 'string') {
+    const t = item.type.toUpperCase();
+    if (t === 'DEMO') return true;
+    if (t === 'REAL') return false;
+  }
+  return false;
+}
 
 export type AppViewRoute =
   | 'landing'
@@ -44,7 +74,10 @@ export type AppViewRoute =
   | 'audit'
   | 'risk-calculator'
   | 'creator-portal'
-  | 'developer';
+  | 'developer'
+  | 'bot-builder'
+  | 'academy'
+  | 'marketplace';
 
 export interface ToastNotification {
   id: string;
@@ -75,12 +108,16 @@ export interface GlobalState {
   theme: ThemeMode;
   currentRoute: AppViewRoute;
   isBalanceHidden: boolean;
+  wallets: WalletItem[];
+  totalUsdValue: number;
+  lastWalletsSyncedAt: string | null;
+  isWalletsLoading: boolean;
 }
 
 const getInitialRoute = (): AppViewRoute => {
   if (typeof window !== 'undefined' && window.location) {
     const rawPath = window.location.pathname.replace(/^\//, '').trim().toLowerCase();
-    if (!rawPath || rawPath === 'landing' || rawPath === 'index.html') {
+    if (rawPath === 'landing') {
       return 'landing';
     }
     if (rawPath === 'dashboard/error' || rawPath === 'error' || rawPath.startsWith('dashboard/error')) {
@@ -90,13 +127,13 @@ const getInitialRoute = (): AppViewRoute => {
       'landing', 'dashboard', 'dashboard/error', 'error', 'markets', 'signals', 'strategies', 'backtest', 
       'trade', 'eas', 'analytics', 'calendar', 'news', 'community', 
       'leaderboard', 'account', 'legal', 'admin', 'health', 'automation', 
-      'education', 'p2p', 'ai-analysis', 'strategy-lab'
+      'education', 'p2p', 'ai-analysis', 'strategy-lab', 'bot-builder', 'academy', 'marketplace', 'risk-calculator'
     ];
     if (validRoutes.includes(rawPath as AppViewRoute)) {
       return rawPath as AppViewRoute;
     }
   }
-  return 'landing';
+  return 'dashboard';
 };
 
 export const initialGlobalState: GlobalState = {
@@ -136,9 +173,13 @@ export const initialGlobalState: GlobalState = {
   },
   featureFlags: defaultFeatureFlags,
   notifications: [],
-  theme: (typeof window !== 'undefined' && (localStorage.getItem('appex_theme_mode_v1') as ThemeMode)) || 'system',
+  theme: (typeof window !== 'undefined' && (localStorage.getItem('appex_theme_mode_v1') as ThemeMode)) || 'dark',
   currentRoute: getInitialRoute(),
   isBalanceHidden: typeof window !== 'undefined' ? localStorage.getItem('appex_balance_hidden_v1') === 'true' : false,
+  wallets: [],
+  totalUsdValue: 0,
+  lastWalletsSyncedAt: null,
+  isWalletsLoading: false,
 };
 
 export type GlobalAction =
@@ -156,10 +197,108 @@ export type GlobalAction =
   | { type: 'SET_USER_PROFILE'; payload: UserProfile | null }
   | { type: 'SET_SYNC_STATUS'; payload: 'IDLE' | 'SYNCING' | 'SYNCED' | 'SYNC_FAILED' }
   | { type: 'SET_SESSION_ELEVATION'; payload: { isElevated: boolean; elevatedUntil: string | null } }
-  | { type: 'UPDATE_ACCOUNT_BALANCE'; payload: { balance: number; currency?: string; loginid?: string } };
+  | { type: 'UPDATE_ACCOUNT_BALANCE'; payload: { balance: number; currency?: string; loginid?: string } }
+  | { type: 'SET_WALLETS_DATA'; payload: { wallets: WalletItem[]; totalUsdValue: number; lastSyncedAt: string } }
+  | { type: 'SET_WALLETS_LOADING'; payload: boolean };
 
 function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
   switch (action.type) {
+    case 'SET_WALLETS_LOADING':
+      return { ...state, isWalletsLoading: action.payload };
+
+    case 'SET_WALLETS_DATA': {
+      const { wallets, totalUsdValue, lastSyncedAt } = action.payload;
+
+      const primaryWallet =
+        wallets.find((w) => w.loginid === state.selectedAccountId || w.id === state.selectedAccountId) ||
+        wallets.find((w) => w.currency === 'USD') ||
+        wallets.find((w) => w.balance > 0) ||
+        wallets[0];
+
+      let updatedAccounts = state.accounts.map((acc) => {
+        const matchingWallet = wallets.find(
+          (w) =>
+            w.loginid === acc.accountNumber ||
+            w.id === acc.id ||
+            w.id === `acc-${acc.accountNumber}` ||
+            (acc.isPrimary && w.currency === acc.currency)
+        );
+
+        if (matchingWallet) {
+          const cur = matchingWallet.currency || acc.currency;
+          const newBal = matchingWallet.balance;
+          const unrealizedPl = acc.balance.unrealizedPl || 0;
+          const equity = newBal + unrealizedPl;
+          const margin = acc.balance.margin || 0;
+          const marginLevel = margin > 0 ? (equity / margin) * 100 : 0;
+          return {
+            ...acc,
+            currency: cur,
+            balance: {
+              ...acc.balance,
+              balance: newBal,
+              equity,
+              freeMargin: Math.max(0, equity - margin),
+              marginLevel,
+              currency: cur,
+            },
+          };
+        }
+        return acc;
+      });
+
+      if (updatedAccounts.length === 0 && wallets.length > 0) {
+        const now = new Date().toISOString();
+        updatedAccounts = wallets.map((w, idx) => {
+          const isVirtual = isDerivAccountVirtual(w);
+          return {
+            id: `acc-${w.loginid || w.id}`,
+            userId: state.user?.id || 'usr-default',
+            brokerId: 'broker-deriv',
+            accountNumber: w.loginid || w.id,
+            accountName: w.name || `${w.currency} Account`,
+            type: isVirtual ? 'DEMO' : 'REAL',
+            isVirtual,
+            currency: w.currency || 'USD',
+            server: isVirtual ? 'Deriv-Demo' : 'Deriv-Server',
+            isPrimary: idx === 0,
+            isConnected: true,
+            balance: {
+              balance: w.balance,
+              equity: w.balance,
+              freeMargin: w.balance,
+              margin: 0,
+              marginLevel: 0,
+              unrealizedPl: 0,
+              currency: w.currency || 'USD',
+            },
+            createdAt: now,
+            updatedAt: now,
+          };
+        });
+      }
+
+      let updatedUser = state.user;
+      if (updatedUser && primaryWallet) {
+        updatedUser = {
+          ...updatedUser,
+          balance: primaryWallet.balance,
+          currency: primaryWallet.currency,
+          syncStatus: 'SYNCED',
+        };
+      }
+
+      return {
+        ...state,
+        wallets,
+        totalUsdValue,
+        lastWalletsSyncedAt: lastSyncedAt,
+        isWalletsLoading: false,
+        accounts: updatedAccounts,
+        user: updatedUser,
+      };
+    }
+
     case 'UPDATE_ACCOUNT_BALANCE': {
       const { balance, currency, loginid } = action.payload;
       let matchFound = false;
@@ -191,19 +330,33 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
         return acc;
       });
 
+      const updatedWallets = state.wallets.map((w) => {
+        if (loginid && (w.loginid === loginid || w.id === loginid || w.id === `acc-${loginid}`)) {
+          return {
+            ...w,
+            balance,
+            usdValue: w.currency === 'USD' ? balance : w.usdValue,
+            lastUpdated: new Date().toISOString(),
+          };
+        }
+        return w;
+      });
+
       if (!matchFound) {
         const accId = loginid ? `acc-${loginid}` : state.selectedAccountId || 'acc-primary';
         const cur = currency || 'USD';
         const now = new Date().toISOString();
+        const isVirtual = isDerivAccountVirtual({ loginid, currency });
         const newAcc: TradingAccount = {
           id: accId,
           userId: state.user?.id || 'usr-default',
           brokerId: 'broker-deriv',
           accountNumber: loginid || 'Primary',
           accountName: loginid || 'Primary Account',
-          type: loginid?.startsWith('VR') ? 'DEMO' : 'REAL',
+          type: isVirtual ? 'DEMO' : 'REAL',
+          isVirtual,
           currency: cur,
-          server: 'Deriv-Server',
+          server: isVirtual ? 'Deriv-Demo' : 'Deriv-Server',
           isPrimary: true,
           isConnected: true,
           balance: {
@@ -221,6 +374,7 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
         return {
           ...state,
           accounts: [...state.accounts, newAcc],
+          wallets: updatedWallets,
           selectedAccountId: state.selectedAccountId || accId,
         };
       }
@@ -228,6 +382,7 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
       return {
         ...state,
         accounts: updatedAccounts,
+        wallets: updatedWallets,
       };
     }
     case 'SET_USER_PROFILE': {
@@ -258,7 +413,7 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
 
       const updatedAccounts: TradingAccount[] = accountItems.map((item: any) => {
         const itemLoginid = item.loginid || primaryAccountId;
-        const itemIsDemo = item.is_virtual === 1 || item.is_virtual === true || item.account_type === 'demo';
+        const itemIsDemo = isDerivAccountVirtual(item);
         const itemCurrency = item.currency || currency;
         const isPrimary = itemLoginid === primaryAccountId;
         const itemBalance = isPrimary ? balanceNum : 0;
@@ -270,6 +425,7 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
           accountNumber: itemLoginid,
           accountName: `Deriv ${itemIsDemo ? 'Demo' : 'Real'} (${itemLoginid})`,
           type: itemIsDemo ? 'DEMO' : 'REAL',
+          isVirtual: itemIsDemo,
           currency: itemCurrency,
           server: itemIsDemo ? 'Deriv-Demo' : 'Deriv-Server',
           isPrimary,
@@ -437,10 +593,13 @@ function globalReducer(state: GlobalState, action: GlobalAction): GlobalState {
   }
 }
 
-interface GlobalContextProps {
+export interface GlobalContextProps {
   state: GlobalState;
   dispatch: React.Dispatch<GlobalAction>;
   selectedAccount: TradingAccount | null;
+  refreshBalances: () => Promise<void>;
+  setCurrentView: (route: AppViewRoute) => void;
+  activeAccount: { id: string; type: 'real' | 'demo'; currency: string; balance: number } | null;
 }
 
 const GlobalStateContext = createContext<GlobalContextProps | undefined>(undefined);
@@ -534,16 +693,98 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
     return unsubscribe;
   }, []);
 
-  // Cleanup effect: clear cached balance state whenever selectedAccountId changes to prevent leakage
+  // Authoritative Single Wallet Polling Engine Lifecycle
   useEffect(() => {
-    handleActiveAccountChange(state.selectedAccountId);
+    walletPollingService.startPolling();
+
+    const unsubscribe = walletPollingService.subscribe((walletData) => {
+      dispatch({
+        type: 'SET_WALLETS_DATA',
+        payload: {
+          wallets: walletData.wallets,
+          totalUsdValue: walletData.totalUsdValue,
+          lastSyncedAt: walletData.lastSyncedAt,
+        },
+      });
+
+      // Synchronize active trading client balance
+      const primary =
+        walletData.wallets.find((w) => w.loginid === state.selectedAccountId || w.currency === 'USD') ||
+        walletData.wallets[0];
+      if (primary && typeof primary.balance === 'number') {
+        derivTradingClient.setBalance(primary.balance, primary.currency);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [state.selectedAccountId]);
+
+  // Unified global balance refresh accessible by any component
+  const refreshBalances = useCallback(async () => {
+    dispatch({ type: 'SET_WALLETS_LOADING', payload: true });
+    try {
+      const freshData = await walletPollingService.fetchWallets();
+      dispatch({
+        type: 'SET_WALLETS_DATA',
+        payload: {
+          wallets: freshData.wallets,
+          totalUsdValue: freshData.totalUsdValue,
+          lastSyncedAt: freshData.lastSyncedAt,
+        },
+      });
+      const primary =
+        freshData.wallets.find((w) => w.loginid === state.selectedAccountId || w.currency === 'USD') ||
+        freshData.wallets[0];
+      if (primary && typeof primary.balance === 'number') {
+        derivTradingClient.setBalance(primary.balance, primary.currency);
+      }
+    } finally {
+      dispatch({ type: 'SET_WALLETS_LOADING', payload: false });
+    }
   }, [state.selectedAccountId]);
 
   const selectedAccount =
     state.accounts.find((acc) => acc.id === state.selectedAccountId) || state.accounts[0] || null;
 
+  // Synchronize active trading socket connection and mode strictly from selectedAccount
+  useEffect(() => {
+    const isReal = selectedAccount ? selectedAccount.type === 'REAL' : state.executionEnvironment === 'LIVE';
+    derivTradingClient.setIsReal(isReal);
+    const targetAccountId = selectedAccount?.accountNumber || selectedAccount?.id || state.user?.derivAccountId;
+    if (targetAccountId) {
+      derivTradingClient.connect(targetAccountId).catch(() => {});
+    } else {
+      derivTradingClient.ensureConnected().catch(() => {});
+    }
+  }, [selectedAccount, state.executionEnvironment, state.user?.derivAccountId]);
+
+  const setCurrentView = useCallback((route: AppViewRoute) => {
+    dispatch({ type: 'SET_ROUTE', payload: route });
+  }, []);
+
+  const activeAccount = useMemo(() => {
+    if (!selectedAccount) return null;
+    return {
+      id: selectedAccount.accountNumber || selectedAccount.id,
+      type: (selectedAccount.type === 'REAL' ? 'real' : 'demo') as 'real' | 'demo',
+      currency: selectedAccount.currency || 'USD',
+      balance: selectedAccount.balance?.balance || 0,
+    };
+  }, [selectedAccount]);
+
   return (
-    <GlobalStateContext.Provider value={{ state, dispatch, selectedAccount }}>
+    <GlobalStateContext.Provider
+      value={{
+        state,
+        dispatch,
+        selectedAccount,
+        refreshBalances,
+        setCurrentView,
+        activeAccount,
+      }}
+    >
       {children}
     </GlobalStateContext.Provider>
   );

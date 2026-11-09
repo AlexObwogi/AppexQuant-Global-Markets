@@ -5,7 +5,7 @@ import { DerivConnectionModal } from '../auth/DerivConnectionModal.tsx';
 import { Flame, ShieldCheck, Unplug, RefreshCw } from 'lucide-react';
 
 export const ConnectionStatus: React.FC = () => {
-  const { state, dispatch } = useGlobalState();
+  const { state, dispatch, selectedAccount } = useGlobalState();
   const [wsState, setWsState] = useState<string>(derivWs.getConnectionState());
   const [showAdminModal, setShowAdminModal] = useState(false);
   const clickCountRef = useRef(0);
@@ -20,7 +20,9 @@ export const ConnectionStatus: React.FC = () => {
   const isAuthenticated = state.session.isAuthenticated;
   const isLiveConnected = isAuthenticated;
 
-  const accountType = state.user?.accountType || (state.user?.derivAccountId?.startsWith('VR') ? 'demo' : 'real');
+  const accountType = selectedAccount
+    ? (selectedAccount.type === 'DEMO' ? 'demo' : 'real')
+    : (state.user?.accountType || (state.executionEnvironment === 'DEMO' ? 'demo' : 'real'));
   const env = state.executionEnvironment;
   const isAdmin = state.user?.role === 'ADMIN' || state.user?.role === 'SUPER_ADMIN';
 

@@ -1,6 +1,7 @@
 /**
  * AppexQuant Markets Global - Environment Build Guard
- * Exits 1 if any configured VITE_DERIV_*_URL (starting with http) contains query string, hash, token, otp, verif, or session.
+ * Exits 1 if any configured VITE_DERIV_*_URL contains query string, hash, token, otp, verif, or session.
+ * Never prints variable values.
  */
 
 const varsToCheck = [
@@ -16,7 +17,7 @@ for (const varName of varsToCheck) {
   const val = process.env[varName];
   if (val && typeof val === 'string') {
     const trimmed = val.trim();
-    if (trimmed.startsWith('http')) {
+    if (trimmed !== '') {
       if (
         trimmed.includes('?') ||
         trimmed.includes('#') ||

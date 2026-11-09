@@ -19,7 +19,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
-  const { state, dispatch, selectedAccount } = useGlobalState();
+  const { state, dispatch, selectedAccount, refreshBalances } = useGlobalState();
   const apiFetch = useApiFetch();
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [showCashierModal, setShowCashierModal] = useState(false);
@@ -32,43 +32,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
 
   const handleManualSync = async () => {
     if (isManualSyncing || !state.session.isAuthenticated) return;
-    const targetAccountId = state.user?.derivAccountId || state.user?.id || state.session.userId;
-    if (!targetAccountId) return;
-
     setIsManualSyncing(true);
     dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNCING' });
 
     try {
-      const res = await apiFetch('/api/auth/deriv/sync', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: targetAccountId.startsWith('usr-') ? targetAccountId : undefined,
-          loginid: targetAccountId.startsWith('CR') || targetAccountId.startsWith('VR') ? targetAccountId : targetAccountId,
-        }),
-      });
-
-      if (res.ok) {
-        const json = await res.json().catch(() => null);
-        if (json && json.success && json.data) {
-          const metadata = json.data;
-          if (typeof metadata.balance === 'number') {
-            dispatch({
-              type: 'UPDATE_ACCOUNT_BALANCE',
-              payload: {
-                balance: metadata.balance,
-                currency: metadata.currency || 'USD',
-                loginid: metadata.derivAccountId || targetAccountId,
-              },
-            });
-          }
-          dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNCED' });
-          return;
-        }
-      }
-      dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNC_FAILED' });
+      await refreshBalances();
+      dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNCED' });
     } catch {
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'SYNC_FAILED' });
     } finally {
@@ -77,7 +46,9 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
   };
 
   const isBalanceHidden = state.isBalanceHidden;
-  const balanceValue = selectedAccount ? selectedAccount.balance.balance : 0;
+  const balanceValue = (selectedAccount && selectedAccount.balance.balance > 0)
+    ? selectedAccount.balance.balance
+    : (state.wallets[0]?.balance ?? selectedAccount?.balance.balance ?? 0);
 
   // Account Connection Badge Logic
   const isAuthenticated = state.session.isAuthenticated;
@@ -117,14 +88,13 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileDrawer }) => {
           className="flex items-center space-x-2 cursor-pointer shrink-0"
           title="Return to Landing Page"
         >
-          <div className="w-8 h-8 sm:w-9 sm:h-9 bg-accent-primary rounded-lg flex items-center justify-center font-extrabold text-bg-main text-base sm:text-lg shadow-sm shrink-0">
-            A
+          <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center font-extrabold text-white text-base sm:text-lg shadow-sm shrink-0">
+            Q
           </div>
           <div className="whitespace-nowrap overflow-hidden">
-            <h1 className="text-xs sm:text-sm lg:text-base font-extrabold tracking-wider uppercase text-text-primary flex items-center gap-1">
-              <span>APPEXQUANT</span>
-              <span className="hidden sm:inline text-text-secondary font-semibold">MARKETS</span>
-              <span className="hidden lg:inline text-text-secondary/70 font-normal">GLOBAL</span>
+            <h1 className="text-xs sm:text-sm lg:text-base font-extrabold tracking-wider uppercase text-white flex items-center gap-1.5">
+              <span>QUANTIS</span>
+              <span className="text-cyan-400 font-semibold">FX</span>
             </h1>
           </div>
         </div>

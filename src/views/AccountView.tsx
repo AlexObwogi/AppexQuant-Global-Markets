@@ -61,7 +61,7 @@ interface ConnectionMeta {
 }
 
 export const AccountView: React.FC = () => {
-  const { state, dispatch, selectedAccount } = useGlobalState();
+  const { state, dispatch, selectedAccount, refreshBalances } = useGlobalState();
   const apiFetch = useApiFetch();
   
   const userRole = state.user?.role || 'USER';
@@ -423,6 +423,7 @@ export const AccountView: React.FC = () => {
     setErrorMessage(null);
     setMessage(null);
     try {
+      await refreshBalances();
       const res = await apiFetch('/api/auth/deriv/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

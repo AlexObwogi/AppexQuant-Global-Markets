@@ -8,6 +8,8 @@ import React, { ReactNode, useState, useEffect } from 'react';
 import { useGlobalState } from '../../state/GlobalStateContext.tsx';
 import { useMarketData } from '../../state/MarketDataContext.tsx';
 import { Header } from './Header.tsx';
+import { QuantisHeader } from '../quantis/QuantisHeader.tsx';
+import { QuantisFooterBar } from '../quantis/QuantisFooterBar.tsx';
 import { Sidebar } from './Sidebar.tsx';
 import { BottomNav } from './BottomNav.tsx';
 import { MoreDrawer } from './MoreDrawer.tsx';
@@ -72,7 +74,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
   // Active user / account label
   const activeAccountId = selectedAccount?.id || selectedAccount?.accountNumber || state.user?.derivAccountId || state.user?.loginid;
-  const isDemo = state.executionEnvironment === 'DEMO' || activeAccountId?.startsWith('VR');
+  const isDemo = selectedAccount ? selectedAccount.type === 'DEMO' : state.executionEnvironment === 'DEMO';
 
   // Real-time market data quotes from Deriv
   const eurUsdTick = ticks['frxEURUSD'];
@@ -86,75 +88,75 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const goldQuote = goldTick?.quote || instruments.find((i) => i.symbol === 'frxXAUUSD')?.bid;
 
   return (
-    <div className="min-h-screen lg:h-screen w-screen max-w-full overflow-x-hidden lg:overflow-hidden select-none bg-[#15171e] text-[#ffffff] flex flex-col font-sans antialiased relative">
+    <div className="min-h-screen lg:h-screen w-screen max-w-full overflow-x-hidden lg:overflow-hidden select-none bg-[#0F172A] text-[#ffffff] flex flex-col font-sans antialiased relative">
       {/* Network & System Status Banners */}
       <OfflineBanner />
       <SystemFailSafeBanner />
       <PWAInstallBanner />
       <CashierBanner />
 
-      {/* Adaptive Header (Houses brand, environment selector, balance toggle, theme & profile) */}
-      <Header onToggleMobileDrawer={() => setIsMoreOpen(true)} />
+      {/* Quantis FX Modular Header (Brand, Navigation Manager, API Token, OAuth, Cashier) */}
+      <QuantisHeader onToggleMobileDrawer={() => setIsMoreOpen(true)} />
 
       {/* Responsive Live Market Ribbon (Single-line touch scroll on mobile, no layout distortion) */}
-      <div className="h-9 sm:h-10 bg-[#15171e] border-b border-[#2a2e39] px-3 sm:px-4 flex items-center justify-between text-xs shrink-0 z-20 overflow-x-auto no-scrollbar whitespace-nowrap">
+      <div className="h-9 sm:h-10 bg-[#0F172A] border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between text-xs shrink-0 z-20 overflow-x-auto no-scrollbar whitespace-nowrap">
         <div className="flex items-center space-x-4 sm:space-x-6 shrink-0">
-          <div className="flex items-center space-x-2 text-[#9699a0]">
-            <span className="inline-block w-2 h-2 rounded-full bg-[#00a86b] animate-pulse"></span>
-            <span className="font-semibold text-[#ffffff] text-[11px] sm:text-xs">Live Feed</span>
+          <div className="flex items-center space-x-2 text-slate-400">
+            <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+            <span className="font-semibold text-white text-[11px] sm:text-xs">Quantis Feed</span>
           </div>
 
-          <div className="flex items-center space-x-3 sm:space-x-4 font-mono text-[11px] sm:text-xs text-[#9699a0]">
+          <div className="flex items-center space-x-3 sm:space-x-4 font-mono text-[11px] sm:text-xs text-slate-400">
             <div className="flex items-center space-x-1">
               <span>EUR/USD:</span>
-              <strong className={eurUsdTick && (eurUsdTick.changePct || 0) < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}>
+              <strong className={eurUsdTick && (eurUsdTick.changePct || 0) < 0 ? 'text-[#ff444f]' : 'text-emerald-400'}>
                 {eurQuote && eurQuote > 0 ? eurQuote.toFixed(5) : '--'}
               </strong>
               {eurUsdTick?.changePct !== undefined && (
-                <span className={`text-[10px] ${eurUsdTick.changePct < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}`}>
+                <span className={`text-[10px] ${eurUsdTick.changePct < 0 ? 'text-[#ff444f]' : 'text-emerald-400'}`}>
                   ({eurUsdTick.changePct >= 0 ? '+' : ''}{eurUsdTick.changePct.toFixed(2)}%)
                 </span>
               )}
             </div>
             <div className="flex items-center space-x-1">
               <span>BTC/USD:</span>
-              <strong className={btcTick && (btcTick.changePct || 0) < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}>
+              <strong className={btcTick && (btcTick.changePct || 0) < 0 ? 'text-[#ff444f]' : 'text-emerald-400'}>
                 {btcQuote && btcQuote > 0 ? `$${btcQuote.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '--'}
               </strong>
               {btcTick?.changePct !== undefined && (
-                <span className={`text-[10px] ${btcTick.changePct < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}`}>
+                <span className={`text-[10px] ${btcTick.changePct < 0 ? 'text-[#ff444f]' : 'text-emerald-400'}`}>
                   ({btcTick.changePct >= 0 ? '+' : ''}{btcTick.changePct.toFixed(2)}%)
                 </span>
               )}
             </div>
             <div className="flex items-center space-x-1">
               <span>Volatility 100:</span>
-              <strong className={vol100Tick && (vol100Tick.changePct || 0) < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}>
+              <strong className={vol100Tick && (vol100Tick.changePct || 0) < 0 ? 'text-[#ff444f]' : 'text-emerald-400'}>
                 {vol100Quote && vol100Quote > 0 ? vol100Quote.toFixed(2) : '--'}
               </strong>
               {vol100Tick?.changePct !== undefined && (
-                <span className={`text-[10px] ${vol100Tick.changePct < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}`}>
+                <span className={`text-[10px] ${vol100Tick.changePct < 0 ? 'text-[#ff444f]' : 'text-emerald-400'}`}>
                   ({vol100Tick.changePct >= 0 ? '+' : ''}{vol100Tick.changePct.toFixed(2)}%)
                 </span>
               )}
             </div>
             <div className="hidden md:flex items-center space-x-1">
               <span>Gold:</span>
-              <strong className={goldTick && (goldTick.changePct || 0) < 0 ? 'text-[#ff444f]' : 'text-[#00a86b]'}>
+              <strong className={goldTick && (goldTick.changePct || 0) < 0 ? 'text-[#ff444f]' : 'text-emerald-400'}>
                 {goldQuote && goldQuote > 0 ? `$${goldQuote.toFixed(2)}` : '--'}
               </strong>
             </div>
           </div>
         </div>
 
-        <div className="hidden sm:flex items-center space-x-3 font-mono text-[11px] sm:text-xs text-[#9699a0] shrink-0 pl-4">
+        <div className="hidden sm:flex items-center space-x-3 font-mono text-[11px] sm:text-xs text-slate-400 shrink-0 pl-4">
           <span>UTC {utcTime}</span>
           <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${
             isDemo
               ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
               : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
           }`}>
-            {isDemo ? 'Demo Account' : 'Real Account'}{activeAccountId ? `: ${activeAccountId}` : ''}
+            {isDemo ? 'Demo Mode' : 'Live Real'}{activeAccountId ? `: ${activeAccountId}` : ''}
           </span>
         </div>
       </div>
@@ -163,17 +165,17 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       <div className="flex-1 flex flex-col lg:flex-row h-full overflow-hidden w-full relative min-h-0">
         {/* DESKTOP SIDEBAR: Completely removed from DOM when on mobile viewports */}
         {!isMobile && (
-          <aside className="w-[240px] shrink-0 h-full bg-[#15171e] border-r border-[#2a2e39] flex flex-col overflow-y-auto no-scrollbar z-10">
+          <aside className="w-[240px] shrink-0 h-full bg-[#0F172A] border-r border-slate-800 flex flex-col overflow-y-auto no-scrollbar z-10">
             <Sidebar />
           </aside>
         )}
 
         {/* WORKSPACE CONTENT PANEL: Expands to 100% full width on mobile viewports for optimal touch ergonomics */}
         <main
-          className={`flex-1 w-full min-w-0 h-full overflow-y-auto overflow-x-hidden bg-[#15171e] relative ${
+          className={`flex-1 w-full min-w-0 h-full overflow-y-auto overflow-x-hidden bg-[#0F172A] relative ${
             isMobile
               ? 'p-2.5 sm:p-4 pb-24 touch-manipulation'
-              : 'p-4 lg:p-6 pb-12 no-scrollbar'
+              : 'p-4 lg:p-6 pb-20 no-scrollbar'
           }`}
         >
           <div className="max-w-[1920px] mx-auto w-full min-w-0">
@@ -215,6 +217,9 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
       {/* System Connection Status Pill */}
       <ConnectionStatus />
+
+      {/* Quantis FX Algorithmic Execution Footer Bar */}
+      <QuantisFooterBar />
     </div>
   );
 };

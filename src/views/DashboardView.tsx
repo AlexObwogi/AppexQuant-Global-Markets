@@ -14,6 +14,10 @@ import { AICommandCenter } from '../components/ai/AICommandCenter.tsx';
 import { MarketHeatmap } from '../components/dashboard/MarketHeatmap.tsx';
 import { DerivRateLimitTracker } from '../components/dashboard/DerivRateLimitTracker.tsx';
 import { PerformanceBadge, PerformanceDisclaimerBanner } from '../components/common/PerformanceDisclaimer.tsx';
+import { QuantisHeroGreeting } from '../components/quantis/QuantisHeroGreeting.tsx';
+import { QuantisActionHubGrid } from '../components/quantis/QuantisActionHubGrid.tsx';
+import { QuantisPerformanceMonitor } from '../components/quantis/QuantisPerformanceMonitor.tsx';
+import { useQuantis } from '../state/QuantisContext.tsx';
 import { formatCurrencyValue, formatUserRiskStatus } from '../utils/userStatusPresentation.ts';
 import {
   Wallet,
@@ -38,6 +42,7 @@ import {
 export const DashboardView: React.FC = () => {
   const { state, dispatch, selectedAccount } = useGlobalState();
   const { instruments, ticks, dataFreshness, connectionState, setSelectedSymbol } = useMarketData();
+  const { openModal } = useQuantis();
 
   const handleGoToMarkets = (symbol?: string) => {
     if (symbol) setSelectedSymbol(symbol);
@@ -66,7 +71,9 @@ export const DashboardView: React.FC = () => {
   const currentEnv = state.executionEnvironment;
   const isBalanceHidden = state.isBalanceHidden;
 
-  const balanceNum = selectedAccount ? selectedAccount.balance.balance : 0;
+  const balanceNum = (selectedAccount && selectedAccount.balance.balance > 0)
+    ? selectedAccount.balance.balance
+    : (state.wallets[0]?.balance ?? selectedAccount?.balance.balance ?? 0);
   const equityNum = selectedAccount ? (selectedAccount.balance.equity ?? balanceNum) : balanceNum;
   const marginNum = selectedAccount ? (selectedAccount.balance.margin ?? 0) : 0;
   const marginLevelNum = marginNum > 0 ? (equityNum / marginNum) * 100 : (equityNum > 0 ? 100 : 0);
@@ -85,9 +92,59 @@ export const DashboardView: React.FC = () => {
       : 'Demo balance';
 
   return (
-    <div className="space-y-4 max-w-7xl mx-auto flex flex-col flex-1 pb-8">
+    <div className="space-y-6 max-w-7xl mx-auto flex flex-col flex-1 pb-16">
+      {/* Quantis FX Contextual Greeting Banner & Market Pulse */}
+      <QuantisHeroGreeting />
+
+      {/* AI Scanner & Automation Modals Quick Launcher Bar */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 backdrop-blur-xl">
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          <div>
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Zap className="h-4 w-4 text-cyan-400" />
+              Quantis AI Scanner &amp; Automation Modals
+            </h3>
+            <p className="text-xs text-slate-400">
+              Interactive setup interfaces for manual digit options, automated Volatility rules, and sequence rotators.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => openModal('smartScan')}
+              className="flex items-center gap-1.5 rounded-xl border border-cyan-500/30 bg-cyan-950/40 px-3.5 py-2 text-xs font-bold text-cyan-300 hover:bg-cyan-900/40 hover:border-cyan-400 transition-all cursor-pointer"
+            >
+              <Search className="h-3.5 w-3.5 text-cyan-400" />
+              <span>Smart Scan (Manual)</span>
+            </button>
+
+            <button
+              onClick={() => openModal('autoPilot')}
+              className="flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-950/40 px-3.5 py-2 text-xs font-bold text-blue-300 hover:bg-blue-900/40 hover:border-blue-400 transition-all cursor-pointer"
+            >
+              <Zap className="h-3.5 w-3.5 text-blue-400" />
+              <span>Auto Pilot (Automated)</span>
+            </button>
+
+            <button
+              onClick={() => openModal('copilotScanner')}
+              className="flex items-center gap-1.5 rounded-xl border border-purple-500/30 bg-purple-950/40 px-3.5 py-2 text-xs font-bold text-purple-300 hover:bg-purple-900/40 hover:border-purple-400 transition-all cursor-pointer"
+            >
+              <Activity className="h-3.5 w-3.5 text-purple-400" />
+              <span>Copilot Scanner</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Dashboard Hero & Action Hub (2x2 Grid) */}
+      <QuantisActionHubGrid />
+
+      {/* Live Execution & Performance Monitor */}
+      <QuantisPerformanceMonitor />
+
       {/* Overview & Command Console Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border-color">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border-color pt-4">
         <div>
           <div className="flex items-center gap-2 mb-0.5">
             <p className="text-text-secondary text-xs font-semibold">Overview</p>

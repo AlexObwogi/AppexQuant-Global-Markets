@@ -13,6 +13,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { derivTradingClient, DerivLiveProposal, MAX_STAKE_REAL } from '../../services/deriv/tradingClient.ts';
 import { useMarketData } from '../../state/MarketDataContext.tsx';
 import { useGlobalState } from '../../state/GlobalStateContext.tsx';
+import { normalizeAndRegisterDerivRecord } from '../../services/cryptographicAuditService.ts';
 import { TrendingUp, TrendingDown, Shield, AlertTriangle, CheckCircle2, Loader2, Info, Wallet } from 'lucide-react';
 import { CashierModal } from '../cashier/CashierModal.tsx';
 
@@ -39,16 +40,24 @@ export const DerivTradeTicket: React.FC<DerivTradeTicketProps> = ({ onOrderExecu
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeAcc = selectedAccount || state.accounts[0];
-  const isReal = derivTradingClient.isRealAccount() || activeAcc?.type === 'REAL' || state.executionEnvironment === 'LIVE' || (derivTradingClient.getCurrentAccountId() ? !derivTradingClient.getCurrentAccountId()?.startsWith('VR') : false);
+  const isReal = activeAcc ? activeAcc.type === 'REAL' : (state.executionEnvironment === 'LIVE' || derivTradingClient.isRealAccount());
   const isMarketClosed = dataFreshness === 'CLOSED';
   const currency = derivTradingClient.getCurrency() || activeAcc?.currency || marketCurrency || 'USD';
-  const accountId = derivTradingClient.getCurrentAccountId() || activeAcc?.accountNumber || state.user?.derivAccountId || (isReal ? 'CR-Primary' : 'Demo Account');
+  const accountId = activeAcc?.accountNumber || derivTradingClient.getCurrentAccountId() || state.user?.derivAccountId || (isReal ? 'CR-Primary' : 'Demo Account');
+
+  // Ensure trading socket connection is active on mount or account change
+  useEffect(() => {
+    derivTradingClient.ensureConnected(activeAcc?.accountNumber || undefined).catch(() => {});
+  }, [activeAcc?.accountNumber]);
 
   // Listen for live proposal stream updates
   useEffect(() => {
     const unsub = derivTradingClient.subscribeProposal((proposal) => {
       setLiveProposal(proposal);
       setIsRequestingProposal(false);
+      if (proposal) {
+        setStatusMessage((prev) => (prev?.type === 'error' && prev.text.toLowerCase().includes('socket') ? null : prev));
+      }
     });
     return () => unsub();
   }, []);
@@ -165,6 +174,20 @@ export const DerivTradeTicket: React.FC<DerivTradeTicketProps> = ({ onOrderExecu
         text: `Order filled! Contract ID #${result.contract_id || result.transaction_id || 'OPEN'}`,
         type: 'success',
       });
+
+      // Register in cryptographic audit ledger for immediate site & Deriv parity
+      normalizeAndRegisterDerivRecord({
+        tradeId: `TRD-${result.contract_id || result.transaction_id}`,
+        contract_id: result.contract_id,
+        transaction_id: result.transaction_id,
+        action: type === 'CALL' ? 'BUY' : 'SELL',
+        symbol: selectedSymbol,
+        buy_price: proposal.ask_price,
+        sell_price: proposal.payout,
+        profit: proposal.payout - proposal.ask_price,
+        status: 'COMPLETED',
+        loginid: accountId,
+      }, 'TRADE').catch(() => {});
 
       if (onOrderExecuted) {
         onOrderExecuted(result);

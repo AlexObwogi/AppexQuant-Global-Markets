@@ -81,6 +81,8 @@ export interface TradingAccountState {
 export class DerivTradingClient {
   private ws: WebSocket | null = null;
   private currentAccountId: string | null = null;
+  private isReal = false;
+  private connectPromise: Promise<void> | null = null;
   private reqIdCounter = 1000;
   private pendingRequests = new Map<number, {
     resolve: (res: any) => void;
@@ -130,9 +132,13 @@ export class DerivTradingClient {
     return this.currentAccountId;
   }
 
+  public setIsReal(isReal: boolean): void {
+    this.isReal = isReal;
+    this.notifyState();
+  }
+
   public isRealAccount(): boolean {
-    if (!this.currentAccountId) return false;
-    return !this.currentAccountId.startsWith('VR') && !this.currentAccountId.startsWith('VRT');
+    return this.isReal;
   }
 
   public getBalance(): number {
@@ -143,63 +149,143 @@ export class DerivTradingClient {
     return this.currency;
   }
 
+  public setBalance(balance: number, currency?: string): void {
+    this.balance = balance;
+    if (currency) this.currency = currency;
+    this.notifyState();
+  }
+
   public getOpenPositions(): DerivOpenPosition[] {
     return Array.from(this.openPositionsMap.values());
   }
 
   // --- Connection & Authentication via Fresh OTP ---
 
-  public async connect(accountId: string): Promise<void> {
-    if (!accountId) return;
+  public async ensureConnected(accountId?: string): Promise<void> {
+    if (this.isConnected()) return;
+    if (this.connectPromise) {
+      await this.connectPromise;
+      return;
+    }
+    const target = accountId || this.currentAccountId || undefined;
+    await this.connect(target);
+  }
 
-    // If already connected to this account, no need to reconnect
-    if (this.currentAccountId === accountId && this.isConnected()) {
+  public async connect(accountId?: string): Promise<void> {
+    if (this.connectPromise) {
+      return this.connectPromise;
+    }
+
+    // If already connected to this target account, no need to reconnect
+    if (accountId && this.currentAccountId === accountId && this.isConnected()) {
       return;
     }
 
-    this.disconnect();
-    this.currentAccountId = accountId;
-    this.isExplicitClose = false;
-    this.isConnecting = true;
-    this.notifyState();
+    if (!accountId && this.isConnected()) {
+      return;
+    }
 
-    try {
-      // 1. Fetch fresh single-use OTP URL from server
-      const otpRes = await fetch('/api/auth/deriv/otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId }),
-      });
+    this.connectPromise = (async () => {
+      this.disconnect();
+      if (accountId) {
+        this.currentAccountId = accountId;
+      }
+      this.isExplicitClose = false;
+      this.isConnecting = true;
+      this.notifyState();
 
-      if (!otpRes.ok) {
-        const errJson = await otpRes.json().catch(() => null);
-        if (otpRes.status === 401 || errJson?.error?.code === 'TOKEN_EXPIRED') {
-          this.isConnecting = false;
-          this.notifyState(true);
-          return;
+      let targetWsUrl: string | null = null;
+
+      // 1. If an accountId is available, try to fetch fresh OTP URL from server
+      if (this.currentAccountId) {
+        try {
+          const otpRes = await fetch('/api/auth/deriv/otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accountId: this.currentAccountId }),
+          });
+
+          if (otpRes.ok) {
+            const otpData = await otpRes.json();
+            targetWsUrl = otpData?.data?.url || null;
+
+            if (targetWsUrl) {
+              const isOtpReal = targetWsUrl.includes('/ws/real');
+              const isOtpDemo = targetWsUrl.includes('/ws/demo');
+              if (isOtpReal && !this.isReal) {
+                console.log('[ACCOUNT_MODE] Mismatch detected: Setting isReal to true based on OTP path /ws/real');
+                this.isReal = true;
+              } else if (isOtpDemo && this.isReal) {
+                console.log('[ACCOUNT_MODE] Mismatch detected: Setting isReal to false based on OTP path /ws/demo');
+                this.isReal = false;
+              }
+
+              const sessionType = this.isReal ? 'real' : 'demo';
+              console.log('[ACCOUNT_MODE]', {
+                sessionType,
+                accountListTypes: [{ idPrefix: this.currentAccountId.slice(0, 3), type: sessionType }],
+                uiMode: sessionType,
+                otpPath: isOtpReal ? 'real' : isOtpDemo ? 'demo' : 'real',
+              });
+            }
+          }
+        } catch (otpErr) {
+          console.warn('[DerivTradingClient] OTP generation error, falling back to public stream:', otpErr);
         }
-        throw new Error(errJson?.error?.message || 'Failed to generate Deriv OTP');
       }
 
-      const otpData = await otpRes.json();
-      const wsUrl = otpData?.data?.url;
-
-      if (!wsUrl) {
-        throw new Error('Deriv OTP response did not return a WebSocket URL');
+      // 2. If no OTP available (unauthenticated / guest / error), fallback to public Deriv WebSocket
+      if (!targetWsUrl) {
+        const appId = (typeof window !== 'undefined' && (window as any).env?.VITE_DERIV_APP_ID) || '1089';
+        targetWsUrl = `wss://ws.derivws.com/websockets/v3?app_id=${appId}`;
       }
 
-      // 2. Open authenticated WebSocket with single-use OTP
-      this.ws = new WebSocket(wsUrl);
-      this.ws.onopen = this.handleOpen.bind(this);
-      this.ws.onmessage = this.handleMessage.bind(this);
-      this.ws.onerror = this.handleError.bind(this);
-      this.ws.onclose = this.handleClose.bind(this);
-    } catch (err: any) {
-      console.warn('[DerivTradingClient] Connection error:', err.message || err);
+      // 3. Connect to WebSocket
+      await new Promise<void>((resolve, reject) => {
+        try {
+          const ws = new WebSocket(targetWsUrl!);
+          this.ws = ws;
+
+          const openTimeout = setTimeout(() => {
+            if (this.ws === ws && ws.readyState !== WebSocket.OPEN) {
+              reject(new Error('Deriv WebSocket connection timed out'));
+            } else {
+              resolve();
+            }
+          }, 8000);
+
+          ws.onopen = () => {
+            clearTimeout(openTimeout);
+            this.handleOpen();
+            resolve();
+          };
+
+          ws.onmessage = this.handleMessage.bind(this);
+
+          ws.onerror = (err) => {
+            clearTimeout(openTimeout);
+            this.handleError(err);
+            reject(err);
+          };
+
+          ws.onclose = (evt) => {
+            clearTimeout(openTimeout);
+            this.handleClose(evt);
+          };
+        } catch (err) {
+          reject(err);
+        }
+      });
+    })().catch((err: any) => {
+      console.warn('[DerivTradingClient] Connection failed:', err?.message || err);
       this.isConnecting = false;
       this.notifyState();
       this.scheduleReconnect();
-    }
+    }).finally(() => {
+      this.connectPromise = null;
+    });
+
+    return this.connectPromise;
   }
 
   public disconnect(): void {
@@ -329,9 +415,13 @@ export class DerivTradingClient {
     }
   }
 
-  // --- Sending & Request Tracking ---
+  public async sendRequest<T = any>(payload: Record<string, any>, type = 'trade_req'): Promise<T> {
+    if (!this.isConnected()) {
+      try {
+        await this.ensureConnected();
+      } catch {}
+    }
 
-  public sendRequest<T = any>(payload: Record<string, any>, type = 'trade_req'): Promise<T> {
     return new Promise((resolve, reject) => {
       const req_id = this.reqIdCounter++;
       const message = { ...payload, req_id };

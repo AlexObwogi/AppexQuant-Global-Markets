@@ -27,19 +27,15 @@ interface CryptoWalletMonitorProps {
 }
 
 export const CryptoWalletMonitor: React.FC<CryptoWalletMonitorProps> = ({ onLaunchCashier }) => {
-  const { state } = useGlobalState();
+  const { state, refreshBalances } = useGlobalState();
   const isBalanceHidden = state.isBalanceHidden;
-  const [walletData, setWalletData] = useState<WalletDataResponse>(walletPollingService.getLastData());
-  const [isSyncing, setIsSyncing] = useState(false);
+  const wallets = state.wallets;
+  const totalUsdValue = state.totalUsdValue;
+  const lastSyncedAt = state.lastWalletsSyncedAt;
+  const isSyncing = state.isWalletsLoading;
+
   const [intervalSec, setIntervalSec] = useState<number>(15);
   const [timeAgo, setTimeAgo] = useState<string>('Just now');
-
-  useEffect(() => {
-    const unsub = walletPollingService.subscribe((data) => {
-      setWalletData(data);
-    });
-    return unsub;
-  }, []);
 
   useEffect(() => {
     walletPollingService.setPollingInterval(intervalSec);
@@ -48,23 +44,18 @@ export const CryptoWalletMonitor: React.FC<CryptoWalletMonitorProps> = ({ onLaun
   // Relative time ticker
   useEffect(() => {
     const timer = setInterval(() => {
-      if (!walletData.lastSyncedAt) return;
-      const elapsedMs = Date.now() - new Date(walletData.lastSyncedAt).getTime();
+      if (!lastSyncedAt) return;
+      const elapsedMs = Date.now() - new Date(lastSyncedAt).getTime();
       const seconds = Math.floor(elapsedMs / 1000);
       if (seconds < 5) setTimeAgo('Just now');
       else if (seconds < 60) setTimeAgo(`${seconds}s ago`);
       else setTimeAgo(`${Math.floor(seconds / 60)}m ago`);
     }, 2000);
     return () => clearInterval(timer);
-  }, [walletData.lastSyncedAt]);
+  }, [lastSyncedAt]);
 
   const handleManualSync = async () => {
-    setIsSyncing(true);
-    try {
-      await walletPollingService.fetchWallets();
-    } finally {
-      setTimeout(() => setIsSyncing(false), 600);
-    }
+    await refreshBalances();
   };
 
   const formatBalance = (amount: number, symbol: string, currency: string) => {
@@ -140,7 +131,7 @@ export const CryptoWalletMonitor: React.FC<CryptoWalletMonitorProps> = ({ onLaun
             Net Portfolio Estimated Valuation
           </span>
           <span className="text-xl sm:text-2xl font-bold font-mono text-text-primary mt-0.5 block">
-            {formatUsdValuation(walletData.totalUsdValue)}
+            {formatUsdValuation(totalUsdValue)}
           </span>
         </div>
 
@@ -155,7 +146,7 @@ export const CryptoWalletMonitor: React.FC<CryptoWalletMonitorProps> = ({ onLaun
       </div>
 
       {/* Grid of Individual Wallets */}
-      {walletData.wallets.length === 0 ? (
+      {wallets.length === 0 ? (
         <div className="p-8 text-center bg-bg-surface border border-border-color rounded-xl space-y-3">
           <Coins className="w-10 h-10 text-text-secondary mx-auto opacity-50" />
           <p className="text-sm font-semibold text-text-primary">
@@ -174,7 +165,7 @@ export const CryptoWalletMonitor: React.FC<CryptoWalletMonitorProps> = ({ onLaun
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {walletData.wallets.map((w: WalletItem) => (
+          {wallets.map((w: WalletItem) => (
             <div
               key={w.id}
               className="p-3.5 bg-bg-surface border border-border-color hover:border-[#00a86b]/40 rounded-xl space-y-3 transition-all shadow-xs"

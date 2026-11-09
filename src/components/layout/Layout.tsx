@@ -39,7 +39,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   // Active user / account label
   const activeAccountId = selectedAccount?.id || selectedAccount?.accountNumber || state.user?.derivAccountId || state.user?.loginid;
-  const isDemo = state.executionEnvironment === 'DEMO' || activeAccountId?.startsWith('VR');
+  const isDemo = selectedAccount ? selectedAccount.type === 'DEMO' : state.executionEnvironment === 'DEMO';
 
   // Market quotes from market data or defaults
   const eurUsdQuote = ticks['frxEURUSD']?.quote || 1.08452;

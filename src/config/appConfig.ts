@@ -41,7 +41,7 @@ export function loadAppConfig(): AppConfig {
     rawEnv === 'test' ? 'test' : 'development';
 
   const appVersion = getEnvVariable('APP_VERSION', '0.1.0');
-  const appName = 'AppexQuant Markets Global';
+  const appName = getEnvVariable('APP_NAME', 'Quantis FX');
   const appUrl = getEnvVariable('APP_URL', 'http://localhost:3000');
 
   return {

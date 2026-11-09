@@ -8,6 +8,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useGlobalState } from '../../state/GlobalStateContext.tsx';
 import { apiFetch } from '../../utils/apiFetch.ts';
 import { derivTradingClient } from '../../services/deriv/tradingClient.ts';
+import { walletPollingService } from '../../services/walletPollingService.ts';
 import { ChevronDown, Database, Flame, Check, Plus, Loader2 } from 'lucide-react';
 
 export const EnvironmentSelector: React.FC = () => {
@@ -62,6 +63,9 @@ export const EnvironmentSelector: React.FC = () => {
 
         // 4. Re-connect trading client to fresh target account OTP
         await derivTradingClient.connect(metadata.derivAccountId);
+
+        // 5. Authoritatively poll wallets so all views immediately reflect the new active account balance
+        await walletPollingService.fetchWallets();
 
         dispatch({
           type: 'ADD_NOTIFICATION',

@@ -50,7 +50,7 @@ export const CashierModal: React.FC<CashierModalProps> = ({
   onClose,
   defaultTab = 'deposit',
 }) => {
-  const { state, dispatch, selectedAccount } = useGlobalState();
+  const { state, dispatch, selectedAccount, refreshBalances } = useGlobalState();
   const { balance: marketBalance, currency: marketCurrency, reconnect } = useMarketData();
 
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdrawal' | 'transfer' | 'p2p'>(defaultTab);
@@ -69,15 +69,6 @@ export const CashierModal: React.FC<CashierModalProps> = ({
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
   const [isExecutingTransfer, setIsExecutingTransfer] = useState<boolean>(false);
   const [transferSuccessMsg, setTransferSuccessMsg] = useState<string | null>(null);
-
-  const [walletData, setWalletData] = useState<WalletDataResponse>(walletPollingService.getLastData());
-
-  useEffect(() => {
-    const unsub = walletPollingService.subscribe((data) => {
-      setWalletData(data);
-    });
-    return unsub;
-  }, []);
 
   useEffect(() => {
     setActiveTab(defaultTab);
@@ -135,43 +126,28 @@ export const CashierModal: React.FC<CashierModalProps> = ({
 
   const activeAcc = selectedAccount || state.accounts[0];
   const derivAccountId = derivTradingClient.getCurrentAccountId() || activeAcc?.accountNumber || state.user?.derivAccountId || state.session.userId || 'Primary Account';
-  const isReal = derivTradingClient.isRealAccount() || activeAcc?.type === 'REAL' || state.executionEnvironment === 'LIVE' || derivAccountId.startsWith('CR') || !derivAccountId.startsWith('VR');
+  const isReal = activeAcc ? activeAcc.type === 'REAL' : (state.executionEnvironment === 'LIVE' || derivTradingClient.isRealAccount());
 
-  const matchingWallet = walletData.wallets.find((w) => w.loginid === derivAccountId || w.id === activeAcc?.id) ||
-                         walletData.wallets.find((w) => w.balance > 0) ||
-                         walletData.wallets[0];
+  const matchingWallet = state.wallets.find((w) => w.loginid === derivAccountId || w.id === activeAcc?.id) ||
+                         state.wallets.find((w) => w.balance > 0) ||
+                         state.wallets[0];
 
+  const userBal = typeof state.user?.balance === 'number' ? state.user.balance : undefined;
+  const clientBal = derivTradingClient.getBalance();
   const currentBalance = (activeAcc?.balance?.balance !== undefined && activeAcc.balance.balance > 0)
     ? activeAcc.balance.balance
-    : (matchingWallet?.balance ?? (typeof marketBalance === 'number' && marketBalance > 0 ? marketBalance : selectedAccount?.balance?.balance ?? 0));
+    : (matchingWallet?.balance !== undefined && matchingWallet.balance > 0)
+    ? matchingWallet.balance
+    : (userBal !== undefined && userBal > 0)
+    ? userBal
+    : (clientBal > 0 ? clientBal : (typeof marketBalance === 'number' && marketBalance > 0 ? marketBalance : activeAcc?.balance?.balance ?? 0));
   const currentCurrency = matchingWallet?.currency || activeAcc?.currency || marketCurrency || selectedAccount?.balance?.currency || 'USD';
 
   const handleManualBalanceRefresh = async () => {
     setIsRefreshing(true);
     try {
       reconnect();
-      if (state.session.isAuthenticated) {
-        const res = await apiFetch('/api/auth/deriv/sync', {
-          method: 'POST',
-          body: JSON.stringify({
-            loginid: derivAccountId,
-          }),
-        }).catch(() => null);
-
-        if (res && res.ok) {
-          const data = await res.json().catch(() => null);
-          if (data?.data?.balance !== undefined) {
-            dispatch({
-              type: 'UPDATE_ACCOUNT_BALANCE',
-              payload: {
-                balance: data.data.balance,
-                currency: data.data.currency || currentCurrency,
-                loginid: derivAccountId,
-              },
-            });
-          }
-        }
-      }
+      await refreshBalances();
       dispatch({
         type: 'ADD_NOTIFICATION',
         payload: {

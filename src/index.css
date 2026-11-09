@@ -43,39 +43,39 @@
 }
 
 :root, html.dark {
-  --bg-main: #15171e;        /* Core App Backdrop Canvas */
-  --bg-surface: #1c1f26;     /* Main Component Widget Panels */
-  --bg-secondary: #222630;   /* Secondary surface contrast */
-  --bg-elevated: #1c1f26;    /* Elevated card panels */
-  --bg-terminal: #0e1014;    /* High-Contrast Code Terminals */
-  --border-color: #2a2e39;   /* Hairline Grid Panel Dividers */
-  --border-strong: #363b4b;  /* Strong structural borders */
-  --text-primary: #ffffff;   /* Primary high-contrast text */
-  --text-secondary: #9699a0; /* Muted secondary text */
-  --text-muted: #6b6f7b;     /* Subdued metadata text */
-  --accent-primary: #ff444f; /* Deriv Coral Red (Rise / Primary Brand Accent) */
-  --accent-hover: #e03b44;
-  --color-success: #00a86b;  /* Teal (Fall / Success) */
-  --color-danger: #ff444f;
-  --color-warning: #ffad33;
-  --color-info: #3770ff;
+  --bg-main: #0f172a;        /* Quantis FX Deep Slate Canvas #0F172A */
+  --bg-surface: #1e293b;     /* Quantis FX Glassmorphism Surface #1E293B */
+  --bg-secondary: #131d33;   /* Secondary Surface Contrast */
+  --bg-elevated: #1e293b;    /* Elevated Widget Panels */
+  --bg-terminal: #0b1120;    /* Dark Terminal Slate #0B1120 */
+  --border-color: #334155;   /* Glass Hairline Border #334155 */
+  --border-strong: #475569;  /* Strong Structural Border */
+  --text-primary: #f8fafc;   /* Slate 50 High-Contrast */
+  --text-secondary: #94a3b8; /* Slate 400 Muted */
+  --text-muted: #64748b;     /* Slate 500 Metadata */
+  --accent-primary: #06b6d4; /* Quantis Cyan #06B6D4 */
+  --accent-hover: #0891b2;   /* Cyan 600 */
+  --color-success: #10b981;  /* Emerald 500 */
+  --color-danger: #f43f5e;   /* Rose 500 */
+  --color-warning: #f59e0b;  /* Amber 500 */
+  --color-info: #2563eb;     /* Quantis Royal Blue #2563EB */
 
-  --bg-nav: #15171e;
-  --bg-chart: #1c1f26;
-  --bg-modal: #1c1f26;
-  --bg-dropdown: #1c1f26;
-  --bg-input: #15171e;
-  --bg-hover: #252a35;
-  --bg-active: #2f3442;
-  --bg-disabled: #1c1f26;
-  --color-selected: #ff444f;
-  --bg-tooltip: #222630;
-  --color-overlay: rgba(21, 23, 30, 0.85);
-  --color-divider: #2a2e39;
-  --color-focus: #ff444f;
-  --pl-positive: #00a86b;
-  --pl-negative: #ff444f;
-  --pl-neutral: #9699a0;
+  --bg-nav: #0f172a;
+  --bg-chart: #1e293b;
+  --bg-modal: #1e293b;
+  --bg-dropdown: #1e293b;
+  --bg-input: #0b1120;
+  --bg-hover: #334155;
+  --bg-active: #475569;
+  --bg-disabled: #1e293b;
+  --color-selected: #06b6d4;
+  --bg-tooltip: #1e293b;
+  --color-overlay: rgba(15, 23, 42, 0.85);
+  --color-divider: #334155;
+  --color-focus: #06b6d4;
+  --pl-positive: #10b981;
+  --pl-negative: #f43f5e;
+  --pl-neutral: #94a3b8;
 }
 
 @layer base {

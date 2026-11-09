@@ -25,7 +25,7 @@ export const DerivSyncHydrationGuard: React.FC<DerivSyncHydrationGuardProps> = (
 
   const syncStatus = state.user?.syncStatus || 'SYNCING';
   const accountId = state.user?.derivAccountId || state.user?.loginid || state.user?.id || 'Account';
-  const isDemo = state.user?.accountType === 'demo' || accountId.startsWith('VR');
+  const isDemo = state.user?.accountType === 'demo' || state.executionEnvironment === 'DEMO';
   const isDark = state.theme === 'dark' || (state.theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   const handleRetry = async () => {

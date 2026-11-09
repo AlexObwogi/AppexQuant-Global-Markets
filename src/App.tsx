@@ -36,6 +36,11 @@ import { AuditTrailViewer } from './components/audit/AuditTrailViewer.tsx';
 import { RiskMirroringCalculator } from './components/calculator/RiskMirroringCalculator.tsx';
 import { CreatorRevenueDashboard } from './components/creator/CreatorRevenueDashboard.tsx';
 import { DeveloperPortalView } from './components/developer/DeveloperPortalView.tsx';
+import { BotBuilderView } from './views/BotBuilderView.tsx';
+import { QuantisAcademyView } from './views/QuantisAcademyView.tsx';
+import { QuantisMarketplaceView } from './views/QuantisMarketplaceView.tsx';
+import { QuantisProvider } from './state/QuantisContext.tsx';
+import { QuantisModalsContainer } from './components/quantis/modals/QuantisModalsContainer.tsx';
 import { Lock, ShieldAlert } from 'lucide-react';
 import { Button } from './components/ui/Button.tsx';
 
@@ -68,7 +73,14 @@ function ActiveViewRenderer() {
 
   switch (state.currentRoute) {
     case 'dashboard':
+    case 'landing':
       return <DashboardView />;
+    case 'bot-builder':
+      return <BotBuilderView />;
+    case 'academy':
+      return <QuantisAcademyView />;
+    case 'marketplace':
+      return <QuantisMarketplaceView />;
     case 'dashboard/error':
     case 'error':
       return <DashboardErrorView />;
@@ -214,12 +226,15 @@ export default function App() {
     <ErrorBoundary>
       <GlobalStateProvider>
         <MarketDataProvider>
-          <AuthGate>
-            <AppShell>
-              <AuthUrlErrorConsumer />
-              <ActiveViewRenderer />
-            </AppShell>
-          </AuthGate>
+          <QuantisProvider>
+            <AuthGate>
+              <AppShell>
+                <AuthUrlErrorConsumer />
+                <ActiveViewRenderer />
+              </AppShell>
+            </AuthGate>
+            <QuantisModalsContainer />
+          </QuantisProvider>
         </MarketDataProvider>
       </GlobalStateProvider>
     </ErrorBoundary>

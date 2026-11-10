@@ -42,6 +42,13 @@ export const QuantisHeroGreeting: React.FC = () => {
     { symbol: 'frxXAUUSD', name: 'Gold / USD', price: '2,684.20', change: '+0.68%', isPositive: true, category: 'Commodity' },
   ];
 
+  const accId = tokenAccountInfo?.loginid || (activeAccount as any)?.accountNumber || activeAccount?.id || 'Trader';
+  const isRealAcc = Boolean(
+    (tokenAccountInfo && tokenAccountInfo.isVirtual === false) ||
+    (typeof accId === 'string' && accId.toUpperCase().startsWith('CR')) ||
+    ((activeAccount as any)?.type === 'REAL' || activeAccount?.type === 'real')
+  );
+
   return (
     <div className="relative overflow-hidden rounded-2xl border border-slate-800/80 bg-gradient-to-r from-slate-900 via-slate-900/95 to-slate-950 p-6 shadow-2xl backdrop-blur-xl">
       {/* Ambient background glow accents */}
@@ -53,32 +60,31 @@ export const QuantisHeroGreeting: React.FC = () => {
         <div className="space-y-2">
           <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/20 bg-cyan-950/40 px-3 py-1 text-xs font-medium text-cyan-300">
             <Sparkles className="h-3.5 w-3.5 text-cyan-400" />
-            <span>Quantis FX Quantitative Architecture</span>
-            <span className="mx-1 h-1 w-1 rounded-full bg-cyan-500" />
-            <span className="font-mono text-cyan-200">v3.4-PRO</span>
+            <span>Quantis FX Automated Trading Suite</span>
           </div>
 
           <div className="flex flex-wrap items-baseline gap-3">
             <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
               {greeting}, <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
-                {tokenAccountInfo ? tokenAccountInfo.loginid : 'Quantitative Trader'}
+                {accId}
               </span>
             </h1>
-            {activeAccount && (
-              <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider ${
-                activeAccount.type === 'real'
-                  ? 'border border-emerald-500/30 bg-emerald-950/60 text-emerald-400'
-                  : 'border border-amber-500/30 bg-amber-950/60 text-amber-300'
-              }`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${activeAccount.type === 'real' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                {activeAccount.type === 'real' ? 'Live Account' : 'Demo Mode'}
-              </span>
-            )}
+
+            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-extrabold uppercase tracking-wider ${
+              isRealAcc
+                ? 'border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 shadow-sm'
+                : 'border border-amber-500/40 bg-amber-500/10 text-amber-300 shadow-sm'
+            }`}>
+              <span className={`h-2 w-2 rounded-full ${
+                isRealAcc ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+              }`} />
+              {isRealAcc ? 'REAL LIVE ACCOUNT' : 'DEMO MODE'}
+            </span>
           </div>
 
-          <p className="max-w-2xl text-sm leading-relaxed text-slate-400">
-            High-frequency tick stream, quantitative algorithmic rule builders, and Deriv execution engine.
-            Active Strategy: <span className="font-medium text-slate-200">{activeBot ? activeBot.name : 'Ready for Deployment'}</span>.
+          <p className="max-w-2xl text-sm leading-relaxed text-slate-300">
+            Real-time market feeds, automated strategy builders, and execution workspace.
+            Active Strategy: <span className="font-semibold text-white">{activeBot ? activeBot.name : 'Ready'}</span>.
           </p>
         </div>
 
@@ -86,14 +92,14 @@ export const QuantisHeroGreeting: React.FC = () => {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2.5 rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-2.5 backdrop-blur-md">
             <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-              isConnected ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'bg-slate-800 text-slate-400'
+              isConnected ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400'
             }`}>
-              <Radio className={`h-4 w-4 ${isConnected ? 'animate-pulse text-cyan-400' : ''}`} />
+              <Radio className={`h-4 w-4 ${isConnected ? 'animate-pulse text-emerald-400' : ''}`} />
             </div>
             <div>
-              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Tick Stream</div>
-              <div className="text-xs font-semibold text-slate-200">
-                {isConnected ? 'Deriv wss:// active' : 'Disconnected'}
+              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Market Feed</div>
+              <div className="text-xs font-semibold text-slate-100">
+                {isConnected ? 'Live Feed Active' : 'Disconnected'}
               </div>
             </div>
           </div>
@@ -109,9 +115,9 @@ export const QuantisHeroGreeting: React.FC = () => {
               <Cpu className="h-4 w-4" />
             </div>
             <div>
-              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Execution Engine</div>
-              <div className="text-xs font-semibold text-slate-200">
-                {executionStatus === 'RUNNING' ? 'Running Algorithmic Loop' : executionStatus === 'SCANNING' ? 'Scanning Pattern Skews' : 'Awaiting Signals'}
+              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Bot Engine</div>
+              <div className="text-xs font-semibold text-slate-100">
+                {executionStatus === 'RUNNING' ? 'Bot Status: Running' : executionStatus === 'SCANNING' ? 'Scanning Signals' : 'Bot Status: Ready'}
               </div>
             </div>
           </div>

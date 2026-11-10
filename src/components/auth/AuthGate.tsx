@@ -78,7 +78,10 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
       const balanceAmount = typeof userData.balance === 'number' ? userData.balance : 0;
       const displayName = userData.fullName || userData.displayName || accountId;
       const email = userData.email || '';
-      const isDemo = userData.accountType === 'demo' || (userData as any).isVirtual === true || (userData as any).is_virtual === 1;
+      const isDemo = Boolean(
+        (!accountId.toUpperCase().startsWith('CR')) &&
+        (userData.accountType === 'demo' || (userData as any).isVirtual === true || (userData as any).is_virtual === 1 || accountId.toUpperCase().startsWith('VR'))
+      );
 
       if (typeof window !== 'undefined') {
         const sessionJson = JSON.stringify({
@@ -126,6 +129,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
       dispatch({ type: 'SET_CONNECTION_STATUS', payload: 'ONLINE' });
       dispatch({ type: 'SET_EXECUTION_ENVIRONMENT', payload: isDemo ? 'DEMO' : 'LIVE' });
+      dispatch({ type: 'SET_ROUTE', payload: 'dashboard' });
       dispatch({
         type: 'SELECT_BROKER',
         payload: {

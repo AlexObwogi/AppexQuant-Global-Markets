@@ -184,12 +184,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         </main>
       </div>
 
-      {/* MOBILE-OPTIMIZED BOTTOM-TAB NAVIGATION: Rendered strictly on mobile/tablet viewports */}
-      {isMobile && (
-        <BottomNav onOpenMore={() => setIsMoreOpen(true)} />
-      )}
-
-      {/* Slide-Up Navigation Menu Drawer (Connected via bottom bar 'Menu' tab or header hamburger) */}
+      {/* Slide-Up Navigation Menu Drawer (Connected via header hamburger icon) */}
       <MoreDrawer isOpen={isMoreOpen} onClose={() => setIsMoreOpen(false)} />
 
       {/* Floating Toast Notification Stack */}

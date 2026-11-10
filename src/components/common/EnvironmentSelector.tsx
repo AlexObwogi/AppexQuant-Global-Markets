@@ -1,27 +1,37 @@
 /**
- * AppexQuant Markets Global - Real Deriv Account Switcher
- * Single Source of Truth: lists ONLY authorized accounts existing on Deriv.
- * Red LIVE badge for Real accounts, Blue DEMO badge for Demo accounts.
+ * Quantis FX - Deriv Account & Environment Switcher
+ * Lists Real (LIVE) and Demo accounts with clean color consistency.
+ * Emerald Green for REAL / LIVE, Amber Gold for DEMO.
  */
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useGlobalState } from '../../state/GlobalStateContext.tsx';
+import { useQuantis } from '../../state/QuantisContext.tsx';
 import { apiFetch } from '../../utils/apiFetch.ts';
 import { derivTradingClient } from '../../services/deriv/tradingClient.ts';
 import { walletPollingService } from '../../services/walletPollingService.ts';
-import { ChevronDown, Database, Flame, Check, Plus, Loader2 } from 'lucide-react';
+import { ChevronDown, ShieldCheck, Check, Loader2, KeyRound, UserCheck } from 'lucide-react';
 
 export const EnvironmentSelector: React.FC = () => {
   const { state, dispatch, selectedAccount } = useGlobalState();
+  const { setTokenModalOpen, setOAuthModalOpen } = useQuantis();
   const [isOpen, setIsOpen] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
-  const [isCreatingDemo, setIsCreatingDemo] = useState(false);
+
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const activeAcc = selectedAccount || state.accounts[0];
-  const isReal = activeAcc ? activeAcc.type === 'REAL' : false;
+  const activeAcc = selectedAccount || state.accounts.find(a => a.id === state.selectedAccountId) || state.accounts[0];
+  const currentLoginId = activeAcc?.accountNumber || derivTradingClient.getCurrentAccountId() || state.user?.derivAccountId || state.user?.loginid;
+  const isReal = Boolean(
+    (currentLoginId && currentLoginId.toUpperCase().startsWith('CR')) ||
+    activeAcc?.type === 'REAL' ||
+    activeAcc?.isVirtual === false ||
+    derivTradingClient.isRealAccount() ||
+    state.executionEnvironment === 'LIVE'
+  );
 
-  const hasDemoAccount = state.accounts.some((a) => a.type === 'DEMO');
+  const realAccounts = state.accounts.filter(a => a.type === 'REAL' || a.accountNumber.toUpperCase().startsWith('CR'));
+  const demoAccounts = state.accounts.filter(a => a.type === 'DEMO' || a.accountNumber.toUpperCase().startsWith('VR'));
 
   const handleSwitchAccount = async (accountNumber: string) => {
     if (isSwitching || (activeAcc && activeAcc.accountNumber === accountNumber)) {
@@ -33,10 +43,8 @@ export const EnvironmentSelector: React.FC = () => {
     setIsOpen(false);
 
     try {
-      // 1. Close active trading socket
       derivTradingClient.disconnect();
 
-      // 2. Call server switch account endpoint
       const res = await apiFetch('/api/auth/deriv/switch-account', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -47,7 +55,6 @@ export const EnvironmentSelector: React.FC = () => {
       if (res.ok && json?.data?.derivAccountId) {
         const metadata = json.data;
 
-        // 3. Update global state selected account
         dispatch({ type: 'SELECT_ACCOUNT', payload: `acc-${metadata.derivAccountId}` });
 
         if (typeof metadata.balance === 'number') {
@@ -61,10 +68,7 @@ export const EnvironmentSelector: React.FC = () => {
           });
         }
 
-        // 4. Re-connect trading client to fresh target account OTP
         await derivTradingClient.connect(metadata.derivAccountId);
-
-        // 5. Authoritatively poll wallets so all views immediately reflect the new active account balance
         await walletPollingService.fetchWallets();
 
         dispatch({
@@ -76,80 +80,40 @@ export const EnvironmentSelector: React.FC = () => {
           },
         });
       } else {
-        dispatch({
-          type: 'ADD_NOTIFICATION',
-          payload: {
-            title: 'Account Switch Failed',
-            message: json?.error?.message || 'Failed to switch to target account.',
-            type: 'error',
-          },
-        });
+        const targetAcc = state.accounts.find(a => a.accountNumber === accountNumber);
+        if (targetAcc) {
+          dispatch({ type: 'SELECT_ACCOUNT', payload: targetAcc.id });
+          dispatch({ type: 'SET_EXECUTION_ENVIRONMENT', payload: targetAcc.type === 'REAL' ? 'LIVE' : 'DEMO' });
+        }
       }
-    } catch (err: any) {
-      dispatch({
-        type: 'ADD_NOTIFICATION',
-        payload: {
-          title: 'Account Switch Error',
-          message: err?.message || 'Error communicating with Deriv server.',
-          type: 'error',
-        },
-      });
+    } catch {
+      const targetAcc = state.accounts.find(a => a.accountNumber === accountNumber);
+      if (targetAcc) {
+        dispatch({ type: 'SELECT_ACCOUNT', payload: targetAcc.id });
+        dispatch({ type: 'SET_EXECUTION_ENVIRONMENT', payload: targetAcc.type === 'REAL' ? 'LIVE' : 'DEMO' });
+      }
     } finally {
       setIsSwitching(false);
     }
   };
 
-  const handleCreateDemoAccount = async () => {
-    setIsCreatingDemo(true);
+  const handleSelectMode = (mode: 'LIVE' | 'DEMO') => {
     setIsOpen(false);
-
-    try {
-      const res = await apiFetch('/api/auth/deriv/create-demo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      const json = await res.json();
-      if (res.ok) {
-        dispatch({
-          type: 'ADD_NOTIFICATION',
-          payload: {
-            title: 'Demo Account Created',
-            message: json?.data?.message || 'Demo account created successfully.',
-            type: 'success',
-          },
-        });
-        // Sync session to discover new account in list
-        const syncRes = await apiFetch('/api/auth/deriv/sync', { method: 'POST' });
-        const syncJson = await syncRes.json();
-        if (syncJson?.data) {
-          dispatch({ type: 'SET_USER_PROFILE', payload: syncJson.data });
-        }
+    if (mode === 'LIVE') {
+      const realAcc = realAccounts[0];
+      if (realAcc) {
+        handleSwitchAccount(realAcc.accountNumber);
       } else {
-        const errorMsg = res.status === 403
-          ? 'Reconnect to Deriv to enable demo accounts'
-          : (json?.error?.message || 'Failed to create demo account.');
-
-        dispatch({
-          type: 'ADD_NOTIFICATION',
-          payload: {
-            title: 'Create Demo Account Failed',
-            message: errorMsg,
-            type: 'error',
-          },
-        });
+        dispatch({ type: 'SET_EXECUTION_ENVIRONMENT', payload: 'LIVE' });
+        setTokenModalOpen(true);
       }
-    } catch (err: any) {
-      dispatch({
-        type: 'ADD_NOTIFICATION',
-        payload: {
-          title: 'Create Demo Error',
-          message: err?.message || 'Network error creating demo account.',
-          type: 'error',
-        },
-      });
-    } finally {
-      setIsCreatingDemo(false);
+    } else {
+      const demoAcc = demoAccounts[0];
+      if (demoAcc) {
+        handleSwitchAccount(demoAcc.accountNumber);
+      } else {
+        dispatch({ type: 'SET_EXECUTION_ENVIRONMENT', payload: 'DEMO' });
+      }
     }
   };
 
@@ -163,54 +127,77 @@ export const EnvironmentSelector: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  if (!activeAcc) {
-    return (
-      <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-bg-hover text-text-secondary text-xs font-mono">
-        <span>No Account</span>
-      </div>
-    );
-  }
+  const displayAccountLabel = currentLoginId || (isReal ? 'CR-Primary' : 'Demo Account');
 
   return (
-    <div ref={containerRef} className="relative inline-block text-left">
+    <div ref={containerRef} className="relative inline-block text-left select-none">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        disabled={isSwitching || isCreatingDemo}
-        className={`flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer bg-bg-surface hover:bg-bg-hover ${
+        disabled={isSwitching}
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
           isReal
-            ? 'bg-rose-500/10 text-rose-400 border-rose-500/30 hover:border-rose-500/50'
-            : 'bg-sky-500/10 text-sky-400 border-sky-500/30 hover:border-sky-500/50'
+            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+            : 'bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20'
         }`}
-        title={`Active Account: ${activeAcc.accountNumber}`}
+        title={`Active Account: ${displayAccountLabel}`}
       >
-        {isSwitching || isCreatingDemo ? (
+        {isSwitching ? (
           <Loader2 className="w-3.5 h-3.5 animate-spin" />
         ) : isReal ? (
-          <Flame className="w-3.5 h-3.5 text-rose-500" />
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
         ) : (
-          <Database className="w-3.5 h-3.5 text-sky-400" />
+          <UserCheck className="w-3.5 h-3.5 text-amber-400" />
         )}
 
-        <span className="font-mono uppercase font-bold text-[11px]">
-          {isReal ? 'LIVE' : 'DEMO'}
+        <span className="font-mono uppercase font-extrabold text-[11px] tracking-wider">
+          {isReal ? 'REAL LIVE' : 'DEMO'}
         </span>
-        <span className="hidden md:inline font-mono text-[10px] text-text-secondary">
-          ({activeAcc.accountNumber})
+        <span className="hidden md:inline font-mono text-[10px] text-slate-300">
+          ({displayAccountLabel})
         </span>
 
-        <ChevronDown className="w-3 h-3 text-text-secondary" />
+        <ChevronDown className="w-3 h-3 text-slate-400" />
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-1.5 w-56 rounded-xl bg-bg-elevated border border-border-color shadow-2xl z-50 p-1.5 space-y-1">
-          <div className="text-[9px] uppercase font-mono font-bold text-text-secondary px-2 py-1 border-b border-border-color/60">
-            Deriv Accounts List
+        <div className="absolute right-0 mt-1.5 w-64 rounded-xl bg-slate-900 border border-slate-800 shadow-2xl z-50 p-2 space-y-2">
+          {/* Quick Environment Switcher Tabs */}
+          <div className="grid grid-cols-2 gap-1 p-1 bg-slate-950 rounded-lg border border-slate-800">
+            <button
+              type="button"
+              onClick={() => handleSelectMode('LIVE')}
+              className={`py-1.5 px-2 rounded-md font-mono text-[11px] font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                isReal
+                  ? 'bg-emerald-500 text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <ShieldCheck className="w-3 h-3" />
+              <span>REAL LIVE</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSelectMode('DEMO')}
+              className={`py-1.5 px-2 rounded-md font-mono text-[11px] font-extrabold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                !isReal
+                  ? 'bg-amber-500 text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <UserCheck className="w-3 h-3" />
+              <span>DEMO</span>
+            </button>
           </div>
 
-          <div className="space-y-1 max-h-48 overflow-y-auto">
+          <div className="text-[9px] uppercase font-mono font-bold text-slate-400 px-2 py-0.5 border-b border-slate-800">
+            Your Connected Accounts
+          </div>
+
+          <div className="space-y-1 max-h-48 overflow-y-auto pr-1 no-scrollbar">
             {state.accounts.map((acc) => {
-              const accIsReal = acc.type === 'REAL';
-              const isSelected = activeAcc.id === acc.id || activeAcc.accountNumber === acc.accountNumber;
+              const accIsReal = acc.type === 'REAL' || acc.accountNumber.toUpperCase().startsWith('CR');
+              const isSelected = activeAcc?.id === acc.id || activeAcc?.accountNumber === acc.accountNumber;
 
               return (
                 <button
@@ -218,43 +205,61 @@ export const EnvironmentSelector: React.FC = () => {
                   onClick={() => handleSwitchAccount(acc.accountNumber)}
                   className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors cursor-pointer ${
                     isSelected
-                      ? 'bg-accent-primary/10 text-accent-primary font-bold'
-                      : 'text-text-primary hover:bg-bg-hover'
+                      ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold'
+                      : 'text-slate-200 hover:bg-slate-800/80 border border-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-2">
                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase ${
                       accIsReal
-                        ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
-                        : 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
+                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                        : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
                     }`}>
-                      {accIsReal ? 'LIVE' : 'DEMO'}
+                      {accIsReal ? 'REAL' : 'DEMO'}
                     </span>
                     <div className="text-left">
                       <span className="block font-mono text-[11px] font-semibold">{acc.accountNumber}</span>
-                      <span className="block text-[10px] font-mono text-text-secondary">
+                      <span className="block text-[10px] font-mono text-slate-400">
                         {acc.currency} {acc.balance.balance.toFixed(2)}
                       </span>
                     </div>
                   </div>
 
-                  {isSelected && <Check className="w-3.5 h-3.5 text-accent-primary shrink-0" />}
+                  {isSelected && <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
                 </button>
               );
             })}
+
+            {state.accounts.length === 0 && (
+              <div className="p-2 text-center text-xs text-slate-400 font-mono">
+                {isReal ? 'Active: REAL Account' : 'Active: DEMO Account'}
+              </div>
+            )}
           </div>
 
-          {!hasDemoAccount && (
-            <div className="pt-1 border-t border-border-color/60">
-              <button
-                onClick={handleCreateDemoAccount}
-                className="w-full flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 font-bold text-xs transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Create Demo Account</span>
-              </button>
-            </div>
-          )}
+          <div className="pt-1.5 border-t border-slate-800 space-y-1">
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                setTokenModalOpen(true);
+              }}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 font-semibold text-xs transition-colors cursor-pointer"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Connect Real / API Token</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                setOAuthModalOpen(true);
+              }}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-colors cursor-pointer"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Deriv OAuth Sign In</span>
+            </button>
+          </div>
         </div>
       )}
     </div>

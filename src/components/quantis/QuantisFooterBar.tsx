@@ -40,11 +40,11 @@ export const QuantisFooterBar: React.FC = () => {
           <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-slate-400">
             <span className="flex items-center gap-1.5 font-bold text-white uppercase text-[10px] tracking-wider">
               <Terminal className="h-3.5 w-3.5 text-cyan-400" />
-              Quantis Algorithmic Execution Console
+              Trading Execution Log
             </span>
             <button
               onClick={() => setIsConsoleOpen(false)}
-              className="text-slate-400 hover:text-white text-xs"
+              className="text-slate-400 hover:text-white text-xs cursor-pointer"
             >
               Close [✕]
             </button>
@@ -52,8 +52,8 @@ export const QuantisFooterBar: React.FC = () => {
 
           <div className="mt-2 space-y-1">
             {executionLogs.length === 0 ? (
-              <div className="py-4 text-center text-slate-500">
-                Awaiting algorithmic signals. Press [Scan &amp; Start] or launch Auto Pilot.
+              <div className="py-4 text-center text-slate-400">
+                Awaiting trading signals. Click [Start Strategy] or open Auto Pilot.
               </div>
             ) : (
               executionLogs.map((log) => (
@@ -103,9 +103,9 @@ export const QuantisFooterBar: React.FC = () => {
 
           <button
             onClick={() => openModal('copilotScanner')}
-            className="hidden md:flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:border-purple-500/40 hover:text-purple-400 transition-colors"
+            className="hidden md:flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:border-blue-500/40 hover:text-cyan-400 transition-colors"
           >
-            <Sliders className="h-3.5 w-3.5 text-purple-400" />
+            <Sliders className="h-3.5 w-3.5 text-cyan-400" />
             <span>Copilot Scanner</span>
           </button>
 

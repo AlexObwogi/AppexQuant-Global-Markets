@@ -28,12 +28,12 @@ export const DerivOAuthModal: React.FC = () => {
 
   const handleOAuthLogin = () => {
     setIsRedirecting(true);
-    // Redirect through standard backend OAuth route
-    window.location.href = '/api/auth/deriv/login';
+    window.location.href = '/api/auth/deriv/login?action=connect&destination=/dashboard';
   };
 
   const handleCreateAccount = () => {
-    window.open('https://track.deriv.com/_fK3n2s1_p', '_blank', 'noopener,noreferrer');
+    setIsRedirecting(true);
+    window.location.href = '/api/auth/deriv/signup?action=signup&destination=/dashboard';
   };
 
   return (
